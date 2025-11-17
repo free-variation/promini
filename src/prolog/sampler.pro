@@ -5,20 +5,33 @@
  */
 
 :- module(sampler, [
-      sampler_version/1,
-      sampler_init/0,
-      sampler_devices/1,
-      sampler_sound_load/2,
-      sampler_sound_unload/1,
-      sampler_sound_start/1,
-      sampler_sound_stop/1,
-      sampler_sound_is_playing/1,
-      sampler_sound_loop/1,
-      sampler_sound_no_loop/1,
-      sampler_sound_is_looping/1,
-      sampler_data_load/2,
-      sampler_data_unload/1,
-      sampler_sound_create/2
+    sampler_version/1,
+    sampler_init/0,
+    sampler_devices/1,
+    sampler_sound_load/2,
+    sampler_sound_unload/1,
+    sampler_sound_start/1,
+    sampler_sound_stop/1,
+    sampler_sound_is_playing/1,
+    sampler_sound_loop/1,
+    sampler_sound_no_loop/1,
+    sampler_sound_is_looping/1,
+    sampler_data_load/2,
+    sampler_data_unload/1,
+    sampler_sound_create/2,
+    sampler_sound_seek/2,
+    sampler_sound_get_position/2,
+    sampler_data_info/2,
+    sampler_sound_length/2,
+    sampler_sound_start_at/2,
+    sampler_sound_set_pitch/2,
+    sampler_sound_get_pitch/2,
+    sampler_sound_set_pan/2,
+    sampler_sound_get_pan/2,
+    sampler_sound_set_pan_mode/2,
+    sampler_sound_get_pan_mode/2,
+    sampler_sound_set_volume/2,
+    sampler_sound_get_volume/2
   ]).
 
 :- use_foreign_library('../../lib/sampler').
@@ -33,5 +46,10 @@ sampler_sound_loop(Handle) :-
 
 sampler_sound_no_loop(Handle) :-
     sampler_sound_set_looping(Handle, false).
+
+sampler_sound_start_at(Handle, Frame) :-
+      sampler_sound_seek(Handle, Frame),
+      sampler_sound_start(Handle).
+
 
 

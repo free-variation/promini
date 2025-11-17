@@ -6,6 +6,7 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 
 #include <SWI-Prolog.h>
 #include <SWI-Stream.h>
@@ -28,6 +29,21 @@ static foreign_t pl_sampler_init(void);
             if (!pl_sampler_init()) { \
                 return FALSE; \
             } \
+        } \
+    } while(0)
+
+/*
+ * Macro to validate handle and get sound pointer
+ */
+#define GET_SOUND_FROM_HANDLE(handle_term, sound_var) \
+    do { \
+        int _slot; \
+        if (!PL_get_integer(handle_term, &_slot)) { \
+            return PL_type_error("integer", handle_term); \
+        } \
+        sound_var = get_sound(_slot); \
+        if (sound_var == NULL) { \
+            return PL_existence_error("sound", handle_term); \
         } \
     } while(0)
 
@@ -119,6 +135,17 @@ static ma_audio_buffer* get_data_buffer(int index)
 }
 
 /*
+ * get_buffer_info()
+ * Retrieves audio buffer format parameters
+ */
+static void get_buffer_info(ma_audio_buffer* buffer, ma_uint64* frames, ma_uint32* channels, ma_uint32* sampleRate)
+{
+	*frames = buffer->ref.sizeInFrames;
+	*channels = buffer->ref.channels;
+	*sampleRate = buffer->ref.sampleRate;
+}
+
+/*
  * get_engine_format_info()
  * Retrieve the engine's audio format parameters.
  */
@@ -185,6 +212,7 @@ static foreign_t pl_sampler_data_load(term_t filepath, term_t handle)
 
 	/* Initialize audio buffer */
 	bufferConfig = ma_audio_buffer_config_init(format, channels, frameCount, pData, NULL);
+	bufferConfig.sampleRate = sampleRate;
 	result = ma_audio_buffer_init(&bufferConfig, buffer);
 	if (result != MA_SUCCESS) {
 		ma_free(pData, NULL);
@@ -482,18 +510,10 @@ static foreign_t pl_sampler_devices(term_t devices)
  */
 static foreign_t pl_sampler_sound_start(term_t handle)
 {
-	int slot;
 	ma_sound* sound;
 	ma_result result;
 
-	if (!PL_get_integer(handle, &slot)) {
-		return PL_type_error("integer", handle);
-	}
-
-	sound = get_sound(slot);
-	if (sound == NULL) {
-		return PL_existence_error("sound", handle);
-	}
+	GET_SOUND_FROM_HANDLE(handle, sound);
 
 	result = ma_sound_start(sound);
 	return (result == MA_SUCCESS) ? TRUE : FALSE;
@@ -505,18 +525,10 @@ static foreign_t pl_sampler_sound_start(term_t handle)
  */
 static foreign_t pl_sampler_sound_stop(term_t handle)
 {
-	int slot;
 	ma_sound* sound;
 	ma_result result;
 
-	if (!PL_get_integer(handle, &slot)) {
-		return PL_type_error("integer", handle);
-	}
-
-	sound = get_sound(slot);
-	if (sound == NULL) {
-		return PL_existence_error("sound", handle);
-	}
+	GET_SOUND_FROM_HANDLE(handle, sound);
 
 	result = ma_sound_stop(sound);
 	return (result == MA_SUCCESS) ? TRUE : FALSE;
@@ -528,17 +540,9 @@ static foreign_t pl_sampler_sound_stop(term_t handle)
  */
 static foreign_t pl_sampler_sound_is_playing(term_t handle)
 {
-	int slot;
 	ma_sound* sound;
 
-	if (!PL_get_integer(handle, &slot)) {
-		return PL_type_error("integer", handle);
-	}
-
-	sound = get_sound(slot);
-	if (sound == NULL) {
-		return PL_existence_error("sound", handle);
-	}
+	GET_SOUND_FROM_HANDLE(handle, sound);
 
 	return ma_sound_is_playing(sound) ? TRUE : FALSE;
 }
@@ -549,20 +553,12 @@ static foreign_t pl_sampler_sound_is_playing(term_t handle)
  */
 static foreign_t pl_sampler_sound_set_looping(term_t handle, term_t loop)
 {
-	int slot;
 	ma_sound* sound;
 	char* loop_str;
 	ma_bool32 should_loop;
 
-	if (!PL_get_integer(handle, &slot)) {
-		return PL_type_error("integer", handle);
-	}
+	GET_SOUND_FROM_HANDLE(handle, sound);
 
-	sound = get_sound(slot);
-	if (sound == NULL) {
-		return PL_existence_error("sound", handle);
-	}
-	
 	if (!PL_get_chars(loop, &loop_str, CVT_ATOM | CVT_STRING | CVT_EXCEPTION)) {
 		return FALSE;
 	}
@@ -579,17 +575,9 @@ static foreign_t pl_sampler_sound_set_looping(term_t handle, term_t loop)
  */
 static foreign_t pl_sampler_sound_is_looping(term_t handle)
 {
-	int slot;
 	ma_sound* sound;
 
-	if (!PL_get_integer(handle, &slot)) {
-		return PL_type_error("integer", handle);
-	}
-
-	sound = get_sound(slot);
-	if (sound == NULL) {
-		return PL_existence_error("sound", handle);
-	}
+	GET_SOUND_FROM_HANDLE(handle, sound);
 
 	return ma_sound_is_looping(sound) ? TRUE : FALSE;
 }
@@ -600,19 +588,11 @@ static foreign_t pl_sampler_sound_is_looping(term_t handle)
  */
 static foreign_t pl_sampler_sound_seek(term_t handle, term_t frame)
 {
-	int slot;
 	ma_sound* sound;
 	ma_uint64 frame_index;
 	ma_result result;
 
-	if (!PL_get_integer(handle, &slot)) {
-		return PL_type_error("integer", handle);
-	}
-
-	sound = get_sound(slot);
-	if (sound == NULL) {
-		return PL_existence_error("sound", handle);
-	}
+	GET_SOUND_FROM_HANDLE(handle, sound);
 
 	if (!PL_get_uint64(frame, &frame_index)) {
 		return PL_type_error("integer", frame);
@@ -622,24 +602,16 @@ static foreign_t pl_sampler_sound_seek(term_t handle, term_t frame)
 	return (result == MA_SUCCESS) ? TRUE : FALSE;
 }
 
-/* 
+/*
  * sampler_sound_get_position(+Handle, -Frame)
  * Gets the current playback position in frames.
  */
 static foreign_t pl_sampler_sound_get_position(term_t handle, term_t frame) {
-	int slot;
 	ma_sound* sound;
 	ma_uint64 cursor;
 	ma_result result;
 
-	if (!PL_get_integer(handle, &slot)) {
-		return PL_type_error("integer", handle);
-	}
-
-	sound = get_sound(slot);
-	if (sound == NULL) {
-		return PL_existence_error("sound", handle);
-	}
+	GET_SOUND_FROM_HANDLE(handle, sound);
 
 	result = ma_sound_get_cursor_in_pcm_frames(sound, &cursor);
 	if (result != MA_SUCCESS) {
@@ -659,16 +631,21 @@ static foreign_t pl_sampler_sound_create(term_t data_handle, term_t sound_handle
 {
 	int data_slot;
 	int sound_slot;
-	ma_audio_buffer* buffer;
+	ma_audio_buffer* source_buffer;
+	ma_audio_buffer* sound_buffer;
 	ma_sound* sound;
 	ma_result result;
+	ma_audio_buffer_config buffer_config;
+	ma_uint64 frames;
+	ma_uint32 channels;
+	ma_uint32 sample_rate;
 
 	if (!PL_get_integer(data_handle, &data_slot)) {
 		return PL_type_error("integer", data_handle);
 	}
 
-	buffer = get_data_buffer(data_slot);
-	if (buffer == NULL) {
+	source_buffer = get_data_buffer(data_slot);
+	if (source_buffer == NULL) {
 		return PL_existence_error("data_buffer", data_handle);
 	}
 
@@ -677,14 +654,36 @@ static foreign_t pl_sampler_sound_create(term_t data_handle, term_t sound_handle
 		return PL_resource_error("sound_slots");
 	}
 
-	sound = (ma_sound*)malloc(sizeof(ma_sound));
-	if (sound == NULL) {
+	/* Create a new buffer that shares the PCM data but has independent cursor */
+	sound_buffer = (ma_audio_buffer*)malloc(sizeof(ma_audio_buffer));
+	if (sound_buffer == NULL) {
 		free_sound_slot(sound_slot);
 		return PL_resource_error("memory");
 	}
 
-	result = ma_sound_init_from_data_source(g_engine, buffer, 0, NULL, sound);
+	get_buffer_info(source_buffer, &frames, &channels, &sample_rate);
+	buffer_config = ma_audio_buffer_config_init(source_buffer->ref.format, channels, frames, g_data_buffers[data_slot].pData, NULL);
+	buffer_config.sampleRate = sample_rate;
+
+	result = ma_audio_buffer_init(&buffer_config, sound_buffer);
 	if (result != MA_SUCCESS) {
+		free(sound_buffer);
+		free_sound_slot(sound_slot);
+		return FALSE;
+	}
+
+	sound = (ma_sound*)malloc(sizeof(ma_sound));
+	if (sound == NULL) {
+		ma_audio_buffer_uninit(sound_buffer);
+		free(sound_buffer);
+		free_sound_slot(sound_slot);
+		return PL_resource_error("memory");
+	}
+
+	result = ma_sound_init_from_data_source(g_engine, sound_buffer, 0, NULL, sound);
+	if (result != MA_SUCCESS) {
+		ma_audio_buffer_uninit(sound_buffer);
+		free(sound_buffer);
 		free(sound);
 		free_sound_slot(sound_slot);
 		return FALSE;
@@ -696,6 +695,223 @@ static foreign_t pl_sampler_sound_create(term_t data_handle, term_t sound_handle
 
 	return PL_unify_integer(sound_handle, sound_slot);
 }
+
+static foreign_t pl_sampler_data_info(term_t data_handle, term_t info)
+{
+	ma_audio_buffer* buffer;
+	ma_uint64 frames;
+	ma_uint32 channels;
+	ma_uint32 sampleRate;
+	double duration;
+	term_t args = PL_new_term_refs(4);
+	functor_t info_functor;
+	int slot;
+
+	if (!PL_get_integer(data_handle, &slot)) {
+		return PL_type_error("integer", data_handle);
+	}
+
+	buffer = get_data_buffer(slot);
+	if (buffer == NULL) {
+		return PL_existence_error("data_buffer", data_handle);
+	}
+
+	get_buffer_info(buffer, &frames, &channels, &sampleRate);
+	duration = (double)frames / (double)sampleRate;
+
+	if (!PL_put_uint64(args + 0, frames)) return FALSE;
+	if (!PL_put_integer(args + 1, channels)) return FALSE;
+	if (!PL_put_integer(args + 2, sampleRate)) return FALSE;
+	if (!PL_put_float(args + 3, duration)) return FALSE;
+
+	term_t result = PL_new_term_ref();
+	info_functor = PL_new_functor(PL_new_atom("data_info"), 4);
+	if (!PL_cons_functor_v(result, info_functor, args)) {
+		return FALSE;
+	}
+	return PL_unify(info, result);
+}
+
+/*
+ * sampler_sound_length(+Handle, -Frames)
+ * Gets the total length of a sound in PCM frames.
+ */
+static foreign_t pl_sampler_sound_length(term_t handle, term_t frames)
+{
+	ma_sound* sound;
+	ma_uint64 length;
+	ma_result result;
+
+	GET_SOUND_FROM_HANDLE(handle, sound);
+
+	result = ma_sound_get_length_in_pcm_frames(sound, &length);
+	if (result != MA_SUCCESS) {
+		return FALSE;
+	}
+
+	return PL_unify_uint64(frames, length);
+}
+
+/*
+ * sampler_sound_set_pitch(+Handle, +Pitch)
+ * Sets the pitch in semitones (12 = one octave up, -12 = one octave down).
+ */
+static foreign_t pl_sampler_sound_set_pitch(term_t handle, term_t pitch)
+{
+	ma_sound* sound;
+	double pitch_value;
+	float ratio;
+
+	GET_SOUND_FROM_HANDLE(handle, sound);
+
+	if (!PL_get_float(pitch, &pitch_value)) {
+		return PL_type_error("float", pitch);
+	}
+
+	ratio = powf(2.0f, (float)pitch_value / 12.0f);
+	ma_sound_set_pitch(sound, ratio);
+	return TRUE;
+}
+
+/*
+ * sampler_sound_get_pitch(+Handle, -Pitch)
+ * Gets pitch in semitones.
+ */
+static foreign_t pl_sampler_sound_get_pitch(term_t handle, term_t pitch)
+{
+	ma_sound* sound;
+	float ratio;
+	double semitones;
+
+	GET_SOUND_FROM_HANDLE(handle, sound);
+
+	ratio = ma_sound_get_pitch(sound);
+	semitones = 12.0 * log2(ratio);
+
+	return PL_unify_float(pitch, semitones);
+}
+
+/*
+ * sampler_sound_set_pan_mode(+Handle, +Mode)
+ * Sets the pan mode: "balance" or "pan"
+ */
+static foreign_t pl_sampler_sound_set_pan_mode(term_t handle, term_t mode)
+{
+	ma_sound* sound;
+	char* mode_str;
+	ma_pan_mode pan_mode;
+
+	GET_SOUND_FROM_HANDLE(handle, sound);
+
+	if (!PL_get_chars(mode, &mode_str, CVT_ATOM | CVT_STRING | CVT_EXCEPTION)) {
+		return FALSE;
+	}
+
+	if (strcmp(mode_str, "balance") == 0) {
+		pan_mode = ma_pan_mode_balance;
+	} else if (strcmp(mode_str, "pan") == 0) {
+		pan_mode = ma_pan_mode_pan;
+	} else {
+		return PL_domain_error("pan_mode", mode);
+	}
+
+	ma_sound_set_pan_mode(sound, pan_mode);
+	return TRUE;
+}
+
+/*
+ * sampler_sound_get_pan_mode(+Handle, -Mode)
+ * Gets the current pan mode as 'balance' or 'pan'.
+ */
+static foreign_t pl_sampler_sound_get_pan_mode(term_t handle, term_t mode)
+{
+	ma_sound* sound;
+	ma_pan_mode pan_mode;
+	const char* mode_str;
+
+	GET_SOUND_FROM_HANDLE(handle, sound);
+
+	pan_mode = ma_sound_get_pan_mode(sound);
+
+	if (pan_mode == ma_pan_mode_balance) {
+		mode_str = "balance";
+	} else {
+		mode_str = "pan";
+	}
+
+	return PL_unify_atom_chars(mode, mode_str);
+}
+
+/*
+ * sampler_sound_net_pan(+Handle, +Pan)
+ * Sets stereo pan (-1.0 = hard left, 0.0 = center, 1.0 = right).
+ */
+static foreign_t pl_sampler_sound_set_pan(term_t handle, term_t pan)
+{
+	ma_sound* sound;
+	double pan_value;
+
+	GET_SOUND_FROM_HANDLE(handle, sound);
+
+	if (!PL_get_float(pan, &pan_value)) {
+		return PL_type_error("float", pan);
+	}
+
+	ma_sound_set_pan(sound, (float)pan_value);
+	return TRUE;
+}
+
+/*
+ * sampler_sound_get_pan(+Handle, -Pan)
+ * Gets current stereo pan value
+ */
+static foreign_t pl_sampler_sound_get_pan(term_t handle, term_t pan)
+{
+	ma_sound* sound;
+	double pan_value;
+
+	GET_SOUND_FROM_HANDLE(handle, sound);
+
+	pan_value = ma_sound_get_pan(sound);
+
+	return PL_unify_float(pan, (double)pan_value);
+}
+
+/*
+ * sampler_sound_set_volume(+Handle, +Volume)
+ * Sets volume (1.0 = normal, 0.0 = silence, >1.0 = amplification).
+ */
+static foreign_t pl_sampler_sound_set_volume(term_t handle, term_t volume)
+{
+	ma_sound* sound;
+	double volume_value;
+
+	GET_SOUND_FROM_HANDLE(handle, sound);
+
+	if (!PL_get_float(volume, &volume_value)) {
+		return PL_type_error("float", volume);
+	}
+
+	ma_sound_set_volume(sound, (float)volume_value);
+	return TRUE;
+}
+
+/*
+ * sampler_sound_get_volume(+Handle, -Volume)
+ * Gets current volume.
+ */
+static foreign_t pl_sampler_sound_get_volume(term_t handle, term_t volume)
+{
+	ma_sound* sound;
+	float volume_value;
+
+	GET_SOUND_FROM_HANDLE(handle, sound);
+
+	volume_value = ma_sound_get_volume(sound);
+
+	return PL_unify_float(volume, (double)volume_value);
+}
+
 
 /*
  * install()
@@ -716,6 +932,18 @@ install_t install(void)
 	PL_register_foreign("sampler_data_load", 2, pl_sampler_data_load, 0);
 	PL_register_foreign("sampler_data_unload", 1, pl_sampler_data_unload, 0);
 	PL_register_foreign("sampler_sound_create", 2, pl_sampler_sound_create, 0);
+	PL_register_foreign("sampler_sound_seek", 2, pl_sampler_sound_seek, 0);
+	PL_register_foreign("sampler_sound_get_position", 2, pl_sampler_sound_get_position, 0);
+	PL_register_foreign("sampler_data_info", 2, pl_sampler_data_info, 0);
+	PL_register_foreign("sampler_sound_length", 2, pl_sampler_sound_length, 0);
+	PL_register_foreign("sampler_sound_set_pitch", 2, pl_sampler_sound_set_pitch, 0);
+	PL_register_foreign("sampler_sound_get_pitch", 2, pl_sampler_sound_get_pitch, 0);
+	PL_register_foreign("sampler_sound_set_pan", 2, pl_sampler_sound_set_pan, 0);
+	PL_register_foreign("sampler_sound_get_pan", 2, pl_sampler_sound_get_pan, 0);
+	PL_register_foreign("sampler_sound_set_pan_mode", 2, pl_sampler_sound_set_pan_mode, 0);
+	PL_register_foreign("sampler_sound_get_pan_mode", 2, pl_sampler_sound_get_pan_mode, 0);
+	PL_register_foreign("sampler_sound_set_volume", 2, pl_sampler_sound_set_volume, 0);
+	PL_register_foreign("sampler_sound_get_volume", 2, pl_sampler_sound_get_volume, 0);
 }
 
 /*
