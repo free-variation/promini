@@ -8,6 +8,10 @@
 #include <string.h>
 #include <math.h>
 
+#if defined(__ARM_NEON) || defined(__aarch64__)
+#include <arm_neon.h>
+#endif
+
 #include <SWI-Prolog.h>
 #include <SWI-Stream.h>
 
@@ -44,6 +48,36 @@ static foreign_t pl_sampler_init(void);
         sound_var = get_sound(_slot); \
         if (sound_var == NULL) { \
             return PL_existence_error("sound", handle_term); \
+        } \
+    } while(0)
+
+/*
+ * Macro to validate handle and get data buffer pointer
+ */
+#define GET_DATA_BUFFER_FROM_HANDLE(handle_term, buffer_var) \
+    do { \
+        int _slot; \
+        if (!PL_get_integer(handle_term, &_slot)) { \
+            return PL_type_error("integer", handle_term); \
+        } \
+        buffer_var = get_data_buffer(_slot); \
+        if (buffer_var == NULL) { \
+            return PL_existence_error("data_buffer", handle_term); \
+        } \
+    } while(0)
+
+/*
+ * Macro to validate handle and get data buffer pointer with slot index
+ * Use when you need access to both the buffer and the slot (e.g., for pData access)
+ */
+#define GET_DATA_BUFFER_WITH_SLOT(handle_term, buffer_var, slot_var) \
+    do { \
+        if (!PL_get_integer(handle_term, &slot_var)) { \
+            return PL_type_error("integer", handle_term); \
+        } \
+        buffer_var = get_data_buffer(slot_var); \
+        if (buffer_var == NULL) { \
+            return PL_existence_error("data_buffer", handle_term); \
         } \
     } while(0)
 
@@ -157,6 +191,46 @@ static void get_engine_format_info(ma_format* format, ma_uint32* channels, ma_ui
 	*sampleRate = device->sampleRate;
 }
 
+/*
+ * create_data_buffer_from_pcm()
+ * Creates a data buffer from raw PCM data. Returns slot index or -1 on error.
+ * Caller is responsible for freeing pData on error.
+ */
+static int create_data_buffer_from_pcm(void* pData, ma_format format, ma_uint32 channels,
+                                       ma_uint64 frame_count, ma_uint32 sample_rate)
+{
+	int slot;
+	ma_audio_buffer* buffer;
+	ma_audio_buffer_config buffer_config;
+	ma_result result;
+
+	slot = allocate_data_slot();
+	if (slot < 0) {
+		return -1;
+	}
+
+	buffer = (ma_audio_buffer*)malloc(sizeof(ma_audio_buffer));
+	if (buffer == NULL) {
+		free_data_slot(slot);
+		return -1;
+	}
+
+	buffer_config = ma_audio_buffer_config_init(format, channels, frame_count, pData, NULL);
+	buffer_config.sampleRate = sample_rate;
+	result = ma_audio_buffer_init(&buffer_config, buffer);
+	if (result != MA_SUCCESS) {
+		free(buffer);
+		free_data_slot(slot);
+		return -1;
+	}
+
+	g_data_buffers[slot].buffer = buffer;
+	g_data_buffers[slot].pData = pData;
+	g_data_buffers[slot].refcount = 1;
+
+	return slot;
+}
+
 /* sampler_data_load(+FilePath, -Handle)
  * Loads audio data from file into a shareable buffer.
  * Returns a data handle that can be used to create multiple sounds.
@@ -165,66 +239,33 @@ static foreign_t pl_sampler_data_load(term_t filepath, term_t handle)
 {
 	char* path;
 	int slot;
-	ma_uint64 frameCount;
+	ma_uint64 frame_count;
 	void* pData;
-
-	ma_decoder_config decoderConfig;
+	ma_decoder_config decoder_config;
 	ma_format format;
 	ma_uint32 channels;
-	ma_uint32 sampleRate;
+	ma_uint32 sample_rate;
 	ma_result result;
-	ma_audio_buffer_config bufferConfig;
-	ma_audio_buffer* buffer;
 
 	ENSURE_ENGINE_INITIALIZED();
 
-	/* Get file path string */
 	if (!PL_get_chars(filepath, &path, CVT_ATOM | CVT_STRING | CVT_EXCEPTION)) {
 		return FALSE;
 	}
 
-	/* Allocate data slot */
-	slot = allocate_data_slot();
+	get_engine_format_info(&format, &channels, &sample_rate);
+	decoder_config = ma_decoder_config_init(format, channels, sample_rate);
+
+	result = ma_decode_file(path, &decoder_config, &frame_count, &pData);
+	if (result != MA_SUCCESS) {
+		return FALSE;
+	}
+
+	slot = create_data_buffer_from_pcm(pData, format, channels, frame_count, sample_rate);
 	if (slot < 0) {
+		ma_free(pData, NULL);
 		return PL_resource_error("data_buffer_slots");
 	}
-
-	/* Get engine's format for compatibility */
-	get_engine_format_info(&format, &channels, &sampleRate);
-
-	/* Configure decoder to match engine format */
-	decoderConfig = ma_decoder_config_init(format, channels, sampleRate);
-
-	/* Decode audio file */
-	result = ma_decode_file(path, &decoderConfig, &frameCount, &pData);
-	if (result != MA_SUCCESS) {
-		free_data_slot(slot);
-		return FALSE;
-	}
-
-	/* Allocate audio buffer */
-	buffer = (ma_audio_buffer*)malloc(sizeof(ma_audio_buffer));
-	if (buffer == NULL) {
-		ma_free(pData, NULL);
-		free_data_slot(slot);
-		return PL_resource_error("memory");
-	}
-
-	/* Initialize audio buffer */
-	bufferConfig = ma_audio_buffer_config_init(format, channels, frameCount, pData, NULL);
-	bufferConfig.sampleRate = sampleRate;
-	result = ma_audio_buffer_init(&bufferConfig, buffer);
-	if (result != MA_SUCCESS) {
-		ma_free(pData, NULL);
-		free(buffer);
-		free_data_slot(slot);
-		return FALSE;
-	}
-
-	/* Store buffer and data, set initial refcount to 1 */
-	g_data_buffers[slot].buffer = buffer;
-	g_data_buffers[slot].pData = pData;
-	g_data_buffers[slot].refcount = 1;
 
 	return PL_unify_integer(handle, slot);
 }
@@ -705,16 +746,8 @@ static foreign_t pl_sampler_data_info(term_t data_handle, term_t info)
 	double duration;
 	term_t args = PL_new_term_refs(4);
 	functor_t info_functor;
-	int slot;
 
-	if (!PL_get_integer(data_handle, &slot)) {
-		return PL_type_error("integer", data_handle);
-	}
-
-	buffer = get_data_buffer(slot);
-	if (buffer == NULL) {
-		return PL_existence_error("data_buffer", data_handle);
-	}
+	GET_DATA_BUFFER_FROM_HANDLE(data_handle, buffer);
 
 	get_buffer_info(buffer, &frames, &channels, &sampleRate);
 	duration = (double)frames / (double)sampleRate;
@@ -912,7 +945,245 @@ static foreign_t pl_sampler_sound_get_volume(term_t handle, term_t volume)
 	return PL_unify_float(volume, (double)volume_value);
 }
 
+/*
+ * sampler_data_reverse(+SourceHandle, -ReversedHandle)
+ * Creates a reversed copy of a data buffer
+ */
+static foreign_t pl_sampler_data_reverse(term_t source_handle, term_t reversed_handle)
+{
+	ma_audio_buffer* source_buffer;
+	int slot;
+	ma_uint64 frame_count;
+	ma_uint32 channels;
+	ma_uint32 sample_rate;
+	ma_format format;
+	ma_uint32 bytes_per_frame;
+	void* source_data;
+	void* reversed_data;
+	ma_uint64 i;
+	int source_slot;
 
+	GET_DATA_BUFFER_WITH_SLOT(source_handle, source_buffer, source_slot);
+
+	get_buffer_info(source_buffer, &frame_count, &channels, &sample_rate);
+	format = source_buffer->ref.format;
+	bytes_per_frame = ma_get_bytes_per_frame(format, channels);
+
+	reversed_data = malloc(frame_count * bytes_per_frame);
+	if (reversed_data == NULL) {
+		return PL_resource_error("memory");
+	}
+
+	/* Reverse frame order while preserving channel interleaving within each frame.
+	 * Frame i in source becomes frame (frame_count - 1 - i) in destination.
+	 * e.g., stereo: [L0,R0, L1,R1, L2,R2] becomes [L2,R2, L1,R1, L0,R0] */
+	source_data = g_data_buffers[source_slot].pData;
+	for (i = 0; i < frame_count; i++) {
+		memcpy(
+			(char*)reversed_data + ((frame_count - 1 - i) * bytes_per_frame),
+			(char*)source_data + (i * bytes_per_frame),
+			bytes_per_frame
+		);
+	}
+
+	slot = create_data_buffer_from_pcm(reversed_data, format, channels, frame_count, sample_rate);
+	if (slot < 0) {
+		free(reversed_data);
+		return PL_resource_error("data_buffer_slots");
+	}
+
+	return PL_unify_integer(reversed_handle, slot);
+}
+
+/*
+ * sempler_data_resample(+SourceHandle, +NewSampleRate, -ResampleHandle)
+ * Resamples audio data to a different sample rate.
+ * Creates a new data buffer with the resampled audio.
+ */
+static foreign_t pl_sampler_data_resample(term_t source_handle, term_t new_rate_term, term_t resampled_handle)
+{
+	ma_audio_buffer* source_buffer;
+  	int slot;
+  	ma_uint64 old_frame_count;
+  	ma_uint64 new_frame_count;
+  	ma_uint32 channels;
+  	ma_uint32 old_sample_rate;
+  	ma_uint32 new_sample_rate;
+  	ma_format format;
+  	void* source_data;
+  	void* resampled_data;
+  	int source_slot;
+  	ma_resampler_config resampler_config;
+  	ma_resampler resampler;
+  	ma_result result;
+  	ma_uint64 frames_in;
+  	ma_uint64 frames_out;
+
+	GET_DATA_BUFFER_WITH_SLOT(source_handle, source_buffer, source_slot);
+
+	if (!PL_get_integer(new_rate_term, (int*)&new_sample_rate)) {
+		return PL_type_error("integer", new_rate_term);
+	}
+
+	if (new_sample_rate <= 0) {
+		return PL_domain_error("positive_integer", new_rate_term);
+	}
+
+	get_buffer_info(source_buffer, &old_frame_count, &channels, &old_sample_rate);
+	format = source_buffer->ref.format;
+
+	new_frame_count = (ma_uint64)((double)old_frame_count * new_sample_rate / old_sample_rate);
+
+	resampler_config = ma_resampler_config_init(format, channels, old_sample_rate, new_sample_rate, ma_resample_algorithm_linear);
+	result = ma_resampler_init(&resampler_config, NULL, &resampler);
+	if (result != MA_SUCCESS) {
+		return FALSE;
+	}
+
+	resampled_data = malloc(new_frame_count * ma_get_bytes_per_frame(format, channels));
+	if (resampled_data == NULL) {
+  		ma_resampler_uninit(&resampler, NULL);
+  		return PL_resource_error("memory");
+  	}
+
+	source_data = g_data_buffers[source_slot].pData;
+	frames_in = old_frame_count;
+	frames_out = new_frame_count;
+	result = ma_resampler_process_pcm_frames(&resampler, source_data, &frames_in, resampled_data, &frames_out);
+
+	ma_resampler_uninit(&resampler, NULL);
+
+	if (result != MA_SUCCESS) {
+  		free(resampled_data);
+  		return FALSE;
+  	}
+
+	slot = create_data_buffer_from_pcm(resampled_data, format, channels, frames_out, new_sample_rate);
+	if (slot < 0) {
+  		free(resampled_data);
+  		return PL_resource_error("data_buffer_slots");
+  	}
+
+	return PL_unify_integer(resampled_handle, slot);
+}
+
+/*
+ * sampler_data_bit_reduce(+SourceHandle, +TargetBits, -ReducedHandle)
+ * Reduces bit depth by quantizing samples to fewer discrete levels.
+ * Simulates lower bit depth while maintaining the same storage format.
+ */
+static foreign_t pl_sampler_data_bit_reduce(term_t source_handle, term_t bits_term, term_t reduced_handle)
+{
+	ma_audio_buffer* source_buffer;
+	int source_slot;
+	int target_bits;
+	ma_uint64 frame_count;
+	ma_uint32 channels;
+	ma_uint32 sample_rate;
+	ma_format format;
+	ma_uint64 sample_count;
+	void* source_data;
+	void* reduced_data;
+	ma_uint32 bytes_per_sample;
+	int slot;
+	ma_uint64 i;
+	float levels;
+	float sample;
+	float* src_f32;
+	float* dst_f32;
+	ma_int16* src_s16;
+	ma_int16* dst_s16;
+	ma_int16 levels_s16;
+	ma_int16 sample_s16;
+
+	GET_DATA_BUFFER_WITH_SLOT(source_handle, source_buffer, source_slot);
+
+	if (!PL_get_integer(bits_term, &target_bits)) {
+		return PL_type_error("integer", bits_term);
+	}
+
+	if (target_bits < 1 || target_bits > 16) {
+		return PL_domain_error("bit_depth_range", bits_term);
+	}
+
+	get_buffer_info(source_buffer, &frame_count, &channels, &sample_rate);
+	format = source_buffer->ref.format;
+	sample_count = frame_count * channels;
+	bytes_per_sample = ma_get_bytes_per_sample(format);
+
+	reduced_data = malloc(sample_count * bytes_per_sample);
+	if (reduced_data == NULL) {
+		return PL_resource_error("memory");
+	}
+
+	source_data = g_data_buffers[source_slot].pData;
+
+	if (format == ma_format_f32) {
+		/* For float format (-1.0 to 1.0 range):
+		 * levels = 2^(target_bits-1) quantization steps (e.g., 4-bit = 8 levels)
+		 * Quantization: scale to ±levels, round to integer, scale back to ±1.0
+		 * Example (4-bit): 0.75 * 8 = 6.0 -> round(6.0) = 6 -> 6/8 = 0.75
+		 *                  0.73 * 8 = 5.84 -> round(5.84) = 6 -> 6/8 = 0.75 */
+		levels = (float)(1 << (target_bits - 1));
+		src_f32 = (float*)source_data;
+		dst_f32 = (float*)reduced_data;
+
+#if defined(__ARM_NEON) || defined(__aarch64__)
+		/* NEON-optimized path: process 4 samples at a time */
+		float32x4_t levels_vec = vdupq_n_f32(levels);
+		float32x4_t inv_levels_vec = vdupq_n_f32(1.0f / levels);
+		ma_uint64 vec_count = sample_count / 4;
+		ma_uint64 vec_samples = vec_count * 4;
+
+		for (i = 0; i < vec_samples; i += 4) {
+			float32x4_t samples = vld1q_f32(&src_f32[i]);
+			samples = vmulq_f32(samples, levels_vec);
+			samples = vrndnq_f32(samples);
+			samples = vmulq_f32(samples, inv_levels_vec);
+			vst1q_f32(&dst_f32[i], samples);
+		}
+
+		/* Handle remaining samples with scalar code */
+		for (i = vec_samples; i < sample_count; i++) {
+			sample = src_f32[i];
+			dst_f32[i] = roundf(sample * levels) / levels;
+		}
+#else
+		/* Scalar fallback */
+		for (i = 0; i < sample_count; i++) {
+			sample = src_f32[i];
+			dst_f32[i] = roundf(sample * levels) / levels;
+		}
+#endif
+	} else if (format == ma_format_s16) {
+		/* For s16 format (-32768 to 32767 range):
+		 * levels_s16 = 2^(target_bits-1) quantization steps
+		 * step_size = 32768 / levels_s16 (e.g., 4-bit: 32768/8 = 4096)
+		 * Quantization: divide by step_size (truncates), multiply back
+		 * Example (4-bit): 10000 / 4096 = 2 -> 2 * 4096 = 8192 */
+		levels_s16 = (ma_int16)(1 << (target_bits - 1));
+		src_s16 = (ma_int16*)source_data;
+		dst_s16 = (ma_int16*)reduced_data;
+
+		/* Scalar path for s16 (NEON integer division is complex) */
+		for (i = 0; i < sample_count; i++) {
+			sample_s16 = src_s16[i];
+			dst_s16[i] = (ma_int16)((sample_s16 / (32768 / levels_s16)) * (32768 / levels_s16));
+		}
+	} else {
+		free(reduced_data);
+		return PL_domain_error("supported_format", source_handle);
+	}
+
+	slot = create_data_buffer_from_pcm(reduced_data, format, channels, frame_count, sample_rate);
+	if (slot < 0) {
+		free(reduced_data);
+		return PL_resource_error("data_buffer_slots");
+	}
+
+	return PL_unify_integer(reduced_handle, slot);
+}
+	
 /*
  * install()
  * Register foreign predicates with SWI-Prolog.
@@ -944,6 +1215,9 @@ install_t install(void)
 	PL_register_foreign("sampler_sound_get_pan_mode", 2, pl_sampler_sound_get_pan_mode, 0);
 	PL_register_foreign("sampler_sound_set_volume", 2, pl_sampler_sound_set_volume, 0);
 	PL_register_foreign("sampler_sound_get_volume", 2, pl_sampler_sound_get_volume, 0);
+	PL_register_foreign("sampler_data_reverse", 2, pl_sampler_data_reverse, 0);
+	PL_register_foreign("sampler_data_resample", 3, pl_sampler_data_resample, 0);
+	PL_register_foreign("sampler_data_bit_reduce", 3, pl_sampler_data_bit_reduce, 0);
 }
 
 /*

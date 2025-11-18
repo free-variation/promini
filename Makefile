@@ -7,6 +7,9 @@ UNAME_S := $(shell uname -s)
 SWIPL := swipl
 SWIPL_LD := swipl-ld
 
+# Compiler flags
+CFLAGS := -O3 -ffast-math
+
 # Platform-specific settings
 ifeq ($(UNAME_S),Darwin)
     # macOS
@@ -32,7 +35,7 @@ all: $(TARGET)
 
 # Build shared library
 $(TARGET): $(SRC) | $(LIBDIR)
-	$(SWIPL_LD) -shared -o $(TARGET) $(SRC) $(LDFLAGS)
+	$(SWIPL_LD) -shared -o $(TARGET) $(SRC) $(CFLAGS) $(LDFLAGS)
 
 # Create lib directory
 $(LIBDIR):
