@@ -130,7 +130,6 @@ typedef enum {
 	EFFECT_HISHELF
 } effect_type_t;
 
-/* Effect chain node - tracks effect for cleanup */
 typedef struct effect_node {
 	effect_type_t type;
 	ma_node_base* effect_node;
@@ -146,7 +145,6 @@ typedef struct {
 
 static sound_slot_t g_sounds[MAX_SOUNDS] = {{NULL, -1, MA_FALSE, NULL}};
 
-/* Bit crush effect node */
 typedef struct {
 	ma_node_base base;
 	ma_uint32 target_bits; // 1-16 bits
@@ -155,6 +153,36 @@ typedef struct {
 	ma_uint64 hold_counter;
 	ma_uint32 hold_interval; // Frames between updates when downsampling
 } bitcrush_node_t;
+
+static ma_node_vtable bitcrush_vtable = 
+{
+	bitcrush_process_pcm_frames,
+	NULL, 	/* onGetRequiredInputFrameCount */
+	1,		/* 1 input */
+	1,		/* 1 output */
+	0		/* default flags */
+};
+
+typedef struct {
+	ma_node_base base;
+	float attack;
+	float decay;
+	float Break;
+	float release;
+	float break_level;
+	float duration_ms;
+	ma_uint32 stage; /* 0 = attack; 1 = decay; 2 = break; 3 = release */
+	float stage_progress;
+} adbr_envelope_node_t;
+
+static ma_node_vtable adbr_envelope_vtable = 
+{
+	adbr_process_pcm_frames,
+	NULL,
+	1,
+	1,
+	0
+};
 
 /*
  * allocate_data_slot()
@@ -366,14 +394,6 @@ static void bitcrush_process_pcm_frames(
 	*frame_count_out = frame_count;
 }
 
-static ma_node_vtable bitcrush_vtable = 
-{
-	bitcrush_process_pcm_frames,
-	NULL, 	/* onGetRequiredInputFrameCount */
-	1,		/* 1 input */
-	1,		/* 1 output */
-	0		/* default flags */
-};
 
 
 
@@ -1318,35 +1338,69 @@ static ma_result attach_effect_node_to_sound(sound_slot_t* sound_slot, ma_node_b
 	return MA_SUCCESS;
 }
 
-/* Helper: initialize bitcrush effect node */
-static ma_result init_bitcrush_node(bitcrush_node_t* node, int bits, int sample_rate)
+/* Helper: initialize effect node base (common boilerplate) */
+static ma_result init_effect_node_base(ma_node_base* node, ma_node_vtable* vtable)
 {
 	ma_node_config node_config;
 	ma_uint32 channels[1];
-	ma_result result;
 
 	channels[0] = ma_engine_get_channels(g_engine);
 
 	node_config = ma_node_config_init();
-	node_config.vtable = &bitcrush_vtable;
+	node_config.vtable = vtable;
 	node_config.pInputChannels = channels;
 	node_config.pOutputChannels = channels;
 
-	result = ma_node_init(ma_engine_get_node_graph(g_engine), &node_config, NULL, &node->base);
+	return ma_node_init(ma_engine_get_node_graph(g_engine), &node_config, NULL, node);
+}
+
+/* helper: initialize ADBR envelope node */
+static ma_result init_adbr_envelope_node(adbr_envelope_node_t* node,
+		float attack,
+		float delay,
+		float Break,
+		float release,
+		float break_level)
+{
+	ma_result result;
+
+	result = init_effect_node_base(&node->base, &adbr_envelope_vtable);
 	if (result != MA_SUCCESS) {
 		return result;
 	}
+
+	node->attack = attack;
+	node->delay = delay;
+	node->Break = Break;
+	node->release = release;
+	node->break_level = break_level;
+
+	
+}
+
+/* Helper: initialize bitcrush effect node */
+static ma_result init_bitcrush_node(bitcrush_node_t* node, int bits, int sample_rate)
+{
+	ma_uint32 channels;
+	ma_result result;
+
+	result = init_effect_node_base(&node->base, &bitcrush_vtable);
+	if (result != MA_SUCCESS) {
+		return result;
+	}
+
+	channels = ma_engine_get_channels(g_engine);
 
 	node->target_bits = (ma_uint32)bits;
 	node->target_sample_rate = (ma_uint32)sample_rate;
 
 	if (sample_rate > 0) {
-		node->hold_samples = (float *)malloc(channels[0] * sizeof(float));
+		node->hold_samples = (float *)malloc(channels * sizeof(float));
 		if (node->hold_samples == NULL) {
 			ma_node_uninit(&node->base, NULL);
 			return MA_OUT_OF_MEMORY;
 		}
-		memset(node->hold_samples, 0, channels[0] * sizeof(float));
+		memset(node->hold_samples, 0, channels * sizeof(float));
 		node->hold_interval = ma_engine_get_sample_rate(g_engine) / sample_rate;
 		node->hold_counter = 0;
 	} else {
