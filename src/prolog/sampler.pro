@@ -35,7 +35,9 @@
     sampler_data_reverse/2,
     sampler_data_load_reversed/2,
     sampler_data_resample/3,
-    sampler_data_bit_reduce/3
+    sampler_data_bit_reduce/3,
+    sampler_sound_set_range/3,
+    sampler_data_extract/4
   ]).
 
 :- use_foreign_library('../../lib/sampler').
@@ -59,3 +61,8 @@ sampler_data_load_reversed(Path, ReversedHandle) :-
     sampler_data_load(Path, TempHandle),
     sampler_data_reverse(TempHandle, ReversedHandle),
     sampler_data_unload(TempHandle).
+
+sampler_sound_load(Path, SoundHandle) :-
+    sampler_data_load(Path, DataHandle),
+    sampler_sound_create(DataHandle, SoundHandle),
+    sampler_data_unload(DataHandle).

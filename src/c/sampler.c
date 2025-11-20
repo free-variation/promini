@@ -271,6 +271,70 @@ static foreign_t pl_sampler_data_load(term_t filepath, term_t handle)
 }
 
 /*
+ * sampler_data_extract(+SourceHandle, +StartFrame, +Length, -ExtractedHandle)
+ * Extracts a slice of frames into a new buffer.
+ */
+static foreign_t pl_sampler_data_extract(term_t source_handle, term_t start_term, term_t length_term, term_t extracted_handle)
+{
+	ma_audio_buffer* source_buffer;
+  	int source_slot;
+  	int start_int, length_int;
+  	ma_uint64 start_frame, length_frames;
+  	ma_uint64 source_frame_count;
+  	ma_uint32 channels;
+  	ma_uint32 sample_rate;
+  	ma_format format;
+  	ma_uint32 bytes_per_frame;
+  	void* source_data;
+  	void* extracted_data;
+  	int slot;
+
+  	GET_DATA_BUFFER_WITH_SLOT(source_handle, source_buffer, source_slot);
+
+  	if (!PL_get_integer(start_term, &start_int)) {
+  		return PL_type_error("integer", start_term);
+  	}
+
+  	if (!PL_get_integer(length_term, &length_int)) {
+  		return PL_type_error("integer", length_term);
+  	}
+
+  	if (start_int < 0 || length_int <= 0) {
+  		return PL_domain_error("valid_extraction_params", start_int < 0 ? start_term : length_term);
+  	}
+
+  	get_buffer_info(source_buffer, &source_frame_count, &channels, &sample_rate);
+  	format = source_buffer->ref.format;
+
+  	start_frame = (ma_uint64)start_int;
+  	length_frames = (ma_uint64)length_int;
+
+  	if (start_frame + length_frames > source_frame_count) {
+  		return PL_domain_error("extraction_bounds", length_term);
+  	}
+
+	bytes_per_frame = ma_get_bytes_per_frame(format, channels);
+
+	extracted_data = malloc(length_frames * bytes_per_frame);
+	if (extracted_data == NULL) {
+		return PL_resource_error("memory");
+	}
+
+	source_data = g_data_buffers[source_slot].pData;
+	memcpy(extracted_data,
+			(char*)source_data + (start_frame * bytes_per_frame),
+			length_frames * bytes_per_frame);
+
+	slot = create_data_buffer_from_pcm(extracted_data, format, channels, length_frames, sample_rate);
+	if (slot < 0) {
+		free(extracted_data);
+		return PL_resource_error("data_buffer_slots");
+	}
+
+	return PL_unify_integer(extracted_handle, slot);
+}
+
+/*
  * sampler_data_unload(+Handle)
  * Decrements reference count on data buffer.
  * Frees the buffer when refcount reaches zero.
@@ -357,6 +421,7 @@ static ma_sound* get_sound(int index)
     return g_sounds[index].sound;
 }
 
+
 /*
  * sampler_version(-Version)
  * Unifies Version with the miniaudio version string.
@@ -398,50 +463,6 @@ static foreign_t pl_sampler_init(void)
 }
 
 /*
- * sampler_sound_load(+FilePath, -Handle)
- * Loads a sound from a file and returns a handle.
- */
-static foreign_t pl_sampler_sound_load(term_t filepath, term_t handle)
-{
-    char* path;
-    ma_sound* sound;
-    ma_result result;
-    int slot;
-
-    ENSURE_ENGINE_INITIALIZED();
-
-    /* Get file path string */
-    if (!PL_get_chars(filepath, &path, CVT_ATOM|CVT_STRING|CVT_EXCEPTION)) {
-        return FALSE;
-    }
-
-    /* Allocate sound slot */
-    slot = allocate_sound_slot();
-    if (slot < 0) {
-        return PL_resource_error("sound_slots");
-    }
-
-    /* Allocate sound */
-    sound = (ma_sound*)malloc(sizeof(ma_sound));
-    if (sound == NULL) {
-        free_sound_slot(slot);
-        return PL_resource_error("memory");
-    }
-
-    /* Load sound from file */
-    result = ma_sound_init_from_file(g_engine, path, 0, NULL, NULL, sound);
-    if (result != MA_SUCCESS) {
-        free(sound);
-        free_sound_slot(slot);
-        return FALSE;
-    }
-
-    /* Store sound and return handle */
-    g_sounds[slot].sound = sound;
-    return PL_unify_integer(handle, slot);
-}
-
-/*
  * sampler_sound_unload(+Handle)
  * Unloads a sound and frees its resources.
  */
@@ -449,17 +470,14 @@ static foreign_t pl_sampler_sound_unload(term_t handle)
 {
     int slot;
 
-    /* Get handle */
     if (!PL_get_integer(handle, &slot)) {
         return PL_type_error("integer", handle);
     }
 
-    /* Validate handle */
     if (slot < 0 || slot >= MAX_SOUNDS || !g_sounds[slot].in_use) {
         return PL_existence_error("sound", handle);
     }
 
-    /* Free sound slot */
     free_sound_slot(slot);
     return TRUE;
 }
@@ -735,6 +753,50 @@ static foreign_t pl_sampler_sound_create(term_t data_handle, term_t sound_handle
 	g_data_buffers[data_slot].refcount++;
 
 	return PL_unify_integer(sound_handle, sound_slot);
+}
+
+/*
+ * sampler_sound_set_range(+Handle, +StartFrame, +EndFrame)
+ * Sets the playback range for a sound (which frames to play).
+ */
+static foreign_t pl_sampler_sound_set_range(term_t handle, term_t start_term, term_t end_term)
+{
+	ma_sound* sound;
+  	ma_uint64 start_frame;
+  	ma_uint64 end_frame;
+  	ma_data_source* data_source;
+  	ma_result result;
+  	int start_int, end_int;
+
+	GET_SOUND_FROM_HANDLE(handle, sound);
+
+	if (!PL_get_integer(start_term, &start_int)) {
+  		return PL_type_error("integer", start_term);
+  	}
+
+  	if (!PL_get_integer(end_term, &end_int)) {
+  		return PL_type_error("integer", end_term);
+  	}
+
+  	if (start_int < 0 || end_int < 0) {
+  		return PL_domain_error("non_negative_integer", start_int < 0 ? start_term : end_term);
+  	}
+
+  	if (start_int >= end_int) {
+  		return PL_domain_error("valid_range", start_term);
+  	}
+
+	start_frame = (ma_uint64)start_int;
+	end_frame = (ma_uint64)end_int;
+
+	data_source = ma_sound_get_data_source(sound);
+	result = ma_data_source_set_range_in_pcm_frames(data_source, start_frame, end_frame);
+
+	if (result != MA_SUCCESS) {
+		return FALSE;
+	}
+
+	return TRUE;
 }
 
 static foreign_t pl_sampler_data_info(term_t data_handle, term_t info)
@@ -1183,7 +1245,8 @@ static foreign_t pl_sampler_data_bit_reduce(term_t source_handle, term_t bits_te
 
 	return PL_unify_integer(reduced_handle, slot);
 }
-	
+
+
 /*
  * install()
  * Register foreign predicates with SWI-Prolog.
@@ -1193,7 +1256,6 @@ install_t install(void)
     PL_register_foreign("sampler_version", 1, pl_sampler_version, 0);
     PL_register_foreign("sampler_init", 0, pl_sampler_init, 0);
     PL_register_foreign("sampler_devices", 1, pl_sampler_devices, 0);
-    PL_register_foreign("sampler_sound_load", 2, pl_sampler_sound_load, 0);
     PL_register_foreign("sampler_sound_unload", 1, pl_sampler_sound_unload, 0);
 	PL_register_foreign("sampler_sound_start", 1, pl_sampler_sound_start, 0);
 	PL_register_foreign("sampler_sound_stop", 1, pl_sampler_sound_stop, 0);
@@ -1218,6 +1280,8 @@ install_t install(void)
 	PL_register_foreign("sampler_data_reverse", 2, pl_sampler_data_reverse, 0);
 	PL_register_foreign("sampler_data_resample", 3, pl_sampler_data_resample, 0);
 	PL_register_foreign("sampler_data_bit_reduce", 3, pl_sampler_data_bit_reduce, 0);
+	PL_register_foreign("sampler_sound_set_range", 3, pl_sampler_sound_set_range, 0);
+	PL_register_foreign("sampler_data_extract", 4, pl_sampler_data_extract, 0);
 }
 
 /*
