@@ -82,6 +82,20 @@ static foreign_t pl_sampler_init(void);
     } while(0)
 
 /*
+ * Macro to validate handle and get both sound pointer and slot index
+ */
+#define GET_SOUND_WITH_SLOT(handle_term, sound_var, slot_var) \
+    do { \
+        if (!PL_get_integer(handle_term, &slot_var)) { \
+            return PL_type_error("integer", handle_term); \
+        } \
+        if (slot_var < 0 || slot_var >= MAX_SOUNDS || !g_sounds[slot_var].in_use) { \
+            return PL_existence_error("sound", handle_term); \
+        } \
+        sound_var = g_sounds[slot_var].sound; \
+    } while(0)
+
+/*
  * Global engine - one engine for the library lifetime
  */
 static ma_engine* g_engine = NULL;
@@ -262,6 +276,106 @@ static int create_data_buffer_from_pcm(void* pData, ma_format format, ma_uint32 
 
 	return slot;
 }
+
+/*
+ * Bitcrush effect node implementation
+ */
+
+/* Bitcrush processing callback */
+static void bitcrush_process_pcm_frames(
+		ma_node* node,
+		const float** frames_in,
+		ma_uint32* frame_count_in,
+		float** frames_out,
+		ma_uint32* frame_count_out)
+{
+	bitcrush_node_t* bitcrush;
+  	ma_uint32 channels;
+  	ma_uint32 frame_count;
+  	ma_uint32 total_samples;
+  	float levels;
+  	ma_uint32 frame;
+  	ma_uint32 channel;
+  	const float* input;
+  	float* output;
+
+	MA_ASSERT(node != NULL);
+
+	bitcrush = (bitcrush_node_t*)node;
+	channels = ma_node_get_output_channels(node, 0);
+	frame_count = *frame_count_out;
+	total_samples = frame_count * channels;
+	input = frames_in[0];
+	output = frames_out[0];
+
+	/* bit depth reduction */
+	if (bitcrush->target_bits < 16 && bitcrush->target_bits > 0) {
+		levels = (float)(1 << (bitcrush->target_bits - 1));
+
+#if defined(__ARM_NEON) || defined(__aarch64__)
+		/* NEON-optimized path; process 4 samples at a time */
+		float32x4_t levels_vec = vdupq_n_f32(levels);
+		float32x4_t inv_levels_vec = vdupq_n_f32(1.0f / levels);
+		ma_uint32 vec_count = total_samples / 4;
+		ma_uint32 vec_samples = vec_count * 4;
+		ma_uint32 i;
+
+		for (i = 0; i < vec_samples; i += 4) {
+			float32x4_t samples = vld1q_f32(&input[i]);
+			samples = vmulq_f32(samples, levels_vec);
+			samples = vrndnq_f32(samples);
+			samples = vmulq_f32(samples, inv_levels_vec);
+			vst1q_f32(&output[i], samples);
+		}
+
+		/* handle remaining samples with scalar code */
+		for (i = vec_samples; i < total_samples; i++) {
+			output[i] = roundf(input[i] * levels) / levels;
+		}
+#else
+		/* scalar fallback */
+		for (ma_uint32 i = 0; i < total_samples; i++) {
+			output[i] = roundf(input[i] * levels) / levels;
+		}
+#endif
+	} else {
+		/* no bit reduction, just copy through */
+		memcpy(output, input, total_samples * sizeof(float));
+	}
+
+	/* sample rate reduction (sample-and-hold) */
+	if (bitcrush->target_sample_rate > 0 && bitcrush->hold_interval > 0) {
+		for (frame = 0; frame < frame_count; frame++) {
+			if (bitcrush->hold_counter >= bitcrush->hold_interval) {
+				/* capture new sample */
+				for (channel = 0; channel < channels; channel++) {
+					bitcrush->hold_samples[channel] = output[frame * channels + channel];
+				}
+				bitcrush->hold_counter = 0;
+			} else {
+				/* use held sample */
+				for (channel = 0; channel < channels; channel++) {
+					output[frame * channels + channel] = bitcrush->hold_samples[channel];
+				}
+			}
+			bitcrush->hold_counter++;
+		}
+	}
+
+	*frame_count_in = frame_count;
+	*frame_count_out = frame_count;
+}
+
+static ma_node_vtable bitcrush_vtable = 
+{
+	bitcrush_process_pcm_frames,
+	NULL, 	/* onGetRequiredInputFrameCount */
+	1,		/* 1 input */
+	1,		/* 1 output */
+	0		/* default flags */
+};
+
+
 
 /* sampler_data_load(+FilePath, -Handle)
  * Loads audio data from file into a shareable buffer.
@@ -1089,195 +1203,237 @@ static foreign_t pl_sampler_data_reverse(term_t source_handle, term_t reversed_h
 	return PL_unify_integer(reversed_handle, slot);
 }
 
-/*
- * sempler_data_resample(+SourceHandle, +NewSampleRate, -ResampleHandle)
- * Resamples audio data to a different sample rate.
- * Creates a new data buffer with the resampled audio.
- */
-static foreign_t pl_sampler_data_resample(term_t source_handle, term_t new_rate_term, term_t resampled_handle)
+/* Effect management helpers */
+
+/* Macro to define parameter parsers with error checking */
+#define DEFINE_GET_PARAM(suffix, type, get_code) \
+static ma_bool32 get_param_##suffix(term_t params, const char* key, type* value) \
+{ \
+	term_t head = PL_new_term_ref(); \
+	term_t tail = PL_new_term_ref(); \
+	term_t tmp = PL_new_term_ref(); \
+	functor_t equals_functor = PL_new_functor(PL_new_atom("="), 2); \
+	\
+	if (!PL_put_term(tmp, params)) \
+		return MA_FALSE; \
+	\
+	while (PL_get_list(tmp, head, tail)) { \
+		term_t arg1 = PL_new_term_ref(); \
+		term_t arg2 = PL_new_term_ref(); \
+		functor_t f; \
+		char* key_str; \
+		\
+		if (PL_get_functor(head, &f) && f == equals_functor) { \
+			if (!PL_get_arg(1, head, arg1) || !PL_get_arg(2, head, arg2)) \
+				return MA_FALSE; \
+			\
+			if (PL_get_atom_chars(arg1, &key_str) && strcmp(key_str, key) == 0) { \
+				get_code \
+			} \
+		} \
+		if (!PL_put_term(tmp, tail)) \
+			return MA_FALSE; \
+	} \
+	return MA_FALSE; \
+}
+
+DEFINE_GET_PARAM(int, int, {
+	if (!PL_get_integer(arg2, value)) {
+		PL_type_error("integer", arg2);
+		return MA_FALSE;
+	}
+	return MA_TRUE;
+})
+
+DEFINE_GET_PARAM(float, float, {
+	double dval;
+	if (!PL_get_float(arg2, &dval)) {
+		PL_type_error("float", arg2);
+		return MA_FALSE;
+	}
+	*value = (float)dval;
+	return MA_TRUE;
+})
+
+/* helper: add effect node to chain and connect to node graph */
+static ma_result attach_effect_node_to_sound(sound_slot_t* sound_slot, ma_node_base* effect_node, effect_type_t type)
 {
-	ma_audio_buffer* source_buffer;
-  	int slot;
-  	ma_uint64 old_frame_count;
-  	ma_uint64 new_frame_count;
-  	ma_uint32 channels;
-  	ma_uint32 old_sample_rate;
-  	ma_uint32 new_sample_rate;
-  	ma_format format;
-  	void* source_data;
-  	void* resampled_data;
-  	int source_slot;
-  	ma_resampler_config resampler_config;
-  	ma_resampler resampler;
+	effect_node_t* new_effect;
+  	effect_node_t* tail;
+  	ma_node* sound_node;
+  	ma_node* endpoint;
   	ma_result result;
-  	ma_uint64 frames_in;
-  	ma_uint64 frames_out;
 
-	GET_DATA_BUFFER_WITH_SLOT(source_handle, source_buffer, source_slot);
-
-	if (!PL_get_integer(new_rate_term, (int*)&new_sample_rate)) {
-		return PL_type_error("integer", new_rate_term);
+	new_effect = (effect_node_t*)malloc(sizeof(effect_node_t));
+	if (new_effect == NULL) {
+		return MA_OUT_OF_MEMORY;
 	}
 
-	if (new_sample_rate <= 0) {
-		return PL_domain_error("positive_integer", new_rate_term);
-	}
+	new_effect->type = type;
+	new_effect->effect_node = effect_node;
+	new_effect->next = NULL;
 
-	get_buffer_info(source_buffer, &old_frame_count, &channels, &old_sample_rate);
-	format = source_buffer->ref.format;
+	sound_node = (ma_node*)sound_slot->sound;
+	endpoint = ma_node_graph_get_endpoint(ma_engine_get_node_graph(g_engine));
 
-	new_frame_count = (ma_uint64)((double)old_frame_count * new_sample_rate / old_sample_rate);
-
-	resampler_config = ma_resampler_config_init(format, channels, old_sample_rate, new_sample_rate, ma_resample_algorithm_linear);
-	result = ma_resampler_init(&resampler_config, NULL, &resampler);
-	if (result != MA_SUCCESS) {
-		return FALSE;
-	}
-
-	resampled_data = malloc(new_frame_count * ma_get_bytes_per_frame(format, channels));
-	if (resampled_data == NULL) {
-  		ma_resampler_uninit(&resampler, NULL);
-  		return PL_resource_error("memory");
-  	}
-
-	source_data = g_data_buffers[source_slot].pData;
-	frames_in = old_frame_count;
-	frames_out = new_frame_count;
-	result = ma_resampler_process_pcm_frames(&resampler, source_data, &frames_in, resampled_data, &frames_out);
-
-	ma_resampler_uninit(&resampler, NULL);
-
-	if (result != MA_SUCCESS) {
-  		free(resampled_data);
-  		return FALSE;
-  	}
-
-	slot = create_data_buffer_from_pcm(resampled_data, format, channels, frames_out, new_sample_rate);
-	if (slot < 0) {
-  		free(resampled_data);
-  		return PL_resource_error("data_buffer_slots");
-  	}
-
-	return PL_unify_integer(resampled_handle, slot);
-}
-
-/*
- * sampler_data_bit_reduce(+SourceHandle, +TargetBits, -ReducedHandle)
- * Reduces bit depth by quantizing samples to fewer discrete levels.
- * Simulates lower bit depth while maintaining the same storage format.
- */
-static foreign_t pl_sampler_data_bit_reduce(term_t source_handle, term_t bits_term, term_t reduced_handle)
-{
-	ma_audio_buffer* source_buffer;
-	int source_slot;
-	int target_bits;
-	ma_uint64 frame_count;
-	ma_uint32 channels;
-	ma_uint32 sample_rate;
-	ma_format format;
-	ma_uint64 sample_count;
-	void* source_data;
-	void* reduced_data;
-	ma_uint32 bytes_per_sample;
-	int slot;
-	ma_uint64 i;
-	float levels;
-	float sample;
-	float* src_f32;
-	float* dst_f32;
-	ma_int16* src_s16;
-	ma_int16* dst_s16;
-	ma_int16 levels_s16;
-	ma_int16 sample_s16;
-
-	GET_DATA_BUFFER_WITH_SLOT(source_handle, source_buffer, source_slot);
-
-	if (!PL_get_integer(bits_term, &target_bits)) {
-		return PL_type_error("integer", bits_term);
-	}
-
-	if (target_bits < 1 || target_bits > 16) {
-		return PL_domain_error("bit_depth_range", bits_term);
-	}
-
-	get_buffer_info(source_buffer, &frame_count, &channels, &sample_rate);
-	format = source_buffer->ref.format;
-	sample_count = frame_count * channels;
-	bytes_per_sample = ma_get_bytes_per_sample(format);
-
-	reduced_data = malloc(sample_count * bytes_per_sample);
-	if (reduced_data == NULL) {
-		return PL_resource_error("memory");
-	}
-
-	source_data = g_data_buffers[source_slot].pData;
-
-	if (format == ma_format_f32) {
-		/* For float format (-1.0 to 1.0 range):
-		 * levels = 2^(target_bits-1) quantization steps (e.g., 4-bit = 8 levels)
-		 * Quantization: scale to ±levels, round to integer, scale back to ±1.0
-		 * Example (4-bit): 0.75 * 8 = 6.0 -> round(6.0) = 6 -> 6/8 = 0.75
-		 *                  0.73 * 8 = 5.84 -> round(5.84) = 6 -> 6/8 = 0.75 */
-		levels = (float)(1 << (target_bits - 1));
-		src_f32 = (float*)source_data;
-		dst_f32 = (float*)reduced_data;
-
-#if defined(__ARM_NEON) || defined(__aarch64__)
-		/* NEON-optimized path: process 4 samples at a time */
-		float32x4_t levels_vec = vdupq_n_f32(levels);
-		float32x4_t inv_levels_vec = vdupq_n_f32(1.0f / levels);
-		ma_uint64 vec_count = sample_count / 4;
-		ma_uint64 vec_samples = vec_count * 4;
-
-		for (i = 0; i < vec_samples; i += 4) {
-			float32x4_t samples = vld1q_f32(&src_f32[i]);
-			samples = vmulq_f32(samples, levels_vec);
-			samples = vrndnq_f32(samples);
-			samples = vmulq_f32(samples, inv_levels_vec);
-			vst1q_f32(&dst_f32[i], samples);
+	/* if no effects yet, attach sound -> effect -> endpoint */
+	if (sound_slot->effect_chain == NULL) {
+		result = ma_node_attach_output_bus(sound_node, 0, (ma_node*)effect_node, 0);
+		if (result != MA_SUCCESS) {
+			free(new_effect);
+			return result;
 		}
 
-		/* Handle remaining samples with scalar code */
-		for (i = vec_samples; i < sample_count; i++) {
-			sample = src_f32[i];
-			dst_f32[i] = roundf(sample * levels) / levels;
+		result = ma_node_attach_output_bus((ma_node*)effect_node, 0, endpoint, 0);
+		if (result != MA_SUCCESS) {
+			ma_node_detach_output_bus(sound_node, 0);
+			free(new_effect);
+			return result;
 		}
-#else
-		/* Scalar fallback */
-		for (i = 0; i < sample_count; i++) {
-			sample = src_f32[i];
-			dst_f32[i] = roundf(sample * levels) / levels;
-		}
-#endif
-	} else if (format == ma_format_s16) {
-		/* For s16 format (-32768 to 32767 range):
-		 * levels_s16 = 2^(target_bits-1) quantization steps
-		 * step_size = 32768 / levels_s16 (e.g., 4-bit: 32768/8 = 4096)
-		 * Quantization: divide by step_size (truncates), multiply back
-		 * Example (4-bit): 10000 / 4096 = 2 -> 2 * 4096 = 8192 */
-		levels_s16 = (ma_int16)(1 << (target_bits - 1));
-		src_s16 = (ma_int16*)source_data;
-		dst_s16 = (ma_int16*)reduced_data;
 
-		/* Scalar path for s16 (NEON integer division is complex) */
-		for (i = 0; i < sample_count; i++) {
-			sample_s16 = src_s16[i];
-			dst_s16[i] = (ma_int16)((sample_s16 / (32768 / levels_s16)) * (32768 / levels_s16));
-		}
+		sound_slot->effect_chain = new_effect;
 	} else {
-		free(reduced_data);
-		return PL_domain_error("supported_format", source_handle);
+		/* find tail and reconnect: sound -> ... existing ... -> new_effect -> endpoint */
+		tail = sound_slot->effect_chain;
+		while (tail->next != NULL) {
+			tail = tail->next;
+		}
+
+		result = ma_node_attach_output_bus((ma_node*)tail->effect_node, 0, (ma_node*)effect_node, 0);
+		if (result != MA_SUCCESS) {
+			free(new_effect);
+			return result;
+		}
+
+		result = ma_node_attach_output_bus((ma_node*)effect_node, 0, endpoint, 0);
+		if (result != MA_SUCCESS) {
+			ma_node_detach_output_bus((ma_node*)tail->effect_node, 0);
+			free(new_effect);
+			return result;
+		}
+
+		tail->next = new_effect;
 	}
 
-	slot = create_data_buffer_from_pcm(reduced_data, format, channels, frame_count, sample_rate);
-	if (slot < 0) {
-		free(reduced_data);
-		return PL_resource_error("data_buffer_slots");
-	}
-
-	return PL_unify_integer(reduced_handle, slot);
+	return MA_SUCCESS;
 }
 
+/* Helper: initialize bitcrush effect node */
+static ma_result init_bitcrush_node(bitcrush_node_t* node, int bits, int sample_rate)
+{
+	ma_node_config node_config;
+	ma_uint32 channels[1];
+	ma_result result;
+
+	channels[0] = ma_engine_get_channels(g_engine);
+
+	node_config = ma_node_config_init();
+	node_config.vtable = &bitcrush_vtable;
+	node_config.pInputChannels = channels;
+	node_config.pOutputChannels = channels;
+
+	result = ma_node_init(ma_engine_get_node_graph(g_engine), &node_config, NULL, &node->base);
+	if (result != MA_SUCCESS) {
+		return result;
+	}
+
+	node->target_bits = (ma_uint32)bits;
+	node->target_sample_rate = (ma_uint32)sample_rate;
+
+	if (sample_rate > 0) {
+		node->hold_samples = (float *)malloc(channels[0] * sizeof(float));
+		if (node->hold_samples == NULL) {
+			ma_node_uninit(&node->base, NULL);
+			return MA_OUT_OF_MEMORY;
+		}
+		memset(node->hold_samples, 0, channels[0] * sizeof(float));
+		node->hold_interval = ma_engine_get_sample_rate(g_engine) / sample_rate;
+		node->hold_counter = 0;
+	} else {
+		node->hold_samples = NULL;
+		node->hold_interval = 0;
+		node->hold_counter = 0;
+	}
+
+	return MA_SUCCESS;
+}
+
+/* Complete bitcrush attachment - validate, init, attach */
+static ma_result attach_bitcrush_effect(term_t params, sound_slot_t* sound_slot)
+{
+	int bits, sample_rate;
+	bitcrush_node_t* bitcrush;
+	ma_result result;
+
+	if (!get_param_int(params, "bits", &bits)) {
+		PL_existence_error("parameter", PL_new_atom("bits"));
+		return MA_ERROR;
+	}
+
+	if (bits < 1 || bits > 16) {
+		PL_domain_error("bit_range_1_to_16", params);
+		return MA_ERROR;
+	}
+
+	if (!get_param_int(params, "sample_rate", &sample_rate)) {
+		sample_rate = 0;
+	}
+
+	if (sample_rate < 0) {
+		PL_domain_error("non_negative_integer", params);
+		return MA_ERROR;
+	}
+
+	bitcrush = (bitcrush_node_t*)malloc(sizeof(bitcrush_node_t));
+	if (!bitcrush) {
+		return MA_OUT_OF_MEMORY;
+	}
+
+	result = init_bitcrush_node(bitcrush, bits, sample_rate);
+	if (result != MA_SUCCESS) {
+		free(bitcrush);
+		return result;
+	}
+
+	result = attach_effect_node_to_sound(sound_slot, &bitcrush->base, EFFECT_BITCRUSH);
+	if (result != MA_SUCCESS) {
+		if (bitcrush->hold_samples) {
+			free(bitcrush->hold_samples);
+		}
+		ma_node_uninit(&bitcrush->base, NULL);
+		free(bitcrush);
+		return result;
+	}
+
+	return MA_SUCCESS;
+}
+
+/* sampler_sound_attach_effect(+SoundHandle, +EffectType, +Params)
+ * Attach an effect to a sound's processing chain.
+ * EffectType is an atom (bitcrush, envelope, etc.)
+ * Params is a list of key=value pairs.
+ */
+static foreign_t pl_sampler_sound_attach_effect(term_t sound_handle, term_t effect_type, term_t params)
+{
+	ma_sound* sound;
+	int slot;
+	char* type_str;
+	ma_result result;
+
+	GET_SOUND_WITH_SLOT(sound_handle, sound, slot);
+
+	if (!PL_get_atom_chars(effect_type, &type_str)) {
+		return PL_type_error("atom", effect_type);
+	}
+
+	if (strcmp(type_str, "bitcrush") == 0) {
+		result = attach_bitcrush_effect(params, &g_sounds[slot]);
+	} else {
+		return PL_domain_error("effect_type", effect_type);
+	}
+
+	return (result == MA_SUCCESS) ? TRUE : FALSE;
+}
 
 /*
  * install()
@@ -1310,10 +1466,9 @@ install_t install(void)
 	PL_register_foreign("sampler_sound_set_volume", 2, pl_sampler_sound_set_volume, 0);
 	PL_register_foreign("sampler_sound_get_volume", 2, pl_sampler_sound_get_volume, 0);
 	PL_register_foreign("sampler_data_reverse", 2, pl_sampler_data_reverse, 0);
-	PL_register_foreign("sampler_data_resample", 3, pl_sampler_data_resample, 0);
-	PL_register_foreign("sampler_data_bit_reduce", 3, pl_sampler_data_bit_reduce, 0);
 	PL_register_foreign("sampler_sound_set_range", 3, pl_sampler_sound_set_range, 0);
 	PL_register_foreign("sampler_data_extract", 4, pl_sampler_data_extract, 0);
+	PL_register_foreign("sampler_sound_attach_effect", 3, pl_sampler_sound_attach_effect, 0);
 }
 
 /*
