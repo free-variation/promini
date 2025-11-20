@@ -93,15 +93,6 @@ static ma_engine* g_engine = NULL;
 #define MAX_DATA_BUFFERS 32
 
 typedef struct {
-    ma_sound* sound;
-    int data_buffer_index; /* -1 if from file, else index into g_data_buffers */
-	ma_bool32 in_use;
-} sound_slot_t;
-
-
-static sound_slot_t g_sounds[MAX_SOUNDS] = {{NULL, -1, MA_FALSE}};
-
-typedef struct {
 	ma_audio_buffer* buffer;
 	void *pData;
 	ma_uint32 refcount;
@@ -109,6 +100,47 @@ typedef struct {
 } data_slot_t;
 
 static data_slot_t g_data_buffers[MAX_DATA_BUFFERS] = {{NULL, NULL, 0, MA_FALSE}};
+
+/* Effect types */
+typedef enum {
+	EFFECT_NONE = 0,
+	EFFECT_BITCRUSH,
+	EFFECT_ENVELOPE,
+	EFFECT_REVERB,
+	EFFECT_LPF,
+	EFFECT_HPF,
+	EFFECT_BPF,
+	EFFECT_NOTCH,
+	EFFECT_PEAK,
+	EFFECT_LOSHELF,
+	EFFECT_HISHELF
+} effect_type_t;
+
+/* Effect chain node - tracks effect for cleanup */
+typedef struct effect_node {
+	effect_type_t type;
+	ma_node_base* effect_node;
+	struct effect_node* next;
+} effect_node_t;
+
+typedef struct {
+    ma_sound* sound;
+    int data_buffer_index; /* -1 if from file, else index into g_data_buffers */
+	ma_bool32 in_use;
+	effect_node_t* effect_chain;
+} sound_slot_t;
+
+static sound_slot_t g_sounds[MAX_SOUNDS] = {{NULL, -1, MA_FALSE, NULL}};
+
+/* Bit crush effect node */
+typedef struct {
+	ma_node_base base;
+	ma_uint32 target_bits; // 1-16 bits
+	ma_uint32 target_sample_rate; // 0 = no downsample
+	float* hold_samples; // Sample-and-hold buffer per channel
+	ma_uint64 hold_counter;
+	ma_uint32 hold_interval; // Frames between updates when downsampling
+} bitcrush_node_t;
 
 /*
  * allocate_data_slot()
