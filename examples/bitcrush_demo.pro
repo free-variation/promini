@@ -10,7 +10,7 @@ demo_bitcrush :-
     sampler_sound_stop(Sound),
 
     format('Attaching 8-bit bitcrush...~n'),
-    sampler_sound_attach_bitcrush(Sound, 8, 0),
+    sampler_sound_attach_bitcrush(Sound, 8, 0, _),
     sampler_sound_seek(Sound, 0),
     sampler_sound_start(Sound),
     sleep(3),
@@ -18,14 +18,14 @@ demo_bitcrush :-
 
     format('Attaching 4-bit bitcrush with sample rate reduction...~n'),
     sampler_sound_seek(Sound, 0),
-    sampler_sound_attach_bitcrush(Sound, 4, 8000),
+    sampler_sound_attach_bitcrush(Sound, 4, 8000, _),
     sampler_sound_start(Sound),
     sleep(3),
     sampler_sound_stop(Sound),
 
     format('Attaching extreme 2-bit bitcrush...~n'),
     sampler_sound_seek(Sound, 0),
-    sampler_sound_attach_bitcrush(Sound, 2, 4000),
+    sampler_sound_attach_bitcrush(Sound, 2, 4000, _),
     sampler_sound_start(Sound),
     sleep(3),
     sampler_sound_stop(Sound),
@@ -43,7 +43,7 @@ demo_gong :-
     sampler_sound_stop(Sound),
 
     format('Playing with 6-bit crush and 6kHz sample rate...~n'),
-    sampler_sound_attach_bitcrush(Sound, 6, 6000),
+    sampler_sound_attach_bitcrush(Sound, 6, 6000, _),
     sampler_sound_seek(Sound, 0),
     sampler_sound_start(Sound),
     sleep(3),

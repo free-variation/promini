@@ -36,8 +36,13 @@
     sampler_data_load_reversed/2,
     sampler_sound_set_range/3,
     sampler_data_extract/4,
-    sampler_sound_attach_effect/3,
-    sampler_sound_attach_bitcrush/3
+    sampler_sound_attach_effect/4,
+    sampler_sound_attach_bitcrush/4,
+    sampler_sound_attach_envelope/8,
+    sampler_sound_effects/2,
+    sampler_effect_set_parameters/2,
+    sampler_effect_detach/1,
+    sampler_sound_clear_effects/1
   ]).
 
 :- use_foreign_library('../../lib/sampler').
@@ -67,5 +72,15 @@ sampler_sound_load(Path, SoundHandle) :-
     sampler_sound_create(DataHandle, SoundHandle),
     sampler_data_unload(DataHandle).
 
-sampler_sound_attach_bitcrush(Sound, Bits, SampleRate) :-
-    sampler_sound_attach_effect(Sound, bitcrush, [bits=Bits, sample_rate=SampleRate]).
+sampler_sound_attach_bitcrush(Sound, Bits, SampleRate, Effect) :-
+    sampler_sound_attach_effect(Sound, bitcrush, [bits=Bits, sample_rate=SampleRate], Effect).
+
+sampler_sound_attach_envelope(Sound, Attack, Decay, Break, BreakLevel, DurationMs, Loop, Effect) :-
+    sampler_sound_attach_effect(Sound, envelope, [attack=Attack, decay=Decay, break=Break, break_level=BreakLevel, duration_ms=DurationMs, loop=Loop], Effect).
+
+sampler_sound_clear_effects(Sound) :-
+    sampler_sound_effects(Sound, Effects),
+    maplist(effect_to_handle(Sound), Effects, Handles),
+    maplist(sampler_effect_detach, Handles).
+
+effect_to_handle(Sound, effect(_Type, Ptr, _Params), effect(Sound, Ptr)).

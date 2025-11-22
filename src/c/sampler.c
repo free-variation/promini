@@ -138,12 +138,13 @@ typedef struct effect_node {
 
 typedef struct {
     ma_sound* sound;
+    ma_audio_buffer* audio_buffer;
     int data_buffer_index; /* -1 if from file, else index into g_data_buffers */
 	ma_bool32 in_use;
 	effect_node_t* effect_chain;
 } sound_slot_t;
 
-static sound_slot_t g_sounds[MAX_SOUNDS] = {{NULL, -1, MA_FALSE, NULL}};
+static sound_slot_t g_sounds[MAX_SOUNDS] = {{NULL, NULL, -1, MA_FALSE, NULL}};
 
 typedef struct {
 	ma_node_base base;
@@ -154,15 +155,6 @@ typedef struct {
 	ma_uint32 hold_interval; // Frames between updates when downsampling
 } bitcrush_node_t;
 
-static ma_node_vtable bitcrush_vtable = 
-{
-	bitcrush_process_pcm_frames,
-	NULL, 	/* onGetRequiredInputFrameCount */
-	1,		/* 1 input */
-	1,		/* 1 output */
-	0		/* default flags */
-};
-
 typedef struct {
 	ma_node_base base;
 	float attack;
@@ -171,18 +163,11 @@ typedef struct {
 	float release;
 	float break_level;
 	float duration_ms;
+	ma_bool32 loop;
 	ma_uint32 stage; /* 0 = attack; 1 = decay; 2 = break; 3 = release */
 	float stage_progress;
 } adbr_envelope_node_t;
 
-static ma_node_vtable adbr_envelope_vtable = 
-{
-	adbr_process_pcm_frames,
-	NULL,
-	1,
-	1,
-	0
-};
 
 /*
  * allocate_data_slot()
@@ -305,10 +290,6 @@ static int create_data_buffer_from_pcm(void* pData, ma_format format, ma_uint32 
 	return slot;
 }
 
-/*
- * Bitcrush effect node implementation
- */
-
 /* Bitcrush processing callback */
 static void bitcrush_process_pcm_frames(
 		ma_node* node,
@@ -394,8 +375,130 @@ static void bitcrush_process_pcm_frames(
 	*frame_count_out = frame_count;
 }
 
+/* ADBR envelope processing callback */
+static void adbr_process_pcm_frames(
+	ma_node* node,
+	const float** frames_in,
+	ma_uint32* frame_count_in,
+	float** frames_out,
+	ma_uint32* frame_count_out)
+{
+	adbr_envelope_node_t* envelope;
+	ma_uint32 channels;
+	ma_uint32 frame_count;
+	ma_uint32 sample_rate;
+	const float* input;
+	float* output;
+	ma_uint32 frame;
+	ma_uint32 channel;
+	float envelope_value;
+	float attack_frames;
+	float decay_frames;
+	float break_frames;
+	float release_frames;
+	float attack_increment;
+	float decay_increment;
+	float break_increment;
+	float release_increment;
 
+	MA_ASSERT(node != NULL);
 
+	envelope = (adbr_envelope_node_t*)node;
+	channels = ma_node_get_output_channels(node, 0);
+	frame_count = *frame_count_out;
+	sample_rate = ma_engine_get_sample_rate(g_engine);
+	input = frames_in[0];
+	output = frames_out[0];
+
+	/* Pre-calculate stage durations and increments */
+	attack_frames = (envelope->duration_ms / 1000.0f) * envelope->attack * sample_rate;
+	decay_frames = (envelope->duration_ms / 1000.0f) * envelope->decay * sample_rate;
+	break_frames = (envelope->duration_ms / 1000.0f) * envelope->Break * sample_rate;
+	release_frames = (envelope->duration_ms / 1000.0f) * envelope->release * sample_rate;
+
+	attack_increment = attack_frames > 0.0f ? 1.0f / attack_frames : 0.0f;
+	decay_increment = decay_frames > 0.0f ? 1.0f / decay_frames : 0.0f;
+	break_increment = break_frames > 0.0f ? 1.0f / break_frames : 0.0f;
+	release_increment = release_frames > 0.0f ? 1.0f / release_frames : 0.0f;
+
+	for (frame = 0; frame < frame_count; frame++) {
+		/* Calculate envelope value based on current stage */
+		switch (envelope->stage) {
+			case 0: /* Attack: 0.0 -> 1.0 */
+				envelope_value = envelope->stage_progress;
+				break;
+
+			case 1: /* Decay: 1.0 -> break_level */
+				envelope_value = 1.0f - envelope->stage_progress * (1.0f - envelope->break_level);
+				break;
+
+			case 2: /* Break: hold at break_level */
+				envelope_value = envelope->break_level;
+				break;
+
+			case 3: /* Release: break_level -> 0.0 */
+				envelope_value = envelope->break_level * (1.0f - envelope->stage_progress);
+				break;
+
+			default: /* Done */
+				envelope_value = 0.0f;
+				break;
+		}
+
+		/* Apply envelope to all channels */
+		for (channel = 0; channel < channels; channel++) {
+			output[frame * channels + channel] = input[frame * channels + channel] * envelope_value;
+		}
+
+		/* Update stage progress */
+		switch (envelope->stage) {
+			case 0:
+				envelope->stage_progress += attack_increment;
+				break;
+			case 1:
+				envelope->stage_progress += decay_increment;
+				break;
+			case 2:
+				envelope->stage_progress += break_increment;
+				break;
+			case 3:
+				envelope->stage_progress += release_increment;
+				break;
+			default:
+				break;
+		}
+
+		/* Check for stage transition */
+		if (envelope->stage_progress >= 1.0f) {
+			envelope->stage++;
+			envelope->stage_progress = 0.0f;
+			if (envelope->stage > 3 && envelope->loop) {
+				envelope->stage = 0;
+			}
+		}
+	}
+
+	*frame_count_in = frame_count;
+	*frame_count_out = frame_count;
+}
+
+static ma_node_vtable adbr_envelope_vtable =
+{
+	adbr_process_pcm_frames,
+	NULL,
+	1,
+	1,
+	0
+};
+
+static ma_node_vtable bitcrush_vtable = 
+{
+	bitcrush_process_pcm_frames,
+	NULL, 	/* onGetRequiredInputFrameCount */
+	1,		/* 1 input */
+	1,		/* 1 output */
+	0		/* default flags */
+};
 
 /* sampler_data_load(+FilePath, -Handle)
  * Loads audio data from file into a shareable buffer.
@@ -517,6 +620,10 @@ static foreign_t pl_sampler_data_unload(term_t handle)
 		return PL_existence_error("data_buffer", handle);
 	}
 
+	if (g_data_buffers[slot].refcount == 0) {
+		return PL_domain_error("refcount_already_zero", handle);
+	}
+
 	g_data_buffers[slot].refcount--;
 
 	if (g_data_buffers[slot].refcount == 0) {
@@ -538,6 +645,7 @@ static int allocate_sound_slot(void)
         if (!g_sounds[i].in_use) {
             g_sounds[i].in_use = MA_TRUE;
             g_sounds[i].sound = NULL;
+            g_sounds[i].audio_buffer = NULL;
 			g_sounds[i].data_buffer_index = -1;
             return i;
         }
@@ -557,6 +665,33 @@ static void free_sound_slot(int index)
             free(g_sounds[index].sound);
             g_sounds[index].sound = NULL;
         }
+
+		/* Free audio buffer if present */
+		if (g_sounds[index].audio_buffer != NULL) {
+			ma_audio_buffer_uninit(g_sounds[index].audio_buffer);
+			free(g_sounds[index].audio_buffer);
+			g_sounds[index].audio_buffer = NULL;
+		}
+
+		/* Free effect chain */
+		effect_node_t* effect = g_sounds[index].effect_chain;
+		while (effect != NULL) {
+			effect_node_t* next = effect->next;
+
+			/* Free effect-specific resources */
+			if (effect->type == EFFECT_BITCRUSH) {
+				bitcrush_node_t* bitcrush = (bitcrush_node_t*)effect->effect_node;
+				if (bitcrush->hold_samples != NULL) {
+					free(bitcrush->hold_samples);
+				}
+			}
+
+			ma_node_uninit(effect->effect_node, NULL);
+			free(effect->effect_node);
+			free(effect);
+			effect = next;
+		}
+		g_sounds[index].effect_chain = NULL;
 
 		/* Decrement data buffer refcount if sound was created from a buffer */
 		if (g_sounds[index].data_buffer_index >= 0) {
@@ -737,8 +872,21 @@ static foreign_t pl_sampler_sound_start(term_t handle)
 {
 	ma_sound* sound;
 	ma_result result;
+	int slot;
+	effect_node_t* effect;
 
-	GET_SOUND_FROM_HANDLE(handle, sound);
+	GET_SOUND_WITH_SLOT(handle, sound, slot);
+
+	/* reset all envelope nodes in effect chain */
+	effect = g_sounds[slot].effect_chain;
+	while (effect != NULL) {
+		if (effect->type == EFFECT_ENVELOPE) {
+			adbr_envelope_node_t* envelope = (adbr_envelope_node_t*)effect->effect_node;
+			envelope->stage = 0;
+			envelope->stage_progress = 0.0f;
+		}
+		effect = effect->next;
+	}
 
 	result = ma_sound_start(sound);
 	return (result == MA_SUCCESS) ? TRUE : FALSE;
@@ -915,6 +1063,7 @@ static foreign_t pl_sampler_sound_create(term_t data_handle, term_t sound_handle
 	}
 
 	g_sounds[sound_slot].sound = sound;
+	g_sounds[sound_slot].audio_buffer = sound_buffer;
 	g_sounds[sound_slot].data_buffer_index = data_slot;
 	g_data_buffers[data_slot].refcount++;
 
@@ -1275,6 +1424,16 @@ DEFINE_GET_PARAM(float, float, {
 	return MA_TRUE;
 })
 
+DEFINE_GET_PARAM(bool, ma_bool32, {
+	int bval;
+	if (!PL_get_bool(arg2, &bval)) {
+		PL_type_error("bool", arg2);
+		return MA_FALSE;
+	}
+	*value = bval ? MA_TRUE : MA_FALSE;
+	return MA_TRUE;
+})
+
 /* helper: add effect node to chain and connect to node graph */
 static ma_result attach_effect_node_to_sound(sound_slot_t* sound_slot, ma_node_base* effect_node, effect_type_t type)
 {
@@ -1307,6 +1466,7 @@ static ma_result attach_effect_node_to_sound(sound_slot_t* sound_slot, ma_node_b
 		result = ma_node_attach_output_bus((ma_node*)effect_node, 0, endpoint, 0);
 		if (result != MA_SUCCESS) {
 			ma_node_detach_output_bus(sound_node, 0);
+			ma_node_attach_output_bus(sound_node, 0, endpoint, 0);
 			free(new_effect);
 			return result;
 		}
@@ -1328,6 +1488,7 @@ static ma_result attach_effect_node_to_sound(sound_slot_t* sound_slot, ma_node_b
 		result = ma_node_attach_output_bus((ma_node*)effect_node, 0, endpoint, 0);
 		if (result != MA_SUCCESS) {
 			ma_node_detach_output_bus((ma_node*)tail->effect_node, 0);
+			ma_node_attach_output_bus((ma_node*)tail->effect_node, 0, endpoint, 0);
 			free(new_effect);
 			return result;
 		}
@@ -1357,10 +1518,12 @@ static ma_result init_effect_node_base(ma_node_base* node, ma_node_vtable* vtabl
 /* helper: initialize ADBR envelope node */
 static ma_result init_adbr_envelope_node(adbr_envelope_node_t* node,
 		float attack,
-		float delay,
+		float decay,
 		float Break,
 		float release,
-		float break_level)
+		float break_level,
+		float duration_ms,
+		ma_bool32 loop)
 {
 	ma_result result;
 
@@ -1370,14 +1533,89 @@ static ma_result init_adbr_envelope_node(adbr_envelope_node_t* node,
 	}
 
 	node->attack = attack;
-	node->delay = delay;
+	node->decay = decay;
 	node->Break = Break;
 	node->release = release;
 	node->break_level = break_level;
+	node->duration_ms = duration_ms;
+	node->loop = loop;
 
-	
+	node->stage = 0;
+	node->stage_progress = 0;
+
+	return MA_SUCCESS;
 }
 
+/* complete envelope attachment - validate, init, attach */
+static ma_result attach_adbr_envelope(term_t params, sound_slot_t* sound_slot, ma_node_base** out_effect_node)
+{
+	float attack, decay, Break, release, break_level, duration_ms;
+	ma_bool32 loop;
+	adbr_envelope_node_t* adbr_envelope;
+	ma_result result;
+
+	if (!get_param_float(params, "attack", &attack)) {
+		PL_existence_error("parameter", PL_new_atom("attack"));
+		return MA_ERROR;
+	}
+
+	if (!get_param_float(params, "decay", &decay)) {
+		PL_existence_error("parameter", PL_new_atom("decay"));
+		return MA_ERROR;
+	}
+
+	if (!get_param_float(params, "break", &Break)) {
+		PL_existence_error("parameter", PL_new_atom("break"));
+		return MA_ERROR;
+	}
+
+	if (!get_param_float(params, "break_level", &break_level)) {
+		PL_existence_error("parameter", PL_new_atom("break_level"));
+		return MA_ERROR;
+	}
+
+	if (!get_param_float(params, "duration_ms", &duration_ms)) {
+		PL_existence_error("parameter", PL_new_atom("duration_ms"));
+		return MA_ERROR;
+	}
+
+	if (!get_param_bool(params, "loop", &loop)) {
+		loop = MA_FALSE;
+	}
+
+	if (attack < 0.0f || decay < 0.0f || Break < 0.0f || break_level < 0.0f || duration_ms < 0.0f) {
+		PL_domain_error("params_positive", params);
+		return MA_ERROR;
+	}
+
+	if (attack + decay + Break > 1.0f || break_level > 1.0f) {
+		PL_domain_error("envelope_params_as_proportions", params);
+		return MA_ERROR;
+	}
+
+	release = 1.0f - attack - decay - Break;
+
+	adbr_envelope = (adbr_envelope_node_t*)malloc(sizeof(adbr_envelope_node_t));
+	if (!adbr_envelope) {
+		return MA_OUT_OF_MEMORY;
+	}
+
+	result = init_adbr_envelope_node(adbr_envelope, attack, decay, Break, release, break_level, duration_ms, loop);
+	if (result != MA_SUCCESS) {
+		free(adbr_envelope);
+		return result;
+	}
+
+	result = attach_effect_node_to_sound(sound_slot, &adbr_envelope->base, EFFECT_ENVELOPE);
+	if (result != MA_SUCCESS) {
+		ma_node_uninit(&adbr_envelope->base, NULL);
+		free(adbr_envelope);
+		return result;
+	}
+
+	*out_effect_node = &adbr_envelope->base;
+	return MA_SUCCESS;
+}
 /* Helper: initialize bitcrush effect node */
 static ma_result init_bitcrush_node(bitcrush_node_t* node, int bits, int sample_rate)
 {
@@ -1413,7 +1651,7 @@ static ma_result init_bitcrush_node(bitcrush_node_t* node, int bits, int sample_
 }
 
 /* Complete bitcrush attachment - validate, init, attach */
-static ma_result attach_bitcrush_effect(term_t params, sound_slot_t* sound_slot)
+static ma_result attach_bitcrush_effect(term_t params, sound_slot_t* sound_slot, ma_node_base** out_effect_node)
 {
 	int bits, sample_rate;
 	bitcrush_node_t* bitcrush;
@@ -1459,20 +1697,25 @@ static ma_result attach_bitcrush_effect(term_t params, sound_slot_t* sound_slot)
 		return result;
 	}
 
+	*out_effect_node = &bitcrush->base;
 	return MA_SUCCESS;
 }
 
-/* sampler_sound_attach_effect(+SoundHandle, +EffectType, +Params)
+/* sampler_sound_attach_effect(+SoundHandle, +EffectType, +Params, -EffectHandle)
  * Attach an effect to a sound's processing chain.
  * EffectType is an atom (bitcrush, envelope, etc.)
  * Params is a list of key=value pairs.
+ * Returns effect(SoundHandle, EffectPointer)
  */
-static foreign_t pl_sampler_sound_attach_effect(term_t sound_handle, term_t effect_type, term_t params)
+static foreign_t pl_sampler_sound_attach_effect(term_t sound_handle, term_t effect_type, term_t params, term_t effect_handle)
 {
 	ma_sound* sound;
 	int slot;
 	char* type_str;
 	ma_result result;
+	ma_node_base* effect_node;
+	term_t effect_term;
+	functor_t effect_functor;
 
 	GET_SOUND_WITH_SLOT(sound_handle, sound, slot);
 
@@ -1481,13 +1724,458 @@ static foreign_t pl_sampler_sound_attach_effect(term_t sound_handle, term_t effe
 	}
 
 	if (strcmp(type_str, "bitcrush") == 0) {
-		result = attach_bitcrush_effect(params, &g_sounds[slot]);
+		result = attach_bitcrush_effect(params, &g_sounds[slot], &effect_node);
+	} else if (strcmp(type_str, "envelope") == 0) {
+		result = attach_adbr_envelope(params, &g_sounds[slot], &effect_node);
 	} else {
 		return PL_domain_error("effect_type", effect_type);
 	}
 
-	return (result == MA_SUCCESS) ? TRUE : FALSE;
+	if (result != MA_SUCCESS) {
+		return FALSE;
+	}
+
+	/* Build effect(SoundHandle, EffectPointer) term */
+	effect_term = PL_new_term_ref();
+	effect_functor = PL_new_functor(PL_new_atom("effect"), 2);
+
+	if (!PL_unify_functor(effect_term, effect_functor)) {
+		return FALSE;
+	}
+
+	term_t arg = PL_new_term_ref();
+	if (!PL_get_arg(1, effect_term, arg) || !PL_unify(arg, sound_handle)) {
+		return FALSE;
+	}
+
+	if (!PL_get_arg(2, effect_term, arg) || !PL_unify_pointer(arg, effect_node)) {
+		return FALSE;
+	}
+
+	return PL_unify(effect_handle, effect_term);
 }
+
+/*
+ * pl_sampler_sound_effects(+SoundHandle, -Effects)
+ * Query all effects attached to a sound.
+ * Returns list of effect type atoms.
+ */
+static foreign_t pl_sampler_sound_effects(term_t sound_handle, term_t effects_list)
+{
+	ma_sound* sound;
+	int slot;
+	effect_node_t* effect;
+	int count = 0;
+
+	GET_SOUND_WITH_SLOT(sound_handle, sound, slot);
+
+	for (effect = g_sounds[slot].effect_chain; effect != NULL; effect = effect->next) {
+		count++;
+	}
+
+	term_t list = PL_new_term_ref();
+	PL_put_nil(list);
+
+	if (count > 0) {
+		effect_node_t** effects_array = malloc(count * sizeof(effect_node_t*));
+		int i = 0;
+		for (effect = g_sounds[slot].effect_chain; effect != NULL; effect = effect->next) {
+			effects_array[i++] = effect;
+		}
+
+		term_t effect_term = PL_new_term_ref();
+		term_t args = PL_new_term_refs(3);
+		functor_t effect_functor = PL_new_functor(PL_new_atom("effect"), 3);
+
+		for (i = count - 1; i >= 0; i--) {
+			effect = effects_array[i];
+
+			const char* type_str;
+			term_t params_list = PL_new_term_ref();
+			PL_put_nil(params_list);
+
+			if (effect->type == EFFECT_BITCRUSH) {
+				type_str = "bitcrush";
+				bitcrush_node_t* bitcrush = (bitcrush_node_t*)effect->effect_node;
+
+				term_t param_args = PL_new_term_refs(2);
+				functor_t eq_functor = PL_new_functor(PL_new_atom("="), 2);
+				term_t param_term = PL_new_term_ref();
+
+				PL_put_atom_chars(param_args+0, "sample_rate");
+				if (!PL_put_integer(param_args+1, bitcrush->target_sample_rate)) {
+					free(effects_array);
+					return FALSE;
+				}
+				if (!PL_cons_functor_v(param_term, eq_functor, param_args)) {
+					free(effects_array);
+					return FALSE;
+				}
+				if (!PL_cons_list(params_list, param_term, params_list)) {
+					free(effects_array);
+					return FALSE;
+				}
+
+				PL_put_atom_chars(param_args+0, "bits");
+				if (!PL_put_integer(param_args+1, bitcrush->target_bits)) {
+					free(effects_array);
+					return FALSE;
+				}
+				if (!PL_cons_functor_v(param_term, eq_functor, param_args)) {
+					free(effects_array);
+					return FALSE;
+				}
+				if (!PL_cons_list(params_list, param_term, params_list)) {
+					free(effects_array);
+					return FALSE;
+				}
+
+			} else if (effect->type == EFFECT_ENVELOPE) {
+				type_str = "envelope";
+				adbr_envelope_node_t* envelope = (adbr_envelope_node_t*)effect->effect_node;
+
+				term_t param_args = PL_new_term_refs(2);
+				functor_t eq_functor = PL_new_functor(PL_new_atom("="), 2);
+				term_t param_term = PL_new_term_ref();
+
+				PL_put_atom_chars(param_args+0, "loop");
+				if (!PL_put_integer(param_args+1, envelope->loop)) {
+					free(effects_array);
+					return FALSE;
+				}
+				if (!PL_cons_functor_v(param_term, eq_functor, param_args)) {
+					free(effects_array);
+					return FALSE;
+				}
+				if (!PL_cons_list(params_list, param_term, params_list)) {
+					free(effects_array);
+					return FALSE;
+				}
+
+				PL_put_atom_chars(param_args+0, "duration_ms");
+				if (!PL_put_float(param_args+1, envelope->duration_ms)) {
+					free(effects_array);
+					return FALSE;
+				}
+				if (!PL_cons_functor_v(param_term, eq_functor, param_args)) {
+					free(effects_array);
+					return FALSE;
+				}
+				if (!PL_cons_list(params_list, param_term, params_list)) {
+					free(effects_array);
+					return FALSE;
+				}
+
+				PL_put_atom_chars(param_args+0, "break_level");
+				if (!PL_put_float(param_args+1, envelope->break_level)) {
+					free(effects_array);
+					return FALSE;
+				}
+				if (!PL_cons_functor_v(param_term, eq_functor, param_args)) {
+					free(effects_array);
+					return FALSE;
+				}
+				if (!PL_cons_list(params_list, param_term, params_list)) {
+					free(effects_array);
+					return FALSE;
+				}
+
+				PL_put_atom_chars(param_args+0, "break");
+				if (!PL_put_float(param_args+1, envelope->Break)) {
+					free(effects_array);
+					return FALSE;
+				}
+				if (!PL_cons_functor_v(param_term, eq_functor, param_args)) {
+					free(effects_array);
+					return FALSE;
+				}
+				if (!PL_cons_list(params_list, param_term, params_list)) {
+					free(effects_array);
+					return FALSE;
+				}
+
+				PL_put_atom_chars(param_args+0, "decay");
+				if (!PL_put_float(param_args+1, envelope->decay)) {
+					free(effects_array);
+					return FALSE;
+				}
+				if (!PL_cons_functor_v(param_term, eq_functor, param_args)) {
+					free(effects_array);
+					return FALSE;
+				}
+				if (!PL_cons_list(params_list, param_term, params_list)) {
+					free(effects_array);
+					return FALSE;
+				}
+
+				PL_put_atom_chars(param_args+0, "attack");
+				if (!PL_put_float(param_args+1, envelope->attack)) {
+					free(effects_array);
+					return FALSE;
+				}
+				if (!PL_cons_functor_v(param_term, eq_functor, param_args)) {
+					free(effects_array);
+					return FALSE;
+				}
+				if (!PL_cons_list(params_list, param_term, params_list)) {
+					free(effects_array);
+					return FALSE;
+				}
+
+			} else {
+				type_str = "unknown";
+			}
+
+			PL_put_atom_chars(args+0, type_str);
+			if (!PL_put_pointer(args+1, effect->effect_node)) {
+				free(effects_array);
+				return FALSE;
+			}
+			if (!PL_put_term(args+2, params_list)) {
+				free(effects_array);
+				return FALSE;
+			}
+
+			if (!PL_cons_functor_v(effect_term, effect_functor, args)) {
+				free(effects_array);
+				return FALSE;
+			}
+
+			if (!PL_cons_list(list, effect_term, list)) {
+				free(effects_array);
+				return FALSE;
+			}
+		}
+
+		free(effects_array);
+	}
+
+	return PL_unify(effects_list, list);
+}
+
+#define GET_EFFECT_FROM_HANDLE(effect_handle, sound_slot_var, effect_ptr_var) \
+  	do { \
+  		term_t sound_handle_term = PL_new_term_ref(); \
+  		term_t effect_ptr_term = PL_new_term_ref(); \
+  		functor_t effect_functor = PL_new_functor(PL_new_atom("effect"), 2); \
+  		\
+  		if (!PL_is_functor(effect_handle, effect_functor)) { \
+  			return PL_type_error("effect_handle", effect_handle); \
+  		} \
+  		if (!PL_get_arg(1, effect_handle, sound_handle_term)) { \
+  			return FALSE; \
+  		} \
+  		if (!PL_get_arg(2, effect_handle, effect_ptr_term)) { \
+  			return FALSE; \
+  		} \
+  		if (!PL_get_integer(sound_handle_term, &sound_slot_var)) { \
+  			return PL_type_error("integer", sound_handle_term); \
+  		} \
+  		if (sound_slot_var < 0 || sound_slot_var >= MAX_SOUNDS || !g_sounds[sound_slot_var].in_use) { \
+  			return PL_existence_error("sound", sound_handle_term); \
+  		} \
+  		if (!PL_get_pointer(effect_ptr_term, &effect_ptr_var)) { \
+  			return PL_type_error("pointer", effect_ptr_term); \
+  		} \
+  	} while(0)
+
+/*
+ * sampler_effect_set_parameters(+EffectHandle, +Parameters)
+ * Sets parameters on an effect.
+ * EffectHandle is effect(SoundHandle, EffectPointer)
+ * Parameters is a list of key=value pairs
+ */
+static foreign_t pl_sampler_effect_set_parameters(term_t effect_handle, term_t params_list)
+{
+	term_t sound_handle_term = PL_new_term_ref();
+	term_t effect_ptr_term = PL_new_term_ref();
+	int sound_slot;
+	void* effect_ptr;
+
+	GET_EFFECT_FROM_HANDLE(effect_handle, sound_slot, effect_ptr);
+
+	/* Find the effect in the chain */
+	effect_node_t* node = g_sounds[sound_slot].effect_chain;
+	while (node) {
+		if (node->effect_node == effect_ptr) {
+			break;
+		}
+		node = node->next;
+	}
+
+	if (!node) {
+		return PL_existence_error("effect", effect_handle);
+	}
+
+	/* Iterate over parameter list */
+	term_t list = PL_copy_term_ref(params_list);
+	term_t head = PL_new_term_ref();
+	functor_t eq_functor = PL_new_functor(PL_new_atom("="), 2);
+
+	while (PL_get_list(list, head, list)) {
+		term_t key_term = PL_new_term_ref();
+		term_t value_term = PL_new_term_ref();
+		char* param_name;
+
+		/* Extract key=value */
+		if (!PL_is_functor(head, eq_functor)) {
+			return PL_type_error("key_value_pair", head);
+		}
+		if (!PL_get_arg(1, head, key_term)) {
+			return FALSE;
+		}
+		if (!PL_get_arg(2, head, value_term)) {
+			return FALSE;
+		}
+		if (!PL_get_atom_chars(key_term, &param_name)) {
+			return PL_type_error("atom", key_term);
+		}
+
+		/* Set parameter based on effect type */
+		if (node->type == EFFECT_BITCRUSH) {
+			bitcrush_node_t* bitcrush = (bitcrush_node_t*)node->effect_node;
+
+			if (strcmp(param_name, "bits") == 0) {
+				int bits;
+				if (!PL_get_integer(value_term, &bits)) {
+					return PL_type_error("integer", value_term);
+				}
+				if (bits < 1 || bits > 16) {
+					return PL_domain_error("bits_range", value_term);
+				}
+				bitcrush->target_bits = bits;
+			} else if (strcmp(param_name, "sample_rate") == 0) {
+				int sample_rate;
+				if (!PL_get_integer(value_term, &sample_rate)) {
+					return PL_type_error("integer", value_term);
+				}
+				if (sample_rate < 0) {
+					return PL_domain_error("sample_rate_range", value_term);
+				}
+				bitcrush->target_sample_rate = sample_rate;
+				if (sample_rate > 0) {
+					ma_uint32 engine_sample_rate = ma_engine_get_sample_rate(g_engine);
+					bitcrush->hold_interval = engine_sample_rate / sample_rate;
+				}
+			} else {
+				return PL_domain_error("bitcrush_parameter", key_term);
+			}
+		} else if (node->type == EFFECT_ENVELOPE) {
+			adbr_envelope_node_t* envelope = (adbr_envelope_node_t*)node->effect_node;
+
+			if (strcmp(param_name, "attack") == 0) {
+				double value;
+				if (!PL_get_float(value_term, &value)) {
+					return PL_type_error("float", value_term);
+				}
+				envelope->attack = (float)value;
+			} else if (strcmp(param_name, "decay") == 0) {
+				double value;
+				if (!PL_get_float(value_term, &value)) {
+					return PL_type_error("float", value_term);
+				}
+				envelope->decay = (float)value;
+			} else if (strcmp(param_name, "break") == 0) {
+				double value;
+				if (!PL_get_float(value_term, &value)) {
+					return PL_type_error("float", value_term);
+				}
+				envelope->Break = (float)value;
+			} else if (strcmp(param_name, "break_level") == 0) {
+				double value;
+				if (!PL_get_float(value_term, &value)) {
+					return PL_type_error("float", value_term);
+				}
+				envelope->break_level = (float)value;
+			} else if (strcmp(param_name, "duration_ms") == 0) {
+				double value;
+				if (!PL_get_float(value_term, &value)) {
+					return PL_type_error("float", value_term);
+				}
+				envelope->duration_ms = (float)value;
+			} else if (strcmp(param_name, "loop") == 0) {
+				int value;
+				if (!PL_get_bool(value_term, &value)) {
+					return PL_type_error("boolean", value_term);
+				}
+				envelope->loop = value ? MA_TRUE : MA_FALSE;
+			} else {
+				return PL_domain_error("envelope_parameter", key_term);
+			}
+		} else {
+			return PL_domain_error("effect_type", effect_handle);
+		}
+	}
+
+	if (!PL_get_nil(list)) {
+		return PL_type_error("list", params_list);
+	}
+
+	return TRUE;
+}
+
+/*
+ * sampler_effect_detach(+EffectHandle)
+ * Removes an effect from the sound's effect chain.
+ * EffectHandle is effect(SoundHandle, EffectPointer)
+ */
+static foreign_t pl_sampler_effect_detach(term_t effect_handle)
+{
+  	int sound_slot;
+  	void* effect_ptr;
+
+	GET_EFFECT_FROM_HANDLE(effect_handle, sound_slot, effect_ptr);
+
+	/* Find and remove the effect from the chain */
+	effect_node_t* node = g_sounds[sound_slot].effect_chain;
+	effect_node_t* prev = NULL;
+
+	while (node) {
+		if (node->effect_node == effect_ptr) {
+			ma_node_detach_output_bus(node->effect_node, 0);
+
+			if (node->type == EFFECT_BITCRUSH) {
+				bitcrush_node_t* bitcrush = (bitcrush_node_t*)node->effect_node;
+				if (bitcrush->hold_samples) {
+					free(bitcrush->hold_samples);
+				}
+			}
+			ma_node_uninit(node->effect_node, NULL);
+			free(node->effect_node);
+
+			if (prev) {
+				prev->next = node->next;
+			} else {
+				g_sounds[sound_slot].effect_chain = node->next;
+			}
+
+			free(node);
+
+			/* reconnect the chain: if there are remaining effects, reconnect them */
+			effect_node_t* first_effect = g_sounds[sound_slot].effect_chain;
+			if (first_effect) {
+				/* reconnect sound -> first_effect -> endpoint */
+				ma_node_attach_output_bus(g_sounds[sound_slot].sound, 0, first_effect-> effect_node, 0);
+
+				effect_node_t* current = first_effect;
+				while (current->next) {
+					ma_node_attach_output_bus(current->effect_node, 0, current->next->effect_node, 0);
+					current = current->next;
+				}
+				ma_node_attach_output_bus(current->effect_node, 0, ma_engine_get_endpoint(g_engine), 0);
+			} else {
+				ma_node_attach_output_bus(g_sounds[sound_slot].sound, 0, ma_engine_get_endpoint(g_engine), 0);
+			}
+
+			return TRUE;
+		}
+		prev = node;
+		node = node->next;
+	}
+
+	return PL_existence_error("effect", effect_handle);
+}
+
 
 /*
  * install()
@@ -1522,7 +2210,10 @@ install_t install(void)
 	PL_register_foreign("sampler_data_reverse", 2, pl_sampler_data_reverse, 0);
 	PL_register_foreign("sampler_sound_set_range", 3, pl_sampler_sound_set_range, 0);
 	PL_register_foreign("sampler_data_extract", 4, pl_sampler_data_extract, 0);
-	PL_register_foreign("sampler_sound_attach_effect", 3, pl_sampler_sound_attach_effect, 0);
+	PL_register_foreign("sampler_sound_attach_effect", 4, pl_sampler_sound_attach_effect, 0);
+	PL_register_foreign("sampler_sound_effects", 2, pl_sampler_sound_effects, 0);
+	PL_register_foreign("sampler_effect_set_parameters", 2, pl_sampler_effect_set_parameters, 0);
+	PL_register_foreign("sampler_effect_detach", 1, pl_sampler_effect_detach, 0);
 }
 
 /*
