@@ -163,7 +163,7 @@ Building a granular sampler using SWI-Prolog interface to miniaudio library (eng
 - Effect chain management
 - Dynamic parameter updates
 
-### Step 7: ADBR Envelope Generator
+### Step 7: ADBR Envelope Generator ✓
 **Goal:** Per-sound amplitude envelopes for grain shaping
 
 **Why ADBR (not ADSR):**
@@ -172,22 +172,30 @@ Building a granular sampler using SWI-Prolog interface to miniaudio library (eng
 - Simpler state machine
 
 **ADBR Stages:**
-1. **Attack:** 0 → 1.0 over attack_time
-2. **Decay:** 1.0 → break_level over decay_time
-3. **Break:** Hold at break_level for break_time
-4. **Release:** break_level → 0 over release_time
+1. **Attack:** 0 → 1.0 over attack_proportion × duration
+2. **Decay:** 1.0 → break_level over decay_proportion × duration
+3. **Break:** Hold at break_level for break_proportion × duration
+4. **Release:** break_level → 0 for remaining duration
 
 **Implementation:**
-- Effect node following bitcrush pattern
-- State: current stage, stage timer, current envelope value
+- Effect node following bitcrush pattern (sampler.c:1550-1618)
+- State: current stage, stage progress (0.0-1.0), current envelope value
 - Processing: Calculate envelope value per-frame, multiply input samples
-- Parameters: 5 times (attack, decay, break, release) + break level
+- Parameters: attack/decay/break proportions (0.0-1.0), break_level (0.0-1.0), duration_ms, loop flag
 
 **Prolog Interface:**
-- `attach_envelope`: Set ADBR parameters and attach to sound
-- `detach_envelope`: Remove envelope from chain
-- `trigger_envelope`: Restart envelope from attack (for retriggering grains)
-- `update_envelope`: Change parameters without detaching
+- `sampler_sound_attach_envelope/8` - Attach envelope with all parameters
+- `sampler_sound_attach_effect/4` - Generic attach (envelope or any effect)
+- `sampler_effect_detach/1` - Remove effect from chain
+- `sampler_effect_set_parameters/2` - Update parameters without detaching
+- `sampler_sound_effects/2` - Query attached effects and parameters
+- `sampler_sound_clear_effects/1` - Remove all effects from sound
+
+**Effect Management:**
+- Effects return handles: `effect(SoundHandle, EffectPointer)`
+- Handles used for parameter updates and removal
+- Effect chain automatically reconnected on detachment
+- GET_EFFECT_FROM_HANDLE macro for validation
 
 **Future Enhancements:**
 - Curve shaping: linear, exponential, logarithmic
