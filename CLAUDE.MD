@@ -11,3 +11,13 @@ Never invent function parameters, options, or API features. If you don't know wh
 Never invent predicates, functions, or library features. Do not assume a predicate exists with a specific arity or signature. If you don't know whether a predicate exists or what arities it supports, check the documentation or say you don't know.
 
 When answering design questions, reason from the specific requirements and use cases first. Don't give generic answers based on common patterns. Consider what the code actually needs to do before making recommendations.
+
+## Code Style
+
+Check existing code before writing new code. Naming conventions:
+
+- Local variables: snake_case (`device`, `input`, `output`, `frame_count`)
+- No camelCase in local code (only in miniaudio API when required by signature)
+- miniaudio struct members use their own convention: `pData`, `pContext`, `pPlaybackInfos` (no underscore)
+- Never use `p_` prefix with underscore for pointers
+- Never invent a new naming style

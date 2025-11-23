@@ -254,12 +254,12 @@ test(set_bitcrush_parameters, [nondet]) :-
 test(set_envelope_parameters, [nondet]) :-
     sampler_sound_load('audio/counting.wav', Sound),
     sampler_sound_attach_envelope(Sound, 0.1, 0.2, 0.3, 0.5, 1000.0, false, Effect),
-    sampler_effect_set_parameters(Effect, [attack=0.5, decay=0.6]),
+    sampler_effect_set_parameters(Effect, [attack=0.3, decay=0.4]),
     sampler_sound_effects(Sound, [effect(envelope, _, Params)]),
     memberchk(attack=Attack, Params),
     memberchk(decay=Decay, Params),
-    abs(Attack - 0.5) < 0.001,
-    abs(Decay - 0.6) < 0.001,
+    abs(Attack - 0.3) < 0.001,
+    abs(Decay - 0.4) < 0.001,
     sampler_sound_unload(Sound).
 
 test(set_envelope_loop, [nondet]) :-
@@ -269,6 +269,12 @@ test(set_envelope_loop, [nondet]) :-
     sampler_sound_effects(Sound, [effect(envelope, _, Params)]),
     memberchk(loop=Loop, Params),
     Loop =:= 1,
+    sampler_sound_unload(Sound).
+
+test(set_envelope_invalid_proportions, [error(domain_error(_, _))]) :-
+    sampler_sound_load('audio/counting.wav', Sound),
+    sampler_sound_attach_envelope(Sound, 0.1, 0.2, 0.3, 0.5, 1000.0, false, Effect),
+    sampler_effect_set_parameters(Effect, [attack=0.5, decay=0.5, break=0.5]),
     sampler_sound_unload(Sound).
 
 :- end_tests(effect_setters).
@@ -332,3 +338,63 @@ test(clear_multiple_effects, [nondet]) :-
     sampler_sound_unload(Sound).
 
 :- end_tests(effect_clear).
+
+:- begin_tests(sampler_capture).
+
+test(capture_start_stop, [nondet]) :-
+    sampler_devices(Devices),
+    member(device(Name, capture, _), Devices),
+    !,
+    sampler_capture_start(Name, 1.0, Capture, BufferFrames),
+    integer(Capture),
+    integer(BufferFrames),
+    BufferFrames > 0,
+    sampler_capture_stop(Capture).
+
+test(capture_get_info, [nondet]) :-
+    sampler_devices(Devices),
+    member(device(Name, capture, _), Devices),
+    !,
+    sampler_capture_start(Name, 0.5, Capture, _),
+    sampler_capture_get_info(Capture, capture_info(WritePos, Capacity, SampleRate)),
+    integer(WritePos),
+    integer(Capacity),
+    integer(SampleRate),
+    WritePos >= 0,
+    Capacity > 0,
+    SampleRate > 0,
+    sampler_capture_stop(Capture).
+
+test(capture_extract, [nondet]) :-
+    sampler_devices(Devices),
+    member(device(Name, capture, _), Devices),
+    !,
+    sampler_capture_start(Name, 1.0, Capture, _),
+    sleep(0.2),
+    sampler_capture_get_info(Capture, capture_info(WritePos, Capacity, SampleRate)),
+    Offset is -(SampleRate // 10),
+    Length is SampleRate // 20,
+    sampler_capture_extract(Capture, Offset, Length, Data),
+    integer(Data),
+    sampler_data_info(Data, data_info(Frames, Channels, Rate, Duration)),
+    Frames =:= Length,
+    Channels > 0,
+    Rate =:= SampleRate,
+    Duration > 0,
+    sampler_data_unload(Data),
+    sampler_capture_stop(Capture).
+
+test(capture_extract_wraparound, [nondet]) :-
+    sampler_devices(Devices),
+    member(device(Name, capture, _), Devices),
+    !,
+    sampler_capture_start(Name, 0.1, Capture, BufferFrames),
+    sleep(0.2),
+    Offset is -BufferFrames + 100,
+    Length is 200,
+    sampler_capture_extract(Capture, Offset, Length, Data),
+    integer(Data),
+    sampler_data_unload(Data),
+    sampler_capture_stop(Capture).
+
+:- end_tests(sampler_capture).

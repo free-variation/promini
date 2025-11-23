@@ -95,6 +95,18 @@ static foreign_t pl_sampler_init(void);
         sound_var = g_sounds[slot_var].sound; \
     } while(0)
 
+#define GET_CAPTURE_DEVICE_FROM_HANDLE(handle_term, capture_var) \
+  	do { \
+  		int _slot; \
+  		if (!PL_get_integer(handle_term, &_slot)) { \
+  			return PL_type_error("integer", handle_term); \
+  		} \
+  		capture_var = get_capture_device(_slot); \
+  		if (capture_var == NULL) { \
+  			return PL_existence_error("capture_device", handle_term); \
+  		} \
+  	} while(0)
+
 /*
  * Global engine - one engine for the library lifetime
  */
@@ -168,6 +180,18 @@ typedef struct {
 	float stage_progress;
 } adbr_envelope_node_t;
 
+/* capture device management */
+#define MAX_CAPTURE_DEVICES 8
+
+typedef struct {
+	ma_device device;
+	void* buffer_data;
+	ma_uint64 capacity_frames;
+	ma_uint64 write_position; /* wraps at capacity */
+	ma_bool32 in_use;
+} capture_slot_t;
+
+static capture_slot_t g_capture_devices[MAX_CAPTURE_DEVICES] = {{0}};
 
 /*
  * allocate_data_slot()
@@ -210,7 +234,6 @@ static void free_data_slot(int index)
 		g_data_buffers[index].refcount = 0;
 	}
 }
-
 /*
  * get_data_buffer()
  * Validates handle and returns buffer pointer.
@@ -227,6 +250,58 @@ static ma_audio_buffer* get_data_buffer(int index)
 	return g_data_buffers[index].buffer;
 }
 
+/*
+ * allocate_capture_slot()
+ * Finds a free capture slot and marks it as in isue.
+ * Returns slot index, or -1 if all slots are full.
+ */
+static int allocate_capture_slot(void) 
+{
+	int i;
+	for (i = 0; i < MAX_CAPTURE_DEVICES; i++){
+		if (!g_capture_devices[i].in_use) {
+			g_capture_devices[i].in_use = MA_TRUE;
+			g_capture_devices[i].buffer_data = NULL;
+			g_capture_devices[i].capacity_frames = 0;
+			return i;
+		}
+	}
+	return -1;
+}
+
+/*
+ * free_capture_slot()
+ * Frees a capture slot and its resources.
+ */
+static void free_capture_slot(int index)
+{
+	if (index >= 0 && index < MAX_CAPTURE_DEVICES) {
+		if (g_capture_devices[index].in_use) {
+			ma_device_uninit(&g_capture_devices[index].device);
+			if (g_capture_devices[index].buffer_data != NULL) {
+				ma_free(g_capture_devices[index].buffer_data, NULL);
+				g_capture_devices[index].buffer_data = NULL;
+			}
+			g_capture_devices[index].in_use = MA_FALSE;
+		}
+	}
+}
+
+/*
+ * get_capture_device()
+ * Validates handle and returns capture slot pointer.
+ * Returns NULL if invalid handle.
+ */
+static capture_slot_t* get_capture_device(int index)
+{
+	if (index < 0 || index >= MAX_CAPTURE_DEVICES) {
+		return NULL;
+	}
+	if (!g_capture_devices[index].in_use) {
+		return NULL;
+	}
+	return &g_capture_devices[index];
+}
 /*
  * get_buffer_info()
  * Retrieves audio buffer format parameters
@@ -1372,6 +1447,282 @@ static foreign_t pl_sampler_data_reverse(term_t source_handle, term_t reversed_h
 	return PL_unify_integer(reversed_handle, slot);
 }
 
+/* Capture primitives */
+static void capture_data_callback(ma_device* device, void* output, const void*input, ma_uint32 frame_count) {
+	capture_slot_t* capture;
+	ma_uint64 write_pos;
+  	ma_uint64 frames_to_end;
+  	ma_uint32 bytes_per_frame;
+  	ma_uint32 channels;
+
+	(void)output; /* unused for capture */
+
+	capture = (capture_slot_t*)device->pUserData;
+	if (capture == NULL || input == NULL) {
+		return;
+	}
+
+	channels = device->capture.channels;
+	bytes_per_frame = ma_get_bytes_per_frame(device->capture.format, channels);
+	write_pos = capture->write_position % capture->capacity_frames;
+	frames_to_end = capture->capacity_frames - write_pos;
+
+	if (frame_count <= frames_to_end) {
+		/* no wrap */
+		memcpy((char *)capture->buffer_data + (write_pos * bytes_per_frame), input, frame_count * bytes_per_frame);
+	} else {
+		/* wrap around */
+		memcpy((char*)capture->buffer_data + (write_pos * bytes_per_frame), input, frames_to_end * bytes_per_frame);
+		memcpy(capture->buffer_data, (char*) input + (frames_to_end * bytes_per_frame), (frame_count - frames_to_end) * bytes_per_frame);
+	}
+
+	capture->write_position += frame_count;
+}
+
+/*
+ * sampler_capture_start(+DeviceName, +PeriodSeconds, -CaptureHandle, -BufferFrames)
+ * starts capture from specified device into ring buffer.
+ */
+static foreign_t pl_sampler_capture_start(term_t device_name, term_t period_term, term_t capture_handle, term_t buffer_frames_out)
+{
+	char* name;
+	double period_seconds;
+  	int buffer_frames_int;
+  	int slot;
+  	ma_context* context;
+  	ma_device_info* capture_infos;
+  	ma_uint32 capture_count;
+  	ma_result result;
+  	ma_uint32 i;
+  	ma_device_id* device_id;
+  	ma_device_config device_config;
+  	ma_format format;
+  	ma_uint32 channels;
+  	ma_uint32 sample_rate;
+  	ma_uint64 buffer_frames;
+  	ma_uint32 buffer_size_bytes;
+
+	ENSURE_ENGINE_INITIALIZED();
+
+	if (!PL_get_chars(device_name, &name, CVT_ATOM | CVT_STRING | CVT_EXCEPTION)) {
+  		return FALSE;
+  	}
+
+  	if (!PL_get_float(period_term, &period_seconds)) {
+  		return PL_type_error("float", period_term);
+  	}
+
+  	if (period_seconds <= 0.0) {
+  		return PL_domain_error("positive_number", period_term);
+  	}
+
+	get_engine_format_info(&format, &channels, &sample_rate);
+  	buffer_frames = (ma_uint64)(period_seconds * sample_rate);
+
+	if (buffer_frames == 0) {
+		buffer_frames = 1;
+	}
+
+	/* find device by name */
+	context = ma_engine_get_device(g_engine)->pContext;
+	result = ma_context_get_devices(context, NULL, NULL, &capture_infos, &capture_count);
+	if (result != MA_SUCCESS) {
+		return FALSE;
+	}
+
+	device_id = NULL;
+	for (i = 0; i < capture_count; i++) {
+		if (strcmp(capture_infos[i].name, name) == 0) {
+			device_id = &capture_infos[i].id;
+			break;
+		}
+	}
+
+	if (device_id == NULL) {
+		return PL_existence_error("capture_device", device_name);
+	}
+
+	slot = allocate_capture_slot();
+	if (slot < 0) {
+		return PL_resource_error("capture_slots");
+	}
+
+	buffer_size_bytes = buffer_frames * ma_get_bytes_per_frame(format, channels);
+
+	g_capture_devices[slot].buffer_data = ma_malloc(buffer_size_bytes, NULL);
+	if (g_capture_devices[slot].buffer_data == NULL) {
+		free_capture_slot(slot);
+		return PL_resource_error("memory");
+	}
+
+	g_capture_devices[slot].capacity_frames = buffer_frames;
+	g_capture_devices[slot].write_position = 0;
+
+	/* initialize capture device */
+	device_config = ma_device_config_init(ma_device_type_capture);
+	device_config = ma_device_config_init(ma_device_type_capture);
+  	device_config.capture.pDeviceID = device_id;
+  	device_config.capture.format = format;
+  	device_config.capture.channels = channels;
+  	device_config.sampleRate = sample_rate;
+  	device_config.dataCallback = capture_data_callback;
+  	device_config.pUserData = &g_capture_devices[slot];
+
+	result = ma_device_init(context, &device_config, &g_capture_devices[slot].device);
+	if (result != MA_SUCCESS) {
+		free_capture_slot(slot);
+		return FALSE;
+	}
+
+	/* start capture */
+	result = ma_device_start(&g_capture_devices[slot].device);
+	if (result != MA_SUCCESS) {
+		free_capture_slot(slot);
+		return FALSE;
+	}
+
+	if (!PL_unify_integer(buffer_frames_out, buffer_frames)) {
+		return FALSE;
+	}
+
+	return PL_unify_integer(capture_handle, slot);
+}
+
+/*
+ * sampler_capture_stop(+CaptureHandle)
+ * Stops capture and frees resources.
+ */
+static foreign_t pl_sampler_capture_stop(term_t capture_handle)
+{
+	capture_slot_t* capture;
+
+	GET_CAPTURE_DEVICE_FROM_HANDLE(capture_handle, capture);
+
+	free_capture_slot(capture - g_capture_devices);
+	return TRUE;
+}
+
+/*
+ * sampler_capture_get_info(+CaptureHandle, -Info)
+ * Returns capture_ifo(WritePosition, Capacity, SampleRate)
+ */
+static foreign_t pl_sampler_capture_get_info(term_t capture_handle, term_t info)
+{
+	capture_slot_t* capture;
+  	ma_uint64 write_position;
+  	term_t args;
+  	functor_t info_functor;
+  	term_t result;
+
+	GET_CAPTURE_DEVICE_FROM_HANDLE(capture_handle, capture);
+
+	write_position = capture->write_position;
+
+	args = PL_new_term_refs(3);
+	if (!PL_put_uint64(args + 0, write_position)) return FALSE;
+	if (!PL_put_uint64(args + 1, capture->capacity_frames)) return FALSE;
+	if (!PL_put_integer(args + 2, capture->device.sampleRate)) return FALSE;
+
+	result = PL_new_term_ref();
+	info_functor = PL_new_functor(PL_new_atom("capture_info"), 3);
+	if (!PL_cons_functor_v(result, info_functor, args)) {
+		return FALSE;
+	}
+
+	return PL_unify(info, result);
+}
+
+/*
+ * sampler_capture_extract(+CaptureHandle, +RelativeOffset, +Length, -DataHandle)
+ * Extracts frames from capture buffer to a new data buffer.
+ * RelativeOffset is negative frames from current write position.
+ */
+static foreign_t pl_sampler_capture_extract(term_t capture_handle, term_t offset_term, term_t length_term, term_t data_handle)
+{
+	capture_slot_t* capture;
+  	int offset_int;
+  	int length_int;
+  	ma_int64 offset;
+  	ma_uint64 length;
+  	ma_uint64 write_pos;
+  	ma_uint64 read_pos;
+  	ma_uint64 read_pos_wrapped;
+  	ma_uint64 frames_to_end;
+  	ma_format format;
+  	ma_uint32 channels;
+  	ma_uint32 sample_rate;
+  	ma_uint32 bytes_per_frame;
+  	void* extracted_data;
+  	int slot;
+
+	GET_CAPTURE_DEVICE_FROM_HANDLE(capture_handle, capture);
+
+	if (!PL_get_integer(offset_term, &offset_int)) {
+  		return PL_type_error("integer", offset_term);
+  	}
+
+  	if (!PL_get_integer(length_term, &length_int)) {
+  		return PL_type_error("integer", length_term);
+  	}
+
+  	if (offset_int >= 0) {
+  		return PL_domain_error("negative_offset", offset_term);
+  	}
+
+  	if (length_int <= 0) {
+  		return PL_domain_error("positive_length", length_term);
+  	}
+
+	offset = (ma_int64)offset_int;
+	length = (ma_uint64)length_int;
+
+	if (length > capture->capacity_frames) {
+  		return PL_domain_error("length_exceeds_capacity", length_term);
+  	}
+
+	/* read position */
+	write_pos = capture->write_position;
+	read_pos = write_pos + offset; /* offset is -ve, so this substracts */
+	read_pos_wrapped = read_pos % capture->capacity_frames;
+
+	/* buffer format */
+	format = capture->device.capture.format;
+  	channels = capture->device.capture.channels;
+  	sample_rate = capture->device.sampleRate;
+  	bytes_per_frame = ma_get_bytes_per_frame(format, channels);
+
+	extracted_data = malloc(length * bytes_per_frame);
+	if (extracted_data == NULL) {
+		return PL_resource_error("memory");
+	}
+
+	/* copy data, handling wraparound */
+	frames_to_end = capture->capacity_frames - read_pos_wrapped;
+	if (length <= frames_to_end) {
+		/* no wrap */
+		memcpy(extracted_data,
+				(char *)capture->buffer_data + (read_pos_wrapped * bytes_per_frame),
+				length * bytes_per_frame);
+	} else {
+		/* wrap around */
+		memcpy(extracted_data,
+				(char *)capture->buffer_data + (read_pos_wrapped * bytes_per_frame),
+				frames_to_end * bytes_per_frame);
+		memcpy((char *)extracted_data + (frames_to_end * bytes_per_frame),
+				capture->buffer_data,
+				(length - frames_to_end) * bytes_per_frame);
+	}
+
+	slot = create_data_buffer_from_pcm(extracted_data, format, channels, length, sample_rate);
+	if (slot < 0) {
+		free(extracted_data);
+		return PL_resource_error("data_buffer_slots");
+	}
+
+	return PL_unify_integer(data_handle, slot);
+}
+
+
 /* Effect management helpers */
 
 /* Macro to define parameter parsers with error checking */
@@ -2107,6 +2458,21 @@ static foreign_t pl_sampler_effect_set_parameters(term_t effect_handle, term_t p
 		}
 	}
 
+	/* Validate envelope proportions after all parameters are updated */
+	if (node->type == EFFECT_ENVELOPE) {
+		adbr_envelope_node_t* envelope = (adbr_envelope_node_t*)node->effect_node;
+		float sum = envelope->attack + envelope->decay + envelope->Break;
+		if (sum > 1.0f) {
+			return PL_domain_error("envelope_proportions_exceed_1.0", params_list);
+		}
+		if (envelope->break_level < 0.0f || envelope->break_level > 1.0f) {
+			return PL_domain_error("break_level_out_of_range", params_list);
+		}
+		if (envelope->duration_ms < 0.0f) {
+			return PL_domain_error("duration_negative", params_list);
+		}
+	}
+
 	if (!PL_get_nil(list)) {
 		return PL_type_error("list", params_list);
 	}
@@ -2214,6 +2580,10 @@ install_t install(void)
 	PL_register_foreign("sampler_sound_effects", 2, pl_sampler_sound_effects, 0);
 	PL_register_foreign("sampler_effect_set_parameters", 2, pl_sampler_effect_set_parameters, 0);
 	PL_register_foreign("sampler_effect_detach", 1, pl_sampler_effect_detach, 0);
+	PL_register_foreign("sampler_capture_start", 4, pl_sampler_capture_start, 0);
+	PL_register_foreign("sampler_capture_stop", 1, pl_sampler_capture_stop, 0);
+	PL_register_foreign("sampler_capture_get_info", 2, pl_sampler_capture_get_info, 0);
+	PL_register_foreign("sampler_capture_extract", 4, pl_sampler_capture_extract, 0);
 }
 
 /*
@@ -2238,6 +2608,13 @@ install_t uninstall_sampler(void)
             free_sound_slot(i);
         }
     }
+
+	/* Clean up all capture devices */
+	for (i = 0; i < MAX_CAPTURE_DEVICES; i++) {
+		if (g_capture_devices[i].in_use) {
+			free_capture_slot(i);
+		}
+	}
 
     /* Clean up engine */
     if (g_engine != NULL) {

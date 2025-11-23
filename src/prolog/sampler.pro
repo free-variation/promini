@@ -42,7 +42,11 @@
     sampler_sound_effects/2,
     sampler_effect_set_parameters/2,
     sampler_effect_detach/1,
-    sampler_sound_clear_effects/1
+    sampler_sound_clear_effects/1,
+    sampler_capture_start/4,
+    sampler_capture_stop/1,
+    sampler_capture_get_info/2,
+    sampler_capture_extract/4
   ]).
 
 :- use_foreign_library('../../lib/sampler').
