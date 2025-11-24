@@ -24,6 +24,14 @@ Additive synthesizer using sine waves for experimental music, integrated with th
   - Sampled audio (audio as control signal)
 - Quantization via hold intervals
 
+## Voice Groups
+- ma_sound_group provides mixing points in the node graph
+- Multiple voices can be attached to a single group
+- Effects apply to the mixed output of all voices in a group
+- Allows creating "patches" where sets of voices share processing
+- Groups can be nested or chained
+- Architecture: Voice → Voice → Voice → Group → Effects → Endpoint
+
 ## Integration
 - Shares global ma_engine with sampler
 - Voices use ma_sound for playback

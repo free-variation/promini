@@ -100,7 +100,7 @@ pthread_mutex_t g_capture_devices_mutex = PTHREAD_MUTEX_INITIALIZER;
 /*
  * Sound handle management
  */
-#define MAX_DATA_BUFFERS 32
+#define MAX_DATA_BUFFERS 256
 
 typedef struct {
 	ma_audio_buffer* buffer;
