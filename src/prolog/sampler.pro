@@ -54,6 +54,8 @@
     sampler_synth_voice_stop/1,
     sampler_synth_voice_set_frequency/2,
     sampler_synth_voice_get_frequency/2,
+    sampler_synth_voice_set_pan/2,
+    sampler_synth_voice_get_pan/2,
     sampler_synth_voice_unload/1
   ]).
 

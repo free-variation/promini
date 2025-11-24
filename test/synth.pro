@@ -35,4 +35,15 @@ test(set_and_get_frequency, [nondet, cleanup(sampler_synth_voice_unload(Handle))
     sampler_synth_voice_get_frequency(Handle, Freq),
     Freq =:= 880.0.
 
+test(default_pan_is_center, [nondet, cleanup(sampler_synth_voice_unload(Handle))]) :-
+    sampler_synth_voice_create(Handle),
+    sampler_synth_voice_get_pan(Handle, Pan),
+    Pan =:= 0.0.
+
+test(set_and_get_pan, [nondet, cleanup(sampler_synth_voice_unload(Handle))]) :-
+    sampler_synth_voice_create(Handle),
+    sampler_synth_voice_set_pan(Handle, -0.5),
+    sampler_synth_voice_get_pan(Handle, Pan),
+    Pan =:= -0.5.
+
 :- end_tests(synth).
