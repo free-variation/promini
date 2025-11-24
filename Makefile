@@ -26,7 +26,8 @@ else
 endif
 
 # Source and output
-SRC := src/c/sampler.c
+SRC := src/c/sampler.c src/c/synth.c src/c/effects.c src/c/init.c
+HEADERS := src/c/sampler_internal.h
 LIBDIR := lib
 TARGET := $(LIBDIR)/sampler.$(SOEXT)
 
@@ -34,7 +35,7 @@ TARGET := $(LIBDIR)/sampler.$(SOEXT)
 all: $(TARGET)
 
 # Build shared library
-$(TARGET): $(SRC) | $(LIBDIR)
+$(TARGET): $(SRC) $(HEADERS) | $(LIBDIR)
 	$(SWIPL_LD) -shared -o $(TARGET) $(SRC) $(CFLAGS) $(LDFLAGS)
 
 # Create lib directory

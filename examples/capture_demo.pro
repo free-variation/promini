@@ -104,7 +104,7 @@ demo_capture_granular :-
 
     % Spawn grain cloud
     format('~nSpawning granular cloud (20 grains)...~n'),
-    GrainDuration is 50,  % 50ms grains
+    GrainDuration is 500,  % 50ms grains
     GrainLength is (SampleRate * GrainDuration) // 1000,
 
     spawn_grain_cloud(Capture, SampleRate, GrainLength, 20, Sounds),

@@ -13,6 +13,7 @@
     sampler_sound_start/1,
     sampler_sound_stop/1,
     sampler_sound_is_playing/1,
+    sampler_sound_set_looping/2,
     sampler_sound_loop/1,
     sampler_sound_no_loop/1,
     sampler_sound_is_looping/1,
@@ -46,7 +47,14 @@
     sampler_capture_start/4,
     sampler_capture_stop/1,
     sampler_capture_get_info/2,
-    sampler_capture_extract/4
+    sampler_capture_extract/4,
+    sampler_synth_voices_in_use/1,
+    sampler_synth_voice_create/1,
+    sampler_synth_voice_start/1,
+    sampler_synth_voice_stop/1,
+    sampler_synth_voice_set_frequency/2,
+    sampler_synth_voice_get_frequency/2,
+    sampler_synth_voice_unload/1
   ]).
 
 :- use_foreign_library('../../lib/sampler').
