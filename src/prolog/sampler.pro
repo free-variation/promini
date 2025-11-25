@@ -40,6 +40,9 @@
     sampler_sound_attach_effect/4,
     sampler_sound_attach_bitcrush/4,
     sampler_sound_attach_envelope/8,
+    sampler_sound_attach_bpf/4,
+    sampler_sound_attach_delay/5,
+    sampler_sound_attach_ping_pong_delay/6,
     sampler_sound_effects/2,
     sampler_effect_set_parameters/2,
     sampler_effect_detach/1,
@@ -91,6 +94,15 @@ sampler_sound_attach_bitcrush(Sound, Bits, SampleRate, Effect) :-
 
 sampler_sound_attach_envelope(Sound, Attack, Decay, Break, BreakLevel, DurationMs, Loop, Effect) :-
     sampler_sound_attach_effect(Sound, envelope, [attack=Attack, decay=Decay, break=Break, break_level=BreakLevel, duration_ms=DurationMs, loop=Loop], Effect).
+
+sampler_sound_attach_bpf(Sound, Cutoff, Order, Effect) :-
+    sampler_sound_attach_effect(Sound, bpf, [cutoff=Cutoff, order=Order], Effect).
+
+sampler_sound_attach_delay(Sound, DelayInFrames, Decay, Wet, Effect) :-
+    sampler_sound_attach_effect(Sound, delay, [delay_in_frames=DelayInFrames, decay=Decay, wet=Wet], Effect).
+
+sampler_sound_attach_ping_pong_delay(Sound, MaxDelayInFrames, DelayInFrames, Feedback, Wet, Effect) :-
+    sampler_sound_attach_effect(Sound, ping_pong_delay, [max_delay_in_frames=MaxDelayInFrames, delay_in_frames=DelayInFrames, feedback=Feedback, wet=Wet], Effect).
 
 sampler_sound_clear_effects(Sound) :-
     sampler_sound_effects(Sound, Effects),

@@ -237,4 +237,284 @@ test(clear_multiple_effects, [nondet]) :-
     sampler_sound_effects(Sound, []),
     sampler_sound_unload(Sound).
 
+% BPF tests
+
+test(attach_bpf, [nondet]) :-
+    sampler_sound_load('audio/counting.wav', Sound),
+    sampler_sound_attach_bpf(Sound, 1000.0, 2, Effect),
+    Effect = effect(Sound, Ptr),
+    integer(Ptr),
+    sampler_sound_unload(Sound).
+
+test(attach_bpf_generic, [nondet]) :-
+    sampler_sound_load('audio/counting.wav', Sound),
+    sampler_sound_attach_effect(Sound, bpf, [cutoff=2000.0, order=4], Effect),
+    Effect = effect(Sound, Ptr),
+    integer(Ptr),
+    sampler_sound_unload(Sound).
+
+test(query_bpf, [nondet]) :-
+    sampler_sound_load('audio/counting.wav', Sound),
+    sampler_sound_attach_effect(Sound, bpf, [cutoff=1500.0, order=4], _),
+    sampler_sound_effects(Sound, [effect(bpf, Ptr, Params)]),
+    integer(Ptr),
+    memberchk(cutoff=Cutoff, Params),
+    memberchk(order=Order, Params),
+    abs(Cutoff - 1500.0) < 0.001,
+    Order =:= 4,
+    sampler_sound_unload(Sound).
+
+test(set_bpf_cutoff, [nondet]) :-
+    sampler_sound_load('audio/counting.wav', Sound),
+    sampler_sound_attach_effect(Sound, bpf, [cutoff=1000.0], Effect),
+    sampler_effect_set_parameters(Effect, [cutoff=2500.0]),
+    sampler_sound_effects(Sound, [effect(bpf, _, Params)]),
+    memberchk(cutoff=Cutoff, Params),
+    abs(Cutoff - 2500.0) < 0.001,
+    sampler_sound_unload(Sound).
+
+test(set_bpf_order, [nondet]) :-
+    sampler_sound_load('audio/counting.wav', Sound),
+    sampler_sound_attach_effect(Sound, bpf, [cutoff=1000.0, order=2], Effect),
+    sampler_effect_set_parameters(Effect, [order=6]),
+    sampler_sound_effects(Sound, [effect(bpf, _, Params)]),
+    memberchk(order=Order, Params),
+    Order =:= 6,
+    sampler_sound_unload(Sound).
+
+test(set_bpf_both_parameters, [nondet]) :-
+    sampler_sound_load('audio/counting.wav', Sound),
+    sampler_sound_attach_effect(Sound, bpf, [cutoff=1000.0], Effect),
+    sampler_effect_set_parameters(Effect, [cutoff=3000.0, order=8]),
+    sampler_sound_effects(Sound, [effect(bpf, _, Params)]),
+    memberchk(cutoff=Cutoff, Params),
+    memberchk(order=Order, Params),
+    abs(Cutoff - 3000.0) < 0.001,
+    Order =:= 8,
+    sampler_sound_unload(Sound).
+
+% Delay tests
+
+test(attach_delay, [nondet]) :-
+    sampler_sound_load('audio/counting.wav', Sound),
+    sampler_sound_attach_delay(Sound, 22050, 0.5, 0.8, Effect),
+    Effect = effect(Sound, Ptr),
+    integer(Ptr),
+    sampler_sound_unload(Sound).
+
+test(attach_delay_generic, [nondet]) :-
+    sampler_sound_load('audio/counting.wav', Sound),
+    sampler_sound_attach_effect(Sound, delay, [delay_in_frames=44100, decay=0.3, wet=0.7, dry=0.9], Effect),
+    Effect = effect(Sound, Ptr),
+    integer(Ptr),
+    sampler_sound_unload(Sound).
+
+test(query_delay, [nondet]) :-
+    sampler_sound_load('audio/counting.wav', Sound),
+    sampler_sound_attach_effect(Sound, delay, [delay_in_frames=22050, decay=0.4, wet=0.6, dry=0.8], _),
+    sampler_sound_effects(Sound, [effect(delay, Ptr, Params)]),
+    integer(Ptr),
+    memberchk(delay_in_frames=DelayInFrames, Params),
+    memberchk(decay=Decay, Params),
+    memberchk(wet=Wet, Params),
+    memberchk(dry=Dry, Params),
+    DelayInFrames =:= 22050,
+    abs(Decay - 0.4) < 0.001,
+    abs(Wet - 0.6) < 0.001,
+    abs(Dry - 0.8) < 0.001,
+    sampler_sound_unload(Sound).
+
+test(set_delay_wet, [nondet]) :-
+    sampler_sound_load('audio/counting.wav', Sound),
+    sampler_sound_attach_effect(Sound, delay, [delay_in_frames=22050], Effect),
+    sampler_effect_set_parameters(Effect, [wet=0.5]),
+    sampler_sound_effects(Sound, [effect(delay, _, Params)]),
+    memberchk(wet=Wet, Params),
+    abs(Wet - 0.5) < 0.001,
+    sampler_sound_unload(Sound).
+
+test(set_delay_dry, [nondet]) :-
+    sampler_sound_load('audio/counting.wav', Sound),
+    sampler_sound_attach_effect(Sound, delay, [delay_in_frames=22050], Effect),
+    sampler_effect_set_parameters(Effect, [dry=0.3]),
+    sampler_sound_effects(Sound, [effect(delay, _, Params)]),
+    memberchk(dry=Dry, Params),
+    abs(Dry - 0.3) < 0.001,
+    sampler_sound_unload(Sound).
+
+test(set_delay_decay, [nondet]) :-
+    sampler_sound_load('audio/counting.wav', Sound),
+    sampler_sound_attach_effect(Sound, delay, [delay_in_frames=22050, decay=0.0], Effect),
+    sampler_effect_set_parameters(Effect, [decay=0.7]),
+    sampler_sound_effects(Sound, [effect(delay, _, Params)]),
+    memberchk(decay=Decay, Params),
+    abs(Decay - 0.7) < 0.001,
+    sampler_sound_unload(Sound).
+
+test(set_delay_multiple_parameters, [nondet]) :-
+    sampler_sound_load('audio/counting.wav', Sound),
+    sampler_sound_attach_effect(Sound, delay, [delay_in_frames=22050], Effect),
+    sampler_effect_set_parameters(Effect, [wet=0.4, dry=0.6, decay=0.5]),
+    sampler_sound_effects(Sound, [effect(delay, _, Params)]),
+    memberchk(wet=Wet, Params),
+    memberchk(dry=Dry, Params),
+    memberchk(decay=Decay, Params),
+    abs(Wet - 0.4) < 0.001,
+    abs(Dry - 0.6) < 0.001,
+    abs(Decay - 0.5) < 0.001,
+    sampler_sound_unload(Sound).
+
+test(set_delay_in_frames_error, [error(permission_error(modify, delay_in_frames, _))]) :-
+    sampler_sound_load('audio/counting.wav', Sound),
+    sampler_sound_attach_effect(Sound, delay, [delay_in_frames=22050], Effect),
+    sampler_effect_set_parameters(Effect, [delay_in_frames=44100]),
+    sampler_sound_unload(Sound).
+
+% Ping-pong delay tests
+
+test(attach_ping_pong_delay, [nondet]) :-
+    sampler_sound_load('audio/counting.wav', Sound),
+    sampler_sound_attach_ping_pong_delay(Sound, 44100, 22050, 0.5, 0.8, Effect),
+    Effect = effect(Sound, Ptr),
+    integer(Ptr),
+    sampler_sound_unload(Sound).
+
+test(attach_ping_pong_delay_generic, [nondet]) :-
+    sampler_sound_load('audio/counting.wav', Sound),
+    sampler_sound_attach_effect(Sound, ping_pong_delay, [max_delay_in_frames=44100, delay_in_frames=22050, feedback=0.5, wet=0.7, dry=0.9], Effect),
+    Effect = effect(Sound, Ptr),
+    integer(Ptr),
+    sampler_sound_unload(Sound).
+
+test(query_ping_pong_delay, [nondet]) :-
+    sampler_sound_load('audio/counting.wav', Sound),
+    sampler_sound_attach_effect(Sound, ping_pong_delay, [max_delay_in_frames=44100, delay_in_frames=22050, feedback=0.4, wet=0.6, dry=0.8], _),
+    sampler_sound_effects(Sound, [effect(ping_pong_delay, Ptr, Params)]),
+    integer(Ptr),
+    memberchk(max_delay_in_frames=MaxDelayInFrames, Params),
+    memberchk(delay_in_frames=DelayInFrames, Params),
+    memberchk(feedback=Feedback, Params),
+    memberchk(wet=Wet, Params),
+    memberchk(dry=Dry, Params),
+    MaxDelayInFrames =:= 44100,
+    DelayInFrames =:= 22050,
+    abs(Feedback - 0.4) < 0.001,
+    abs(Wet - 0.6) < 0.001,
+    abs(Dry - 0.8) < 0.001,
+    sampler_sound_unload(Sound).
+
+test(set_ping_pong_delay_wet, [nondet]) :-
+    sampler_sound_load('audio/counting.wav', Sound),
+    sampler_sound_attach_effect(Sound, ping_pong_delay, [max_delay_in_frames=44100], Effect),
+    sampler_effect_set_parameters(Effect, [wet=0.5]),
+    sampler_sound_effects(Sound, [effect(ping_pong_delay, _, Params)]),
+    memberchk(wet=Wet, Params),
+    abs(Wet - 0.5) < 0.001,
+    sampler_sound_unload(Sound).
+
+test(set_ping_pong_delay_dry, [nondet]) :-
+    sampler_sound_load('audio/counting.wav', Sound),
+    sampler_sound_attach_effect(Sound, ping_pong_delay, [max_delay_in_frames=44100], Effect),
+    sampler_effect_set_parameters(Effect, [dry=0.3]),
+    sampler_sound_effects(Sound, [effect(ping_pong_delay, _, Params)]),
+    memberchk(dry=Dry, Params),
+    abs(Dry - 0.3) < 0.001,
+    sampler_sound_unload(Sound).
+
+test(set_ping_pong_delay_feedback, [nondet]) :-
+    sampler_sound_load('audio/counting.wav', Sound),
+    sampler_sound_attach_effect(Sound, ping_pong_delay, [max_delay_in_frames=44100, feedback=0.0], Effect),
+    sampler_effect_set_parameters(Effect, [feedback=0.7]),
+    sampler_sound_effects(Sound, [effect(ping_pong_delay, _, Params)]),
+    memberchk(feedback=Feedback, Params),
+    abs(Feedback - 0.7) < 0.001,
+    sampler_sound_unload(Sound).
+
+test(set_ping_pong_delay_delay_in_frames, [nondet]) :-
+    sampler_sound_load('audio/counting.wav', Sound),
+    sampler_sound_attach_effect(Sound, ping_pong_delay, [max_delay_in_frames=44100, delay_in_frames=22050, smoothing_mode=0], Effect),
+    sampler_effect_set_parameters(Effect, [delay_in_frames=11025]),
+    sampler_sound_effects(Sound, [effect(ping_pong_delay, _, Params)]),
+    memberchk(delay_in_frames=DelayInFrames, Params),
+    DelayInFrames =:= 11025,
+    sampler_sound_unload(Sound).
+
+test(set_ping_pong_delay_multiple_parameters, [nondet]) :-
+    sampler_sound_load('audio/counting.wav', Sound),
+    sampler_sound_attach_effect(Sound, ping_pong_delay, [max_delay_in_frames=44100, smoothing_mode=0], Effect),
+    sampler_effect_set_parameters(Effect, [wet=0.4, dry=0.6, feedback=0.5, delay_in_frames=11025]),
+    sampler_sound_effects(Sound, [effect(ping_pong_delay, _, Params)]),
+    memberchk(wet=Wet, Params),
+    memberchk(dry=Dry, Params),
+    memberchk(feedback=Feedback, Params),
+    memberchk(delay_in_frames=DelayInFrames, Params),
+    abs(Wet - 0.4) < 0.001,
+    abs(Dry - 0.6) < 0.001,
+    abs(Feedback - 0.5) < 0.001,
+    DelayInFrames =:= 11025,
+    sampler_sound_unload(Sound).
+
+test(set_ping_pong_delay_max_delay_error, [error(permission_error(modify, max_delay_in_frames, _))]) :-
+    sampler_sound_load('audio/counting.wav', Sound),
+    sampler_sound_attach_effect(Sound, ping_pong_delay, [max_delay_in_frames=44100], Effect),
+    sampler_effect_set_parameters(Effect, [max_delay_in_frames=88200]),
+    sampler_sound_unload(Sound).
+
+test(set_ping_pong_delay_delay_out_of_range, [error(domain_error(delay_in_range, _))]) :-
+    sampler_sound_load('audio/counting.wav', Sound),
+    sampler_sound_attach_effect(Sound, ping_pong_delay, [max_delay_in_frames=44100, delay_in_frames=22050], Effect),
+    sampler_effect_set_parameters(Effect, [delay_in_frames=88200]),
+    sampler_sound_unload(Sound).
+
+test(query_ping_pong_delay_smoothing_defaults, [nondet]) :-
+    sampler_sound_load('audio/counting.wav', Sound),
+    sampler_sound_attach_effect(Sound, ping_pong_delay, [max_delay_in_frames=44100], _),
+    sampler_sound_effects(Sound, [effect(ping_pong_delay, _, Params)]),
+    memberchk(smoothing_mode=SmoothingMode, Params),
+    memberchk(smoothing_speed=SmoothingSpeed, Params),
+    memberchk(crossfade_length=CrossfadeLength, Params),
+    SmoothingMode =:= 1,  /* default is pitch-shift mode */
+    abs(SmoothingSpeed - 1.0) < 0.001,
+    CrossfadeLength =:= 128,
+    sampler_sound_unload(Sound).
+
+test(attach_ping_pong_delay_with_smoothing, [nondet]) :-
+    sampler_sound_load('audio/counting.wav', Sound),
+    sampler_sound_attach_effect(Sound, ping_pong_delay, [max_delay_in_frames=44100, smoothing_mode=2, smoothing_speed=0.5, crossfade_length=2048], _),
+    sampler_sound_effects(Sound, [effect(ping_pong_delay, _, Params)]),
+    memberchk(smoothing_mode=SmoothingMode, Params),
+    memberchk(smoothing_speed=SmoothingSpeed, Params),
+    memberchk(crossfade_length=CrossfadeLength, Params),
+    SmoothingMode =:= 2,
+    abs(SmoothingSpeed - 0.5) < 0.001,
+    CrossfadeLength =:= 2048,
+    sampler_sound_unload(Sound).
+
+test(set_ping_pong_delay_smoothing_mode, [nondet]) :-
+    sampler_sound_load('audio/counting.wav', Sound),
+    sampler_sound_attach_effect(Sound, ping_pong_delay, [max_delay_in_frames=44100], Effect),
+    sampler_effect_set_parameters(Effect, [smoothing_mode=2]),
+    sampler_sound_effects(Sound, [effect(ping_pong_delay, _, Params)]),
+    memberchk(smoothing_mode=SmoothingMode, Params),
+    SmoothingMode =:= 2,
+    sampler_sound_unload(Sound).
+
+test(set_ping_pong_delay_smoothing_speed, [nondet]) :-
+    sampler_sound_load('audio/counting.wav', Sound),
+    sampler_sound_attach_effect(Sound, ping_pong_delay, [max_delay_in_frames=44100], Effect),
+    sampler_effect_set_parameters(Effect, [smoothing_speed=0.25]),
+    sampler_sound_effects(Sound, [effect(ping_pong_delay, _, Params)]),
+    memberchk(smoothing_speed=SmoothingSpeed, Params),
+    abs(SmoothingSpeed - 0.25) < 0.001,
+    sampler_sound_unload(Sound).
+
+test(set_ping_pong_delay_crossfade_length, [nondet]) :-
+    sampler_sound_load('audio/counting.wav', Sound),
+    sampler_sound_attach_effect(Sound, ping_pong_delay, [max_delay_in_frames=44100], Effect),
+    sampler_effect_set_parameters(Effect, [crossfade_length=4096]),
+    sampler_sound_effects(Sound, [effect(ping_pong_delay, _, Params)]),
+    memberchk(crossfade_length=CrossfadeLength, Params),
+    CrossfadeLength =:= 4096,
+    sampler_sound_unload(Sound).
+
 :- end_tests(effects).

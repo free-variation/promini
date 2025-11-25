@@ -58,10 +58,8 @@ typedef enum {
 	EFFECT_LPF,
 	EFFECT_HPF,
 	EFFECT_BPF,
-	EFFECT_NOTCH,
-	EFFECT_PEAK,
-	EFFECT_LOSHELF,
-	EFFECT_HISHELF
+	EFFECT_DELAY,
+	EFFECT_PING_PONG_DELAY
 } effect_type_t;
 
 /* Effect chain node */
@@ -130,7 +128,46 @@ typedef struct {
 	ma_uint32 order;
 } hpf_node_t;
 
+/* Band-pass filter node */
+typedef struct {
+	ma_bpf_node node;
+	double cutoff_frequency;
+	ma_uint32 order;
+} bpf_node_t;
+
+/* Delay node */
+typedef struct {
+	ma_delay_node node;
+	ma_uint32 delay_in_frames;
+	float wet;
+	float dry;
+	float decay;
+} delay_node_t;
+
+/* Ping-pong delay node */
+typedef struct {
+	ma_node_base base;
+	float* buffer_l;
+	float* buffer_r;
+	ma_uint32 buffer_size;
+	ma_uint32 cursor;
+	ma_uint32 delay_in_frames;
+	float feedback;
+	float wet;
+	float dry;
+
+	ma_uint32 smoothing_mode; /* 0 = none, 1 = smooth (pitch shift), 2 = crossfade */
+	ma_uint32 target_delay_in_frames; /* for smoothing mode */
+	ma_uint32 old_delay_in_frames; /* for crossfade mode */
+	ma_uint32 crossfade_counter;
+	ma_uint32 crossfade_length;
+	float smoothing_speed; /* samples per frame to move, e.g. 0.1 to 8.0 */
+	float smooth_delay_position; /* fractional delay position for smooth transitions */
+} ping_pong_delay_node_t;
+
+
 /* Shared sound slots array */
+
 extern sound_slot_t g_sounds[MAX_SOUNDS];
 
 /* Helper functions (implemented in sampler.c) */
