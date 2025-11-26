@@ -26,7 +26,7 @@ else
 endif
 
 # Source and output
-SRC := src/c/sampler.c src/c/synth.c src/c/effects.c src/c/init.c
+SRC := src/c/sampler.c src/c/synth.c src/c/effects.c src/c/init.c src/c/reverb.c
 HEADERS := src/c/sampler_internal.h
 LIBDIR := lib
 TARGET := $(LIBDIR)/sampler.$(SOEXT)

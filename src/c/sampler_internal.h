@@ -165,7 +165,106 @@ typedef struct {
 	float smooth_delay_position; /* fractional delay position for smooth transitions */
 } ping_pong_delay_node_t;
 
+/* One-pole filter used for both LPF and HPF */
+typedef struct {
+	float state;
+	float coefficient;
+} filter_onepole_t;
 
+/* Simple all-pass filter for smearing */
+typedef struct {
+	float* buffer;
+	ma_uint32 size;
+	ma_uint32 cursor;
+	float coefficient;
+} filter_allpass_t;
+
+/* A delay line */
+typedef struct {
+	float* buffer;
+	ma_uint32 size;
+	ma_uint32 cursor;
+} delay_t;
+
+/* Single tank, figure 8 topology */
+typedef struct {
+	filter_allpass_t decay_diffusion1[2];
+	delay_t pre_damping_delay[2];
+	filter_onepole_t damping_lpf[2];
+	filter_allpass_t decay_diffusion2[2];
+	delay_t post_damping_delay[2];
+	float feedback_sample;
+} tank_t;
+
+/* Single channel: input processing + 3 parallel tanks */
+typedef struct {
+	delay_t predelay;
+	filter_onepole_t input_lpf;
+	filter_allpass_t input_diffusion[8];
+	tank_t tanks[3];
+} channel_t;
+
+/* LFO for modulation */
+typedef struct {
+	float phase;
+	float rate;
+	float depth;
+} lfo_t;
+
+/* Delay-based pitch shifter */
+typedef struct {
+	float* buffer;
+	ma_uint32 size;
+	float write_pos;
+	float read_pos;
+	float phase;
+	float shift_semitones;
+	float mix;
+} pitchshift_t;
+
+/* Enhanced Dattorro reverb in true stereo */
+typedef struct {
+	ma_node_base base;
+
+	/* true stereo: two complete channels */
+	channel_t channels[2];
+
+	/* modulalets input diffuser read position for initial smear */
+	lfo_t input_lfo;
+
+	/* modulates dank delay reads for chorus effect in tail */
+	lfo_t tank_lfo;
+
+	/* shimmer pitch shifters (2 per channel) */
+	pitchshift_t shimmer[2][2];
+
+	/* 2x oversampling filter state for cleaner feedback at high frequencies */
+	float upsample_state[2];
+	float downsample_state[2];
+
+	/* tone shaping on wet output before mix */
+	filter_onepole_t wet_lpf[2];
+	filter_onepole_t wet_hpf[2];
+
+	/* user parameters */
+	float predelay_ms;
+	float bandwidth; /* input LPF before diffusion */
+	float input_diffusion_mix; /* 0 = raw input, 1 = full 8-stage diffusion */
+	float decay;
+	float damping; /* HF absorption in tank */
+	float mod_rate;
+	float mod_depth;
+	float shimmer1_shift; /* semitones; 0 = off */
+	float Shimmer1_mix;
+	float shimmer2_shift;
+	float simmer2_mex;
+	float width; /* stereo width of wet signal */
+	float cross_feed; /* amount of left/right bleed between channels (0.1-0.2 typical) */
+	float low_cut;
+	float high_cut;
+	float wet;
+	float dry;
+} reverb_node_t;
 /* Shared sound slots array */
 
 extern sound_slot_t g_sounds[MAX_SOUNDS];
