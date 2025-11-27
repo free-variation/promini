@@ -43,6 +43,7 @@
     sampler_sound_attach_bpf/4,
     sampler_sound_attach_delay/5,
     sampler_sound_attach_ping_pong_delay/6,
+    sampler_sound_attach_reverb/3,
     sampler_sound_effects/2,
     sampler_effect_set_parameters/2,
     sampler_effect_detach/1,
@@ -103,6 +104,9 @@ sampler_sound_attach_delay(Sound, DelayInFrames, Decay, Wet, Effect) :-
 
 sampler_sound_attach_ping_pong_delay(Sound, MaxDelayInFrames, DelayInFrames, Feedback, Wet, Effect) :-
     sampler_sound_attach_effect(Sound, ping_pong_delay, [max_delay_in_frames=MaxDelayInFrames, delay_in_frames=DelayInFrames, feedback=Feedback, wet=Wet], Effect).
+
+sampler_sound_attach_reverb(Sound, Params, Effect) :-
+    sampler_sound_attach_effect(Sound, reverb, Params, Effect).
 
 sampler_sound_clear_effects(Sound) :-
     sampler_sound_effects(Sound, Effects),

@@ -504,6 +504,31 @@ static void free_sound_slot(int index)
     if (index >= 0 && index < MAX_SOUNDS) {
 		pthread_mutex_lock(&g_sounds_mutex);
 
+		/* Free effect chain first, before uninitializing sound */
+		effect_node_t* effect = g_sounds[index].effect_chain;
+		while (effect != NULL) {
+			effect_node_t* next = effect->next;
+
+			/* Detach from audio graph before freeing */
+			ma_node_detach_output_bus(effect->effect_node, 0);
+
+			/* Free effect-specific resources */
+			if (effect->type == EFFECT_BITCRUSH) {
+				bitcrush_node_t* bitcrush = (bitcrush_node_t*)effect->effect_node;
+				if (bitcrush->hold_samples != NULL) {
+					free(bitcrush->hold_samples);
+				}
+			} else if (effect->type == EFFECT_REVERB) {
+				free_reverb_node((reverb_node_t*)effect->effect_node);
+			}
+
+			ma_node_uninit(effect->effect_node, NULL);
+			free(effect->effect_node);
+			free(effect);
+			effect = next;
+		}
+		g_sounds[index].effect_chain = NULL;
+
         if (g_sounds[index].sound != NULL) {
             ma_sound_uninit(g_sounds[index].sound);
             free(g_sounds[index].sound);
@@ -516,26 +541,6 @@ static void free_sound_slot(int index)
 			free(g_sounds[index].audio_buffer);
 			g_sounds[index].audio_buffer = NULL;
 		}
-
-		/* Free effect chain */
-		effect_node_t* effect = g_sounds[index].effect_chain;
-		while (effect != NULL) {
-			effect_node_t* next = effect->next;
-
-			/* Free effect-specific resources */
-			if (effect->type == EFFECT_BITCRUSH) {
-				bitcrush_node_t* bitcrush = (bitcrush_node_t*)effect->effect_node;
-				if (bitcrush->hold_samples != NULL) {
-					free(bitcrush->hold_samples);
-				}
-			}
-
-			ma_node_uninit(effect->effect_node, NULL);
-			free(effect->effect_node);
-			free(effect);
-			effect = next;
-		}
-		g_sounds[index].effect_chain = NULL;
 
 		/* Decrement data buffer refcount if sound was created from a buffer */
 		if (g_sounds[index].data_buffer_index >= 0) {

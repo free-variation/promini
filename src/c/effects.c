@@ -2111,6 +2111,271 @@ static foreign_t set_ping_pong_delay_parameters(ping_pong_delay_node_t* pp, term
 
 
 /******************************************************************************
+ * REVERB EFFECT
+ *****************************************************************************/
+
+/*
+ * attach_reverb_effect()
+ * Parse parameters and attach reverb effect to sound.
+ * All parameters are optional with sensible defaults.
+ * Returns MA_SUCCESS or error code.
+ */
+static ma_result attach_reverb_effect(term_t params, sound_slot_t* sound_slot, ma_node_base** out_effect_node)
+{
+	reverb_node_t* reverb;
+	ma_result result;
+	ma_uint32 sample_rate;
+	float value;
+
+	reverb = (reverb_node_t*)malloc(sizeof(reverb_node_t));
+	if (!reverb) {
+		return MA_OUT_OF_MEMORY;
+	}
+
+	get_engine_format_info(NULL, NULL, &sample_rate);
+
+	result = init_reverb_node(reverb, sample_rate);
+	if (result != MA_SUCCESS) {
+		free(reverb);
+		return result;
+	}
+
+	result = init_effect_node_base(&reverb->base, &reverb_vtable);
+	if (result != MA_SUCCESS) {
+		free_reverb_node(reverb);
+		free(reverb);
+		return result;
+	}
+
+	/* Override defaults with any provided parameters */
+	if (get_param_float(params, "predelay_ms", &value)) {
+		reverb->predelay_ms = value;
+	}
+	if (get_param_float(params, "bandwidth", &value)) {
+		reverb->bandwidth = value;
+	}
+	if (get_param_float(params, "decay", &value)) {
+		reverb->decay = value;
+	}
+	if (get_param_float(params, "damping", &value)) {
+		reverb->damping = value;
+	}
+	if (get_param_float(params, "mod_rate", &value)) {
+		reverb->mod_rate = value;
+	}
+	if (get_param_float(params, "mod_depth", &value)) {
+		reverb->mod_depth = value;
+	}
+	if (get_param_float(params, "shimmer1_shift", &value)) {
+		reverb->shimmer1_shift = value;
+	}
+	if (get_param_float(params, "shimmer1_mix", &value)) {
+		reverb->shimmer1_mix = value;
+	}
+	if (get_param_float(params, "shimmer2_shift", &value)) {
+		reverb->shimmer2_shift = value;
+	}
+	if (get_param_float(params, "shimmer2_mix", &value)) {
+		reverb->shimmer2_mix = value;
+	}
+	if (get_param_float(params, "width", &value)) {
+		reverb->width = value;
+	}
+	if (get_param_float(params, "cross_feed", &value)) {
+		reverb->cross_feed = value;
+	}
+	if (get_param_float(params, "low_cut", &value)) {
+		reverb->low_cut = value;
+	}
+	if (get_param_float(params, "high_cut", &value)) {
+		reverb->high_cut = value;
+	}
+	if (get_param_float(params, "wet", &value)) {
+		reverb->wet = value;
+	}
+	if (get_param_float(params, "dry", &value)) {
+		reverb->dry = value;
+	}
+
+	result = attach_effect_node_to_sound(sound_slot, &reverb->base, EFFECT_REVERB);
+	if (result != MA_SUCCESS) {
+		free_reverb_node(reverb);
+		ma_node_uninit(&reverb->base, NULL);
+		free(reverb);
+		return result;
+	}
+
+	*out_effect_node = &reverb->base;
+	return MA_SUCCESS;
+}
+
+/*
+ * query_reverb_params()
+ * Build parameter list for reverb effect
+ */
+static int query_reverb_params(reverb_node_t* reverb, term_t params_list)
+{
+	term_t param_args = PL_new_term_refs(2);
+	functor_t eq_functor = PL_new_functor(PL_new_atom("="), 2);
+	term_t param_term = PL_new_term_ref();
+
+	PL_put_atom_chars(param_args+0, "dry");
+	if (!PL_put_float(param_args+1, reverb->dry)) return FALSE;
+	if (!PL_cons_functor_v(param_term, eq_functor, param_args)) return FALSE;
+	if (!PL_cons_list(params_list, param_term, params_list)) return FALSE;
+
+	PL_put_atom_chars(param_args+0, "wet");
+	if (!PL_put_float(param_args+1, reverb->wet)) return FALSE;
+	if (!PL_cons_functor_v(param_term, eq_functor, param_args)) return FALSE;
+	if (!PL_cons_list(params_list, param_term, params_list)) return FALSE;
+
+	PL_put_atom_chars(param_args+0, "high_cut");
+	if (!PL_put_float(param_args+1, reverb->high_cut)) return FALSE;
+	if (!PL_cons_functor_v(param_term, eq_functor, param_args)) return FALSE;
+	if (!PL_cons_list(params_list, param_term, params_list)) return FALSE;
+
+	PL_put_atom_chars(param_args+0, "low_cut");
+	if (!PL_put_float(param_args+1, reverb->low_cut)) return FALSE;
+	if (!PL_cons_functor_v(param_term, eq_functor, param_args)) return FALSE;
+	if (!PL_cons_list(params_list, param_term, params_list)) return FALSE;
+
+	PL_put_atom_chars(param_args+0, "cross_feed");
+	if (!PL_put_float(param_args+1, reverb->cross_feed)) return FALSE;
+	if (!PL_cons_functor_v(param_term, eq_functor, param_args)) return FALSE;
+	if (!PL_cons_list(params_list, param_term, params_list)) return FALSE;
+
+	PL_put_atom_chars(param_args+0, "width");
+	if (!PL_put_float(param_args+1, reverb->width)) return FALSE;
+	if (!PL_cons_functor_v(param_term, eq_functor, param_args)) return FALSE;
+	if (!PL_cons_list(params_list, param_term, params_list)) return FALSE;
+
+	PL_put_atom_chars(param_args+0, "shimmer2_mix");
+	if (!PL_put_float(param_args+1, reverb->shimmer2_mix)) return FALSE;
+	if (!PL_cons_functor_v(param_term, eq_functor, param_args)) return FALSE;
+	if (!PL_cons_list(params_list, param_term, params_list)) return FALSE;
+
+	PL_put_atom_chars(param_args+0, "shimmer2_shift");
+	if (!PL_put_float(param_args+1, reverb->shimmer2_shift)) return FALSE;
+	if (!PL_cons_functor_v(param_term, eq_functor, param_args)) return FALSE;
+	if (!PL_cons_list(params_list, param_term, params_list)) return FALSE;
+
+	PL_put_atom_chars(param_args+0, "shimmer1_mix");
+	if (!PL_put_float(param_args+1, reverb->shimmer1_mix)) return FALSE;
+	if (!PL_cons_functor_v(param_term, eq_functor, param_args)) return FALSE;
+	if (!PL_cons_list(params_list, param_term, params_list)) return FALSE;
+
+	PL_put_atom_chars(param_args+0, "shimmer1_shift");
+	if (!PL_put_float(param_args+1, reverb->shimmer1_shift)) return FALSE;
+	if (!PL_cons_functor_v(param_term, eq_functor, param_args)) return FALSE;
+	if (!PL_cons_list(params_list, param_term, params_list)) return FALSE;
+
+	PL_put_atom_chars(param_args+0, "mod_depth");
+	if (!PL_put_float(param_args+1, reverb->mod_depth)) return FALSE;
+	if (!PL_cons_functor_v(param_term, eq_functor, param_args)) return FALSE;
+	if (!PL_cons_list(params_list, param_term, params_list)) return FALSE;
+
+	PL_put_atom_chars(param_args+0, "mod_rate");
+	if (!PL_put_float(param_args+1, reverb->mod_rate)) return FALSE;
+	if (!PL_cons_functor_v(param_term, eq_functor, param_args)) return FALSE;
+	if (!PL_cons_list(params_list, param_term, params_list)) return FALSE;
+
+	PL_put_atom_chars(param_args+0, "damping");
+	if (!PL_put_float(param_args+1, reverb->damping)) return FALSE;
+	if (!PL_cons_functor_v(param_term, eq_functor, param_args)) return FALSE;
+	if (!PL_cons_list(params_list, param_term, params_list)) return FALSE;
+
+	PL_put_atom_chars(param_args+0, "decay");
+	if (!PL_put_float(param_args+1, reverb->decay)) return FALSE;
+	if (!PL_cons_functor_v(param_term, eq_functor, param_args)) return FALSE;
+	if (!PL_cons_list(params_list, param_term, params_list)) return FALSE;
+
+	PL_put_atom_chars(param_args+0, "bandwidth");
+	if (!PL_put_float(param_args+1, reverb->bandwidth)) return FALSE;
+	if (!PL_cons_functor_v(param_term, eq_functor, param_args)) return FALSE;
+	if (!PL_cons_list(params_list, param_term, params_list)) return FALSE;
+
+	PL_put_atom_chars(param_args+0, "predelay_ms");
+	if (!PL_put_float(param_args+1, reverb->predelay_ms)) return FALSE;
+	if (!PL_cons_functor_v(param_term, eq_functor, param_args)) return FALSE;
+	if (!PL_cons_list(params_list, param_term, params_list)) return FALSE;
+
+	return TRUE;
+}
+
+/*
+ * set_reverb_parameters()
+ * Set parameters for reverb effect from Prolog term list
+ */
+static foreign_t set_reverb_parameters(reverb_node_t* reverb, term_t params_list)
+{
+	term_t list = PL_copy_term_ref(params_list);
+	term_t head = PL_new_term_ref();
+	functor_t eq_functor = PL_new_functor(PL_new_atom("="), 2);
+
+	while (PL_get_list(list, head, list)) {
+		term_t key_term = PL_new_term_ref();
+		term_t value_term = PL_new_term_ref();
+		char* param_name;
+		double value;
+
+		if (!PL_is_functor(head, eq_functor)) {
+			return PL_type_error("key_value_pair", head);
+		}
+		if (!PL_get_arg(1, head, key_term)) return FALSE;
+		if (!PL_get_arg(2, head, value_term)) return FALSE;
+		if (!PL_get_atom_chars(key_term, &param_name)) {
+			return PL_type_error("atom", key_term);
+		}
+		if (!PL_get_float(value_term, &value)) {
+			return PL_type_error("float", value_term);
+		}
+
+		if (strcmp(param_name, "predelay_ms") == 0) {
+			reverb->predelay_ms = (float)value;
+		} else if (strcmp(param_name, "bandwidth") == 0) {
+			reverb->bandwidth = (float)value;
+		} else if (strcmp(param_name, "decay") == 0) {
+			reverb->decay = (float)value;
+		} else if (strcmp(param_name, "damping") == 0) {
+			reverb->damping = (float)value;
+		} else if (strcmp(param_name, "mod_rate") == 0) {
+			reverb->mod_rate = (float)value;
+		} else if (strcmp(param_name, "mod_depth") == 0) {
+			reverb->mod_depth = (float)value;
+		} else if (strcmp(param_name, "shimmer1_shift") == 0) {
+			reverb->shimmer1_shift = (float)value;
+		} else if (strcmp(param_name, "shimmer1_mix") == 0) {
+			reverb->shimmer1_mix = (float)value;
+		} else if (strcmp(param_name, "shimmer2_shift") == 0) {
+			reverb->shimmer2_shift = (float)value;
+		} else if (strcmp(param_name, "shimmer2_mix") == 0) {
+			reverb->shimmer2_mix = (float)value;
+		} else if (strcmp(param_name, "width") == 0) {
+			reverb->width = (float)value;
+		} else if (strcmp(param_name, "cross_feed") == 0) {
+			reverb->cross_feed = (float)value;
+		} else if (strcmp(param_name, "low_cut") == 0) {
+			reverb->low_cut = (float)value;
+		} else if (strcmp(param_name, "high_cut") == 0) {
+			reverb->high_cut = (float)value;
+		} else if (strcmp(param_name, "wet") == 0) {
+			reverb->wet = (float)value;
+		} else if (strcmp(param_name, "dry") == 0) {
+			reverb->dry = (float)value;
+		} else {
+			return PL_domain_error("reverb_parameter", key_term);
+		}
+	}
+
+	if (!PL_get_nil(list)) {
+		return PL_type_error("list", params_list);
+	}
+
+	return TRUE;
+}
+
+
+/******************************************************************************
  * PROLOG INTERFACE
  *****************************************************************************/
 
@@ -2148,6 +2413,8 @@ static foreign_t pl_sampler_sound_attach_effect(term_t sound_handle, term_t effe
 		result = attach_delay_effect(params, &g_sounds[slot], &effect_node);
 	} else if (strcmp(type_str, "ping_pong_delay") == 0) {
 		result = attach_ping_pong_delay_effect(params, &g_sounds[slot], &effect_node);
+	} else if (strcmp(type_str, "reverb") == 0) {
+		result = attach_reverb_effect(params, &g_sounds[slot], &effect_node);
 	} else {
 		return PL_domain_error("effect_type", effect_type);
 	}
@@ -2244,6 +2511,10 @@ static foreign_t pl_sampler_sound_effects(term_t sound_handle, term_t effects_li
 					type_str = "ping_pong_delay";
 					query_result = query_ping_pong_delay_params((ping_pong_delay_node_t*)effect->effect_node, params_list);
 					break;
+				case EFFECT_REVERB:
+					type_str = "reverb";
+					query_result = query_reverb_params((reverb_node_t*)effect->effect_node, params_list);
+					break;
 				default:
 					type_str = "unknown";
 					break;
@@ -2323,6 +2594,8 @@ static foreign_t pl_sampler_effect_set_parameters(term_t effect_handle, term_t p
 			return set_delay_parameters((delay_node_t*)node->effect_node, params_list);
 		case EFFECT_PING_PONG_DELAY:
 			return set_ping_pong_delay_parameters((ping_pong_delay_node_t*)node->effect_node, params_list);
+		case EFFECT_REVERB:
+			return set_reverb_parameters((reverb_node_t*)node->effect_node, params_list);
 		default:
 			return PL_domain_error("effect_type", effect_handle);
 	}
@@ -2352,6 +2625,8 @@ static foreign_t pl_sampler_effect_detach(term_t effect_handle)
 				if (bitcrush->hold_samples) {
 					free(bitcrush->hold_samples);
 				}
+			} else if (node->type == EFFECT_REVERB) {
+				free_reverb_node((reverb_node_t*)node->effect_node);
 			}
 			ma_node_uninit(node->effect_node, NULL);
 			free(node->effect_node);

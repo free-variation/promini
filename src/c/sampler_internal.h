@@ -165,105 +165,94 @@ typedef struct {
 	float smooth_delay_position; /* fractional delay position for smooth transitions */
 } ping_pong_delay_node_t;
 
-/* One-pole filter used for both LPF and HPF */
+/* Delay line with multiple tap points (for reverb) */
 typedef struct {
-	float state;
-	float coefficient;
-} filter_onepole_t;
+	float* buffer;
+	ma_uint32 mask;
+	ma_uint32 main_delay;
+	ma_uint32 tap1, tap2, tap3;
+} reverb_delay_line_t;
 
-/* Simple all-pass filter for smearing */
+/* Tank half for reverb (one side of figure-8) */
+typedef struct {
+	float* decay_diff1_buf;
+	ma_uint32 decay_diff1_mask;
+	ma_uint32 decay_diff1_delay;
+
+	reverb_delay_line_t pre_damp;
+
+	float damping_state;
+
+	float* decay_diff2_buf;
+	ma_uint32 decay_diff2_mask;
+	ma_uint32 decay_diff2_delay;
+	ma_uint32 decay_diff2_tap1;  /* output tap offset */
+	ma_uint32 decay_diff2_tap2;  /* output tap offset */
+
+	reverb_delay_line_t post_damp;
+} reverb_tank_half_t;
+
+/* Complete reverb channel (L or R) */
+typedef struct {
+	float* predelay_buf;
+	ma_uint32 predelay_mask;
+
+	float input_lpf_state;
+
+	float* diffuser_buf[4];
+	ma_uint32 diffuser_mask[4];
+	ma_uint32 diffuser_delay[4];
+
+	reverb_tank_half_t tank[2];
+} reverb_channel_t;
+
+/* Pitch shifter for shimmer effect (4-grain overlap-add) */
 typedef struct {
 	float* buffer;
 	ma_uint32 size;
-	ma_uint32 cursor;
-	float coefficient;
-} filter_allpass_t;
+	ma_uint32 write_pos;
+	/* 4 grains, each with: delay position, ramp level, ramp slope */
+	float dsamp[4];
+	float dsamp_slope[4];
+	float ramp[4];
+	float ramp_slope[4];
+	ma_uint32 counter;
+	int stage;
+} reverb_pitchshift_t;
 
-/* A delay line */
-typedef struct {
-	float* buffer;
-	ma_uint32 size;
-	ma_uint32 cursor;
-} delay_t;
-
-/* Single tank, figure 8 topology */
-typedef struct {
-	filter_allpass_t decay_diffusion1[2];
-	delay_t pre_damping_delay[2];
-	filter_onepole_t damping_lpf[2];
-	filter_allpass_t decay_diffusion2[2];
-	delay_t post_damping_delay[2];
-	float feedback_sample;
-} tank_t;
-
-/* Single channel: input processing + 3 parallel tanks */
-typedef struct {
-	delay_t predelay;
-	filter_onepole_t input_lpf;
-	filter_allpass_t input_diffusion[8];
-	tank_t tanks[3];
-} channel_t;
-
-/* LFO for modulation */
-typedef struct {
-	float phase;
-	float rate;
-	float depth;
-} lfo_t;
-
-/* Delay-based pitch shifter */
-typedef struct {
-	float* buffer;
-	ma_uint32 size;
-	float write_pos;
-	float read_pos;
-	float phase;
-	float shift_semitones;
-	float mix;
-} pitchshift_t;
-
-/* Enhanced Dattorro reverb in true stereo */
+/* True stereo Dattorro reverb */
 typedef struct {
 	ma_node_base base;
 
 	/* true stereo: two complete channels */
-	channel_t channels[2];
+	reverb_channel_t channels[2];
 
-	/* modulalets input diffuser read position for initial smear */
-	lfo_t input_lfo;
-
-	/* modulates dank delay reads for chorus effect in tail */
-	lfo_t tank_lfo;
-
-	/* shimmer pitch shifters (2 per channel) */
-	pitchshift_t shimmer[2][2];
-
-	/* 2x oversampling filter state for cleaner feedback at high frequencies */
-	float upsample_state[2];
-	float downsample_state[2];
-
-	/* tone shaping on wet output before mix */
-	filter_onepole_t wet_lpf[2];
-	filter_onepole_t wet_hpf[2];
+	/* shimmer pitch shifters (2 per channel for dual shimmer) */
+	reverb_pitchshift_t shimmer[2][2];
 
 	/* user parameters */
 	float predelay_ms;
-	float bandwidth; /* input LPF before diffusion */
-	float input_diffusion_mix; /* 0 = raw input, 1 = full 8-stage diffusion */
+	float bandwidth;
 	float decay;
-	float damping; /* HF absorption in tank */
+	float damping;
 	float mod_rate;
 	float mod_depth;
-	float shimmer1_shift; /* semitones; 0 = off */
-	float Shimmer1_mix;
+	float shimmer1_shift; /* semitones, 0 = off */
+	float shimmer1_mix;   /* 0-1 */
 	float shimmer2_shift;
-	float simmer2_mex;
-	float width; /* stereo width of wet signal */
-	float cross_feed; /* amount of left/right bleed between channels (0.1-0.2 typical) */
-	float low_cut;
-	float high_cut;
+	float shimmer2_mix;
+	float width;
+	float cross_feed;
+	float low_cut;  /* Hz, 0 = disabled */
+	float high_cut; /* Hz, 0 = disabled */
 	float wet;
 	float dry;
+
+	/* internal state */
+	ma_uint32 t;
+	float mod_phase;
+	float hpf_l, hpf_r;
+	float lpf_l, lpf_r;
 } reverb_node_t;
 /* Shared sound slots array */
 
@@ -272,6 +261,11 @@ extern sound_slot_t g_sounds[MAX_SOUNDS];
 /* Helper functions (implemented in sampler.c) */
 extern ma_result attach_effect_node_to_sound(sound_slot_t* sound_slot, ma_node_base* effect_node, effect_type_t type);
 extern void get_engine_format_info(ma_format* format, ma_uint32* channels, ma_uint32* sampleRate);
+
+/* Reverb functions (implemented in reverb.c) */
+extern ma_node_vtable reverb_vtable;
+extern ma_result init_reverb_node(reverb_node_t* reverb, ma_uint32 sample_rate);
+extern void free_reverb_node(reverb_node_t* reverb);
 
 /* Module registration functions */
 extern install_t sampler_register_predicates(void);
