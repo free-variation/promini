@@ -617,6 +617,141 @@ demo_voice_bitcrush :-
 
 
 /*
+ * demo_noise/0
+ * Demonstrates the three noise types: white, pink, and brownian.
+ */
+demo_noise :-
+    format('~n=== Noise Generator Demo ===~n'),
+    format('Demonstrating white, pink, and brownian noise...~n~n'),
+
+    sampler_synth_voice_create(Voice),
+
+    format('White noise (flat spectrum, harsh)...~n'),
+    sampler_synth_noise_add(Voice, white, N1),
+    sampler_synth_oscillator_set_volume(N1, 0.3),
+    sampler_synth_voice_start(Voice),
+    sleep(2),
+    sampler_synth_voice_stop(Voice),
+    sampler_synth_oscillator_remove(N1),
+    sleep(0.3),
+
+    format('Pink noise (1/f spectrum, natural)...~n'),
+    sampler_synth_noise_add(Voice, pink, N2),
+    sampler_synth_oscillator_set_volume(N2, 0.3),
+    sampler_synth_voice_start(Voice),
+    sleep(2),
+    sampler_synth_voice_stop(Voice),
+    sampler_synth_oscillator_remove(N2),
+    sleep(0.3),
+
+    format('Brownian noise (1/f^2 spectrum, rumble)...~n'),
+    sampler_synth_noise_add(Voice, brownian, N3),
+    sampler_synth_oscillator_set_volume(N3, 0.5),
+    sampler_synth_voice_start(Voice),
+    sleep(2),
+    sampler_synth_voice_stop(Voice),
+
+    sampler_synth_voice_unload(Voice),
+    format('Done.~n~n').
+
+
+/*
+ * demo_noise_mix/0
+ * Demonstrates mixing noise with oscillators.
+ */
+demo_noise_mix :-
+    format('~n=== Noise + Oscillator Mix Demo ===~n'),
+    format('Mixing pink noise with a sine wave...~n'),
+
+    sampler_synth_voice_create(Voice),
+
+    % Add a low sine wave
+    sampler_synth_oscillator_add(Voice, 110.0, 0.0, Osc),
+    sampler_synth_oscillator_set_volume(Osc, 0.6),
+
+    % Add pink noise at lower volume
+    sampler_synth_noise_add(Voice, pink, Noise),
+    sampler_synth_oscillator_set_volume(Noise, 0.15),
+
+    format('Playing mixed tone...~n'),
+    sampler_synth_voice_start(Voice),
+    sleep(3),
+
+    format('Fading out noise...~n'),
+    sampler_synth_oscillator_fade(Noise, 0.0, 1000),
+    sleep(1.5),
+
+    format('Pure sine remains...~n'),
+    sleep(1.5),
+
+    voice_fade_stop(Voice),
+    sampler_synth_voice_unload(Voice),
+    format('Done.~n~n').
+
+
+/*
+ * demo_wind/0
+ * Creates a wind-like effect using filtered brownian noise.
+ */
+demo_wind :-
+    format('~n=== Wind Effect Demo ===~n'),
+    format('Creating wind using filtered brownian noise...~n'),
+
+    sampler_synth_voice_create(Voice),
+    sampler_synth_noise_add(Voice, brownian, Noise),
+    sampler_synth_oscillator_set_volume(Noise, 0.8),
+
+    % Add a bandpass filter to shape the wind
+    sampler_voice_attach_effect(Voice, bpf, [cutoff=400.0, order=4], _),
+
+    format('Playing wind effect...~n'),
+    sampler_synth_voice_start(Voice),
+    sleep(4),
+
+    voice_fade_stop(Voice),
+    sampler_synth_voice_unload(Voice),
+    format('Done.~n~n').
+
+
+/*
+ * demo_additive_proper/0
+ * Demonstrates proper additive synthesis with 1/n amplitude rolloff.
+ */
+demo_additive_proper :-
+    format('~n=== Proper Additive Synthesis Demo ===~n'),
+    format('Building sawtooth with 1/n amplitude rolloff...~n'),
+    format('Fundamental: 110Hz (A2)~n'),
+
+    Fundamental = 110.0,
+    sampler_synth_voice_create(Voice),
+
+    format('Adding harmonics with proper amplitudes...~n'),
+    add_harmonic_proper(Voice, Fundamental, 1, _),
+    add_harmonic_proper(Voice, Fundamental, 2, _),
+    add_harmonic_proper(Voice, Fundamental, 3, _),
+    add_harmonic_proper(Voice, Fundamental, 4, _),
+    add_harmonic_proper(Voice, Fundamental, 5, _),
+    add_harmonic_proper(Voice, Fundamental, 6, _),
+    add_harmonic_proper(Voice, Fundamental, 7, _),
+    add_harmonic_proper(Voice, Fundamental, 8, _),
+
+    format('Playing sawtooth-like tone...~n'),
+    sampler_synth_voice_start(Voice),
+    sleep(4),
+
+    sampler_synth_voice_stop(Voice),
+    sampler_synth_voice_unload(Voice),
+    format('Done.~n~n').
+
+% Helper: add harmonic with 1/n amplitude
+add_harmonic_proper(Voice, Fundamental, N, Osc) :-
+    Freq is Fundamental * N,
+    Amp is 1.0 / N,
+    sampler_synth_oscillator_add(Voice, Freq, 0.0, Osc),
+    sampler_synth_oscillator_set_volume(Osc, Amp).
+
+
+/*
  * demo_all/0
  * Runs all demos in sequence.
  */
@@ -639,6 +774,10 @@ demo_all :-
     demo_voice_delay,
     demo_voice_filter,
     demo_voice_bitcrush,
+    demo_noise,
+    demo_noise_mix,
+    demo_wind,
+    demo_additive_proper,
 
     format('========================================~n'),
     format('     All demos complete!~n'),

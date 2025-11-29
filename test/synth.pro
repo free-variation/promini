@@ -94,4 +94,72 @@ test(start_empty_voice_fails, [fail, cleanup(sampler_synth_voice_unload(V))]) :-
     sampler_synth_voice_create(V),
     sampler_synth_voice_start(V).
 
+% Oscillator volume tests
+
+test(oscillator_default_volume, [nondet, cleanup(sampler_synth_voice_unload(V))]) :-
+    sampler_synth_voice_create(V),
+    sampler_synth_oscillator_add(V, 440.0, 0.0, O),
+    sampler_synth_oscillator_get_volume(O, Vol),
+    Vol =:= 1.0.
+
+test(oscillator_set_volume, [nondet, cleanup(sampler_synth_voice_unload(V))]) :-
+    sampler_synth_voice_create(V),
+    sampler_synth_oscillator_add(V, 440.0, 0.0, O),
+    sampler_synth_oscillator_set_volume(O, 0.5),
+    sampler_synth_oscillator_get_volume(O, Vol),
+    abs(Vol - 0.5) < 0.001.
+
+% Noise tests
+
+test(add_white_noise, [nondet, cleanup(sampler_synth_voice_unload(V))]) :-
+    sampler_synth_voice_create(V),
+    sampler_synth_noise_add(V, white, N),
+    integer(N),
+    N >= 0.
+
+test(add_pink_noise, [nondet, cleanup(sampler_synth_voice_unload(V))]) :-
+    sampler_synth_voice_create(V),
+    sampler_synth_noise_add(V, pink, N),
+    integer(N),
+    N >= 0.
+
+test(add_brownian_noise, [nondet, cleanup(sampler_synth_voice_unload(V))]) :-
+    sampler_synth_voice_create(V),
+    sampler_synth_noise_add(V, brownian, N),
+    integer(N),
+    N >= 0.
+
+test(noise_default_volume, [nondet, cleanup(sampler_synth_voice_unload(V))]) :-
+    sampler_synth_voice_create(V),
+    sampler_synth_noise_add(V, white, N),
+    sampler_synth_oscillator_get_volume(N, Vol),
+    Vol =:= 1.0.
+
+test(noise_set_volume, [nondet, cleanup(sampler_synth_voice_unload(V))]) :-
+    sampler_synth_voice_create(V),
+    sampler_synth_noise_add(V, white, N),
+    sampler_synth_oscillator_set_volume(N, 0.3),
+    sampler_synth_oscillator_get_volume(N, Vol),
+    abs(Vol - 0.3) < 0.001.
+
+test(start_stop_voice_with_noise, [nondet, cleanup(sampler_synth_voice_unload(V))]) :-
+    sampler_synth_voice_create(V),
+    sampler_synth_noise_add(V, white, _),
+    sampler_synth_voice_start(V),
+    sampler_synth_voice_stop(V).
+
+test(mixed_oscillator_and_noise, [nondet, cleanup(sampler_synth_voice_unload(V))]) :-
+    sampler_synth_voice_create(V),
+    sampler_synth_oscillator_add(V, 440.0, 0.0, O),
+    sampler_synth_noise_add(V, pink, N),
+    sampler_synth_oscillator_set_volume(O, 0.8),
+    sampler_synth_oscillator_set_volume(N, 0.2),
+    sampler_synth_voice_start(V),
+    sampler_synth_voice_stop(V).
+
+test(remove_noise, [nondet, cleanup(sampler_synth_voice_unload(V))]) :-
+    sampler_synth_voice_create(V),
+    sampler_synth_noise_add(V, white, N),
+    sampler_synth_oscillator_remove(N).
+
 :- end_tests(synth).

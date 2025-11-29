@@ -16,9 +16,13 @@
 #define MAX_OSCILLATORS 256
 
 typedef struct {
-	ma_waveform waveform;
+	union {
+		ma_waveform waveform;
+		ma_noise noise;
+	} source;
 	ma_sound sound;
 	ma_bool32 in_use;
+	ma_bool32 is_noise;
 	int voice_index;
 } synth_oscillator_t;
 
@@ -105,7 +109,11 @@ static void free_voice_slot(int index)
 				for (i = 0; i < MAX_OSCILLATORS; i++) {
 					if (g_oscillators[i].in_use && g_oscillators[i].voice_index == index) {
 						ma_sound_uninit(&g_oscillators[i].sound);
-						ma_waveform_uninit(&g_oscillators[i].waveform);
+						if (g_oscillators[i].is_noise) {
+							ma_noise_uninit(&g_oscillators[i].source.noise, NULL);
+						} else {
+							ma_waveform_uninit(&g_oscillators[i].source.waveform);
+						}
 						g_oscillators[i].in_use = MA_FALSE;
 					}
 				}
@@ -132,6 +140,7 @@ static int allocate_oscillator_slot(void)
 	for (i = 0; i < MAX_OSCILLATORS; i++) {
 		if (!g_oscillators[i].in_use) {
 			g_oscillators[i].in_use = MA_TRUE;
+			g_oscillators[i].is_noise = MA_FALSE;
 			slot = i;
 			break;
 		}
@@ -148,7 +157,11 @@ static void free_oscillator_slot(int index)
 {
 	if (index >= 0 && index < MAX_OSCILLATORS && g_oscillators[index].in_use) {
 		ma_sound_uninit(&g_oscillators[index].sound);
-		ma_waveform_uninit(&g_oscillators[index].waveform);
+		if (g_oscillators[index].is_noise) {
+			ma_noise_uninit(&g_oscillators[index].source.noise, NULL);
+		} else {
+			ma_waveform_uninit(&g_oscillators[index].source.waveform);
+		}
 		g_oscillators[index].in_use = MA_FALSE;
 		g_oscillators[index].voice_index = -1;
 	}
@@ -409,25 +422,25 @@ static foreign_t pl_synth_oscillator_add(term_t voice_handle, term_t freq_term,
 		frequency
 	);
 
-	result = ma_waveform_init(&waveform_config, &g_oscillators[osc_slot].waveform);
+	result = ma_waveform_init(&waveform_config, &g_oscillators[osc_slot].source.waveform);
 	if (result != MA_SUCCESS) {
 		free_oscillator_slot(osc_slot);
 		return FALSE;
 	}
 
 	/* Set initial phase */
-	ma_waveform_seek_to_pcm_frame(&g_oscillators[osc_slot].waveform,
+	ma_waveform_seek_to_pcm_frame(&g_oscillators[osc_slot].source.waveform,
 		(ma_uint64)(phase * sample_rate / frequency));
 
 	result = ma_sound_init_from_data_source(
 		g_engine,
-		&g_oscillators[osc_slot].waveform,
+		&g_oscillators[osc_slot].source.waveform,
 		MA_SOUND_FLAG_NO_SPATIALIZATION | MA_SOUND_FLAG_STREAM,
 		&voice->group,
 		&g_oscillators[osc_slot].sound
 	);
 	if (result != MA_SUCCESS) {
-		ma_waveform_uninit(&g_oscillators[osc_slot].waveform);
+		ma_waveform_uninit(&g_oscillators[osc_slot].source.waveform);
 		free_oscillator_slot(osc_slot);
 		return FALSE;
 	}
@@ -460,7 +473,11 @@ static foreign_t pl_synth_oscillator_remove(term_t osc_handle)
 	voice_slot = osc->voice_index;
 
 	ma_sound_uninit(&osc->sound);
-	ma_waveform_uninit(&osc->waveform);
+	if (osc->is_noise) {
+		ma_noise_uninit(&osc->source.noise, NULL);
+	} else {
+		ma_waveform_uninit(&osc->source.waveform);
+	}
 	osc->in_use = MA_FALSE;
 	osc->voice_index = -1;
 
@@ -478,6 +495,87 @@ static foreign_t pl_synth_oscillator_remove(term_t osc_handle)
 	}
 
 	return TRUE;
+}
+
+/*
+ * pl_synth_noise_add()
+ * sampler_synth_noise_add(+VoiceHandle, +Type, -NoiseHandle)
+ * Adds a noise generator to a voice.
+ * Type is one of: white, pink, brownian
+ */
+static foreign_t pl_synth_noise_add(term_t voice_handle, term_t type_term, term_t noise_handle)
+{
+	int voice_slot, osc_slot;
+	synth_voice_t* voice;
+	char* type_str;
+	ma_noise_type noise_type;
+	ma_noise_config noise_config;
+	ma_format format;
+	ma_uint32 channels, sample_rate;
+	ma_result result;
+
+	GET_VOICE_FROM_HANDLE(voice_handle, voice, voice_slot);
+
+	if (!PL_get_atom_chars(type_term, &type_str)) {
+		return PL_type_error("atom", type_term);
+	}
+
+	if (strcmp(type_str, "white") == 0) {
+		noise_type = ma_noise_type_white;
+	} else if (strcmp(type_str, "pink") == 0) {
+		noise_type = ma_noise_type_pink;
+	} else if (strcmp(type_str, "brownian") == 0) {
+		noise_type = ma_noise_type_brownian;
+	} else {
+		return PL_domain_error("noise_type", type_term);
+	}
+
+	osc_slot = allocate_oscillator_slot();
+	if (osc_slot < 0) {
+		return PL_resource_error("oscillator_slots");
+	}
+
+	g_oscillators[osc_slot].is_noise = MA_TRUE;
+
+	get_engine_format_info(&format, &channels, &sample_rate);
+
+	noise_config = ma_noise_config_init(
+		format,
+		channels,
+		noise_type,
+		0,    /* seed: 0 = default */
+		1.0   /* amplitude */
+	);
+
+	result = ma_noise_init(&noise_config, NULL, &g_oscillators[osc_slot].source.noise);
+	if (result != MA_SUCCESS) {
+		free_oscillator_slot(osc_slot);
+		return FALSE;
+	}
+
+	result = ma_sound_init_from_data_source(
+		g_engine,
+		&g_oscillators[osc_slot].source.noise,
+		MA_SOUND_FLAG_NO_SPATIALIZATION | MA_SOUND_FLAG_STREAM,
+		&voice->group,
+		&g_oscillators[osc_slot].sound
+	);
+	if (result != MA_SUCCESS) {
+		ma_noise_uninit(&g_oscillators[osc_slot].source.noise, NULL);
+		free_oscillator_slot(osc_slot);
+		return FALSE;
+	}
+
+	ma_sound_set_looping(&g_oscillators[osc_slot].sound, MA_TRUE);
+	g_oscillators[osc_slot].voice_index = voice_slot;
+	voice->is_voice = MA_TRUE;
+
+	/* If voice is already playing, start the noise immediately */
+	if (ma_sound_group_is_playing(&voice->group)) {
+		ma_sound_start(&g_oscillators[osc_slot].sound);
+	}
+
+	return PL_unify_integer(noise_handle, osc_slot);
 }
 
 /*
@@ -512,6 +610,43 @@ static foreign_t pl_synth_oscillator_fade(term_t osc_handle, term_t volume_term,
 }
 
 /*
+ * pl_synth_oscillator_set_volume()
+ * sampler_synth_oscillator_set_volume(+OscHandle, +Volume)
+ * Sets the volume of an oscillator or noise source.
+ */
+static foreign_t pl_synth_oscillator_set_volume(term_t osc_handle, term_t volume_term)
+{
+	int osc_slot;
+	synth_oscillator_t* osc;
+	double volume;
+
+	GET_OSCILLATOR_FROM_HANDLE(osc_handle, osc, osc_slot);
+
+	if (!PL_get_float(volume_term, &volume)) {
+		return PL_type_error("float", volume_term);
+	}
+
+	ma_sound_set_volume(&osc->sound, (float)volume);
+
+	return TRUE;
+}
+
+/*
+ * pl_synth_oscillator_get_volume()
+ * sampler_synth_oscillator_get_volume(+OscHandle, -Volume)
+ * Gets the volume of an oscillator or noise source.
+ */
+static foreign_t pl_synth_oscillator_get_volume(term_t osc_handle, term_t volume_term)
+{
+	int osc_slot;
+	synth_oscillator_t* osc;
+
+	GET_OSCILLATOR_FROM_HANDLE(osc_handle, osc, osc_slot);
+
+	return PL_unify_float(volume_term, ma_sound_get_volume(&osc->sound));
+}
+
+/*
  * pl_synth_oscillator_set_frequency()
  * sampler_synth_oscillator_set_frequency(+OscHandle, +Frequency)
  * Sets the frequency of an oscillator.
@@ -531,7 +666,7 @@ static foreign_t pl_synth_oscillator_set_frequency(term_t osc_handle, term_t fre
 		return PL_domain_error("positive_frequency", freq_term);
 	}
 
-	ma_waveform_set_frequency(&osc->waveform, frequency);
+	ma_waveform_set_frequency(&osc->source.waveform, frequency);
 
 	return TRUE;
 }
@@ -548,7 +683,7 @@ static foreign_t pl_synth_oscillator_get_frequency(term_t osc_handle, term_t fre
 
 	GET_OSCILLATOR_FROM_HANDLE(osc_handle, osc, osc_slot);
 
-	return PL_unify_float(freq_term, osc->waveform.config.frequency);
+	return PL_unify_float(freq_term, osc->source.waveform.config.frequency);
 }
 
 /*
@@ -570,8 +705,8 @@ static foreign_t pl_synth_oscillator_set_phase(term_t osc_handle, term_t phase_t
 	}
 
 	get_engine_format_info(NULL, NULL, &sample_rate);
-	ma_waveform_seek_to_pcm_frame(&osc->waveform,
-		(ma_uint64)(phase * sample_rate / osc->waveform.config.frequency));
+	ma_waveform_seek_to_pcm_frame(&osc->source.waveform,
+		(ma_uint64)(phase * sample_rate / osc->source.waveform.config.frequency));
 
 	return TRUE;
 }
@@ -590,7 +725,7 @@ static foreign_t pl_synth_oscillator_get_phase(term_t osc_handle, term_t phase_t
 	GET_OSCILLATOR_FROM_HANDLE(osc_handle, osc, osc_slot);
 
 	/* ma_waveform stores phase as 'time' which is cycles completed */
-	phase = osc->waveform.time - floor(osc->waveform.time);
+	phase = osc->source.waveform.time - floor(osc->source.waveform.time);
 
 	return PL_unify_float(phase_term, phase);
 }
@@ -616,7 +751,10 @@ install_t synth_register_predicates(void)
 	PL_register_foreign("sampler_synth_voice_unload", 1, pl_synth_voice_unload, 0);
 	PL_register_foreign("sampler_synth_oscillator_add", 4, pl_synth_oscillator_add, 0);
 	PL_register_foreign("sampler_synth_oscillator_remove", 1, pl_synth_oscillator_remove, 0);
+	PL_register_foreign("sampler_synth_noise_add", 3, pl_synth_noise_add, 0);
 	PL_register_foreign("sampler_synth_oscillator_fade", 3, pl_synth_oscillator_fade, 0);
+	PL_register_foreign("sampler_synth_oscillator_set_volume", 2, pl_synth_oscillator_set_volume, 0);
+	PL_register_foreign("sampler_synth_oscillator_get_volume", 2, pl_synth_oscillator_get_volume, 0);
 	PL_register_foreign("sampler_synth_oscillator_set_frequency", 2, pl_synth_oscillator_set_frequency, 0);
 	PL_register_foreign("sampler_synth_oscillator_get_frequency", 2, pl_synth_oscillator_get_frequency, 0);
 	PL_register_foreign("sampler_synth_oscillator_set_phase", 2, pl_synth_oscillator_set_phase, 0);
