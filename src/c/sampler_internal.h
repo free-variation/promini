@@ -48,6 +48,14 @@ extern pthread_mutex_t g_voices_mutex;
  * Sound management
  */
 #define MAX_SOUNDS 1024
+#define MAX_DATA_BUFFERS 256
+
+typedef struct {
+	ma_audio_buffer* buffer;
+	void *pData;
+	ma_uint32 refcount;
+	ma_bool32 in_use;
+} data_slot_t;
 
 /* Effect types */
 typedef enum {
@@ -90,6 +98,21 @@ typedef struct {
 	ma_bool32 is_voice;
 	effect_node_t* effect_chain;
 } synth_voice_t;
+
+#define MAX_OSCILLATORS 256
+
+typedef struct {
+	union {
+		ma_waveform waveform;
+		ma_noise noise;
+	} source;
+	ma_sound sound;
+	ma_bool32 in_use;
+	ma_bool32 is_noise;
+	int voice_index;
+} synth_oscillator_t;
+
+
 
 /* Helper macro to validate and retrieve sound from handle */
 #define GET_SOUND_WITH_SLOT(handle_term, sound_var, slot_var) \
@@ -268,13 +291,75 @@ typedef struct {
 	float lpf_l, lpf_r;
 } reverb_node_t;
 
+/*
+ * Modulation system
+ */
+
+#define MAX_MOD_SOURCES 64
+#define MAX_MOD_ROUTES 256
+
+/* modulation source types */
+typedef enum {
+	MOD_SOURCE_NONE = 0,
+	MOD_SOURCE_WAVEFORM,
+	MOD_SOURCE_NOISE,
+	MOD_SOURCE_SAMPLER
+} mod_source_type_t;
+
+/* modulation source */
+typedef struct {
+	mod_source_type_t type;
+	ma_bool32 in_use;
+	union {
+		ma_waveform waveform;
+		ma_noise noise;
+		struct {
+			int data_slot;
+			float cursor;
+			float rate;
+		} sampler;
+	} source;
+	ma_bool32 sh_enabled;
+	ma_uint32 sh_interval;
+	ma_uint32 sh_counter;
+	float sh_held_value;
+	float current_value;
+} mod_source_t;
+
+/* modulation setter function */
+typedef void (*mod_setter_t)(void* target, float value);
+
+/* modulation route */
+typedef struct {
+	ma_bool32 in_use;
+	int source_slot;
+	void* target;
+	mod_setter_t setter;
+	float depth;
+	float offset;
+	float slew;
+	float current_value;
+} mod_route_t;
+
+/* modulaation arrays and mutex */
+extern mod_source_t g_mod_sources[MAX_MOD_SOURCES];
+extern mod_route_t g_mod_routes[MAX_MOD_ROUTES];
+extern pthread_mutex_t g_mod_mutex;
+
+/* modulation functions in mod.c */
+extern void process_modulation(ma_uint32 frame_count, ma_uint32 sample_rate);
+extern install_t mod_register_predicates(void);
+extern install_t uninstall_mod(void);
+
 /* Shared arrays */
 extern sound_slot_t g_sounds[MAX_SOUNDS];
 extern synth_voice_t g_voices[MAX_VOICES];
+extern synth_oscillator_t g_oscillators[MAX_OSCILLATORS];
 
 /* Helper functions (implemented in sampler.c) */
 extern void get_engine_format_info(ma_format* format, ma_uint32* channels, ma_uint32* sampleRate);
 extern void free_effect_chain(effect_node_t* effect);
+extern data_slot_t* get_data_slot(int index);
 
 /* Effect functions (implemented in effects.c) */
 extern ma_result attach_effect_node(ma_node* source_node, effect_node_t** effect_chain, ma_node_base* effect_node, effect_type_t type);

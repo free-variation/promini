@@ -17,7 +17,19 @@ When answering design questions, reason from the specific requirements and use c
 Check existing code before writing new code. Naming conventions:
 
 - Local variables: snake_case (`device`, `input`, `output`, `frame_count`)
-- No camelCase in local code (only in miniaudio API when required by signature)
+- Always use snake_case for local variables, even when interfacing with miniaudio's camelCase API
 - miniaudio struct members use their own convention: `pData`, `pContext`, `pPlaybackInfos` (no underscore)
 - Never use `p_` prefix with underscore for pointers
+- Never use camelCase for local variables (e.g., use `frame_count` not `frameCount`, `sample_rate` not `sampleRate`)
 - Never invent a new naming style
+
+## Function Comments
+
+Every function must have a preamble comment explaining what it does:
+
+```c
+/*
+ * function_name()
+ * Brief description of what the function does.
+ */
+```

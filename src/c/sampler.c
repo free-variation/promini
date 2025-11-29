@@ -100,14 +100,7 @@ pthread_mutex_t g_capture_devices_mutex = PTHREAD_MUTEX_INITIALIZER;
 /*
  * Sound handle management
  */
-#define MAX_DATA_BUFFERS 256
 
-typedef struct {
-	ma_audio_buffer* buffer;
-	void *pData;
-	ma_uint32 refcount;
-	ma_bool32 in_use;
-} data_slot_t;
 
 static data_slot_t g_data_buffers[MAX_DATA_BUFFERS] = {{NULL, NULL, 0, MA_FALSE}};
 
@@ -198,6 +191,18 @@ static ma_audio_buffer* get_data_buffer(int index)
 		return NULL;
 	}
 	return g_data_buffers[index].buffer;
+}
+
+/*
+ * get_data_slot()
+ * Validates handle and return a data slot
+ */
+data_slot_t* get_data_slot(int index)
+{
+	if (index < 0 || index >= MAX_DATA_BUFFERS || !g_data_buffers[index].in_use) {
+		return NULL;
+	}
+	return &g_data_buffers[index];
 }
 
 /*
@@ -594,6 +599,26 @@ static foreign_t pl_sampler_version(term_t version)
 }
 
 /*
+ * engine_audio_callback()
+ * Main audio callback for the engine. 
+ * Processes modulation before rendering.
+ * Called by miniaudio once per audio block.
+ */
+static void engine_audio_callback(
+		ma_device* device, 
+		void* frames_out, 
+		const void* frames_in, 
+		ma_uint32 frame_count)
+{
+	ma_engine* engine = (ma_engine*)device->pUserData;
+	ma_uint32 sample_rate = ma_engine_get_sample_rate(engine);
+
+	process_modulation(frame_count, sample_rate);
+
+	ma_engine_read_pcm_frames(engine, frames_out, frame_count, NULL);
+}
+
+/*
  * pl_sampler_init()
  * sampler_init
  * Initializes the global miniaudio engine.
@@ -601,7 +626,8 @@ static foreign_t pl_sampler_version(term_t version)
  */
 foreign_t pl_sampler_init(void)
 {
-    ma_result result;
+    ma_engine_config engine_config;
+	ma_result result;
 
     /* Already initialized */
     if (g_engine != NULL) {
@@ -615,7 +641,10 @@ foreign_t pl_sampler_init(void)
     }
 
     /* Initialize engine with default config */
-    result = ma_engine_init(NULL, g_engine);
+	engine_config = ma_engine_config_init();
+	engine_config.dataCallback = engine_audio_callback;
+
+    result = ma_engine_init(&engine_config, g_engine);
     if (result != MA_SUCCESS) {
         free(g_engine);
         g_engine = NULL;

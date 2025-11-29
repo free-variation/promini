@@ -9,24 +9,6 @@
 #include <time.h>
 
 
-/******************************************************************************
- * TYPE DEFINITIONS
- *****************************************************************************/
-
-#define MAX_OSCILLATORS 256
-
-typedef struct {
-	union {
-		ma_waveform waveform;
-		ma_noise noise;
-	} source;
-	ma_sound sound;
-	ma_bool32 in_use;
-	ma_bool32 is_noise;
-	int voice_index;
-} synth_oscillator_t;
-
-
 #define GET_VOICE_FROM_HANDLE(handle_term, voice_var, slot_var) \
 	do { \
 		if (!PL_get_integer(handle_term, &slot_var)) { \
@@ -53,7 +35,7 @@ typedef struct {
  *****************************************************************************/
 
 synth_voice_t g_voices[MAX_VOICES] = {{0}};
-static synth_oscillator_t g_oscillators[MAX_OSCILLATORS] = {{0}};
+synth_oscillator_t g_oscillators[MAX_OSCILLATORS] = {{0}};
 
 /*
  * Thread safety - mutex for protecting voice allocation

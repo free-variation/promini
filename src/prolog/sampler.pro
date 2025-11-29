@@ -70,7 +70,13 @@
     sampler_synth_oscillator_set_frequency/2,
     sampler_synth_oscillator_get_frequency/2,
     sampler_synth_oscillator_set_phase/2,
-    sampler_synth_oscillator_get_phase/2
+    sampler_synth_oscillator_get_phase/2,
+    sampler_mod_lfo_create/3,
+    sampler_mod_lfo_set_frequency/2,
+    sampler_mod_lfo_get_frequency/2,
+    sampler_mod_source_unload/1,
+    sampler_mod_route_create/8,
+    sampler_mod_route_unload/1
   ]).
 
 :- use_foreign_library('../../lib/sampler').
