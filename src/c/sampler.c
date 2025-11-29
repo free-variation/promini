@@ -495,6 +495,33 @@ static int allocate_sound_slot(void)
 }
 
 /*
+ * free_effect_chain()
+ * Frees all nodes in an effect chain.
+ */
+void free_effect_chain(effect_node_t* effect) {
+	while (effect != NULL) {
+		effect_node_t* next = effect->next;
+
+		ma_node_detach_output_bus(effect->effect_node, 0);
+
+		if (effect->type == EFFECT_BITCRUSH) {
+			bitcrush_node_t* bitcrush = (bitcrush_node_t*)effect->effect_node;
+			if (bitcrush->hold_samples != NULL) {
+				free(bitcrush->hold_samples);
+			}
+		} else if (effect->type == EFFECT_REVERB) {
+			free_reverb_node((reverb_node_t*)effect->effect_node);
+		}
+
+		ma_node_uninit(effect->effect_node, NULL);
+		free(effect->effect_node);
+		free(effect);
+		effect = next;
+	}
+}
+
+
+/*
  * free_sound_slot()
  * Frees a sound slot.
  * Thread-safe: protected by g_sounds_mutex
@@ -504,29 +531,7 @@ static void free_sound_slot(int index)
     if (index >= 0 && index < MAX_SOUNDS) {
 		pthread_mutex_lock(&g_sounds_mutex);
 
-		/* Free effect chain first, before uninitializing sound */
-		effect_node_t* effect = g_sounds[index].effect_chain;
-		while (effect != NULL) {
-			effect_node_t* next = effect->next;
-
-			/* Detach from audio graph before freeing */
-			ma_node_detach_output_bus(effect->effect_node, 0);
-
-			/* Free effect-specific resources */
-			if (effect->type == EFFECT_BITCRUSH) {
-				bitcrush_node_t* bitcrush = (bitcrush_node_t*)effect->effect_node;
-				if (bitcrush->hold_samples != NULL) {
-					free(bitcrush->hold_samples);
-				}
-			} else if (effect->type == EFFECT_REVERB) {
-				free_reverb_node((reverb_node_t*)effect->effect_node);
-			}
-
-			ma_node_uninit(effect->effect_node, NULL);
-			free(effect->effect_node);
-			free(effect);
-			effect = next;
-		}
+		free_effect_chain(g_sounds[index].effect_chain);	
 		g_sounds[index].effect_chain = NULL;
 
         if (g_sounds[index].sound != NULL) {
@@ -1522,69 +1527,6 @@ static foreign_t pl_sampler_capture_extract(term_t capture_handle, term_t offset
 
 
 /* helper: add effect node to chain and connect to node graph */
-ma_result attach_effect_node_to_sound(sound_slot_t* sound_slot, ma_node_base* effect_node, effect_type_t type)
-{
-	effect_node_t* new_effect;
-  	effect_node_t* tail;
-  	ma_node* sound_node;
-  	ma_node* endpoint;
-  	ma_result result;
-
-	new_effect = (effect_node_t*)malloc(sizeof(effect_node_t));
-	if (new_effect == NULL) {
-		return MA_OUT_OF_MEMORY;
-	}
-
-	new_effect->type = type;
-	new_effect->effect_node = effect_node;
-	new_effect->next = NULL;
-
-	sound_node = (ma_node*)sound_slot->sound;
-	endpoint = ma_node_graph_get_endpoint(ma_engine_get_node_graph(g_engine));
-
-	/* if no effects yet, attach sound -> effect -> endpoint */
-	if (sound_slot->effect_chain == NULL) {
-		result = ma_node_attach_output_bus(sound_node, 0, (ma_node*)effect_node, 0);
-		if (result != MA_SUCCESS) {
-			free(new_effect);
-			return result;
-		}
-
-		result = ma_node_attach_output_bus((ma_node*)effect_node, 0, endpoint, 0);
-		if (result != MA_SUCCESS) {
-			ma_node_detach_output_bus(sound_node, 0);
-			ma_node_attach_output_bus(sound_node, 0, endpoint, 0);
-			free(new_effect);
-			return result;
-		}
-
-		sound_slot->effect_chain = new_effect;
-	} else {
-		/* find tail and reconnect: sound -> ... existing ... -> new_effect -> endpoint */
-		tail = sound_slot->effect_chain;
-		while (tail->next != NULL) {
-			tail = tail->next;
-		}
-
-		result = ma_node_attach_output_bus((ma_node*)tail->effect_node, 0, (ma_node*)effect_node, 0);
-		if (result != MA_SUCCESS) {
-			free(new_effect);
-			return result;
-		}
-
-		result = ma_node_attach_output_bus((ma_node*)effect_node, 0, endpoint, 0);
-		if (result != MA_SUCCESS) {
-			ma_node_detach_output_bus((ma_node*)tail->effect_node, 0);
-			ma_node_attach_output_bus((ma_node*)tail->effect_node, 0, endpoint, 0);
-			free(new_effect);
-			return result;
-		}
-
-		tail->next = new_effect;
-	}
-
-	return MA_SUCCESS;
-}
 
 
 /******************************************************************************

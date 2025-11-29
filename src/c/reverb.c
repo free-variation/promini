@@ -530,11 +530,12 @@ static void reverb_process_pcm_frames(
 		wet_r = pitchshift_process(&reverb->shimmer[1][1], wet_r,
 		                           reverb->shimmer2_shift, reverb->shimmer2_mix, sample_rate);
 
-		/* Stereo width */
+		/* Stereo width with energy compensation */
 		mid = (wet_l + wet_r) * 0.5f;
 		side = (wet_l - wet_r) * 0.5f * reverb->width;
-		wet_l = mid + side;
-		wet_r = mid - side;
+		float width_compensation = 1.0f / sqrtf((1.0f + reverb->width * reverb->width) * 0.5f);
+		wet_l = (mid + side) * width_compensation;
+		wet_r = (mid - side) * width_compensation;
 
 		/* Output tone shaping - HPF (low_cut) and LPF (high_cut) */
 		if (reverb->low_cut > 0.0f) {
@@ -657,7 +658,7 @@ ma_result init_reverb_node(reverb_node_t* reverb, ma_uint32 sample_rate) {
 
 	/* Default parameters */
 	reverb->predelay_ms = 20.0f;
-	reverb->bandwidth = 0.9f;
+	reverb->bandwidth = 0.7f;
 	reverb->decay = 0.5f;
 	reverb->damping = 0.5f;
 	reverb->mod_rate = 0.5f;

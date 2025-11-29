@@ -104,32 +104,112 @@ static ma_result init_effect_node_base(ma_node_base* node, ma_node_vtable* vtabl
 	return ma_node_init(ma_engine_get_node_graph(g_engine), &node_config, NULL, node);
 }
 
-/* Macro to extract effect handle components */
-#define GET_EFFECT_FROM_HANDLE(effect_handle, sound_slot_var, effect_ptr_var) \
-  	do { \
-  		term_t sound_handle_term = PL_new_term_ref(); \
-  		term_t effect_ptr_term = PL_new_term_ref(); \
-  		functor_t effect_functor = PL_new_functor(PL_new_atom("effect"), 2); \
-  		\
-  		if (!PL_is_functor(effect_handle, effect_functor)) { \
-  			return PL_type_error("effect_handle", effect_handle); \
-  		} \
-  		if (!PL_get_arg(1, effect_handle, sound_handle_term)) { \
-  			return FALSE; \
-  		} \
-  		if (!PL_get_arg(2, effect_handle, effect_ptr_term)) { \
-  			return FALSE; \
-  		} \
-  		if (!PL_get_integer(sound_handle_term, &sound_slot_var)) { \
-  			return PL_type_error("integer", sound_handle_term); \
-  		} \
-  		if (sound_slot_var < 0 || sound_slot_var >= MAX_SOUNDS || !g_sounds[sound_slot_var].in_use) { \
-  			return PL_existence_error("sound", sound_handle_term); \
-  		} \
-  		if (!PL_get_pointer(effect_ptr_term, &effect_ptr_var)) { \
-  			return PL_type_error("pointer", effect_ptr_term); \
-  		} \
-  	} while(0)
+/*
+ * attach_effect_node()
+ * Attach an effect node to a source node's processing chain.
+ * Works with any ma_node (sounds, sound groups, voices, etc.)
+ */
+ma_result attach_effect_node(
+		ma_node* source_node,
+		effect_node_t** effect_chain,
+		ma_node_base* effect_node,
+		effect_type_t type)
+{
+	effect_node_t* new_effect;
+	effect_node_t* tail;
+	ma_node* endpoint;
+	ma_result result;
+
+	new_effect = (effect_node_t*)malloc(sizeof(effect_node_t));
+	if (new_effect == NULL) {
+		return MA_OUT_OF_MEMORY;
+	}
+
+	new_effect->type = type;
+	new_effect->effect_node = effect_node;
+	new_effect->next = NULL;
+
+	endpoint = ma_node_graph_get_endpoint(ma_engine_get_node_graph(g_engine));
+
+	/* if no effects yet, attach source -> effect -> endpoint */
+	if (*effect_chain == NULL) {
+		result = ma_node_attach_output_bus(source_node, 0, (ma_node*)effect_node, 0);
+		if (result != MA_SUCCESS) {
+			free(new_effect);
+			return result;
+		}
+
+		result = ma_node_attach_output_bus((ma_node*)effect_node, 0, endpoint, 0);
+		if (result != MA_SUCCESS) {
+			ma_node_detach_output_bus(source_node, 0);
+			ma_node_attach_output_bus(source_node, 0, endpoint, 0);
+			free(new_effect);
+			return result;
+		}
+
+		*effect_chain = new_effect;
+	} else {
+		/* find tail and reconnect: source -> ... existing ... -> new_effect -> endpoint */
+		tail = *effect_chain;
+		while (tail->next != NULL) {
+			tail = tail->next;
+		}
+
+		result = ma_node_attach_output_bus((ma_node*)tail->effect_node, 0, (ma_node*)effect_node, 0);
+		if (result != MA_SUCCESS) {
+			free(new_effect);
+			return result;
+		}
+
+		result = ma_node_attach_output_bus((ma_node*)effect_node, 0, endpoint, 0);
+		if (result != MA_SUCCESS) {
+			ma_node_detach_output_bus((ma_node*)tail->effect_node, 0);
+			ma_node_attach_output_bus((ma_node*)tail->effect_node, 0, endpoint, 0);
+			free(new_effect);
+			return result;
+		}
+
+		tail->next = new_effect;
+	}
+
+	return MA_SUCCESS;
+}
+
+/*
+ * get_effect_info_from_handle()
+ * Extract source node, effect chain, and effect pointer from handle.
+ * Handle format: effect(sound(N), Ptr) or effect(voice(N), Ptr)
+ */
+static ma_bool32 get_effect_info_from_handle(term_t effect_handle, ma_sound** source_out, effect_node_t*** chain_out, void** ptr_out)
+{
+	term_t source_term = PL_new_term_ref();
+	term_t ptr_term = PL_new_term_ref();
+	term_t slot_term = PL_new_term_ref();
+	functor_t f;
+	int slot;
+
+	if (!PL_is_functor(effect_handle, PL_new_functor(PL_new_atom("effect"), 2))) return MA_FALSE;
+	if (!PL_get_arg(1, effect_handle, source_term)) return MA_FALSE;
+	if (!PL_get_arg(2, effect_handle, ptr_term)) return MA_FALSE;
+	if (!PL_get_pointer(ptr_term, ptr_out)) return MA_FALSE;
+	if (!PL_get_functor(source_term, &f)) return MA_FALSE;
+	if (!PL_get_arg(1, source_term, slot_term)) return MA_FALSE;
+	if (!PL_get_integer(slot_term, &slot)) return MA_FALSE;
+
+	if (f == PL_new_functor(PL_new_atom("sound"), 1)) {
+		if (slot < 0 || slot >= MAX_SOUNDS || !g_sounds[slot].in_use) return MA_FALSE;
+		*source_out = g_sounds[slot].sound;
+		*chain_out = &g_sounds[slot].effect_chain;
+		return MA_TRUE;
+	}
+	if (f == PL_new_functor(PL_new_atom("voice"), 1)) {
+		if (slot < 0 || slot >= MAX_VOICES || !g_voices[slot].in_use) return MA_FALSE;
+		*source_out = &g_voices[slot].group;
+		*chain_out = &g_voices[slot].effect_chain;
+		return MA_TRUE;
+	}
+	return MA_FALSE;
+}
 
 
 /******************************************************************************
@@ -270,9 +350,9 @@ static ma_result init_bitcrush_node(bitcrush_node_t* node, int bits, int sample_
 
 /*
  * attach_bitcrush_effect()
- * Validate parameters and attach bitcrush effect to sound
+ * Validate parameters and attach bitcrush effect to a node
  */
-static ma_result attach_bitcrush_effect(term_t params, sound_slot_t* sound_slot, ma_node_base** out_effect_node)
+static ma_result attach_bitcrush_effect(term_t params, ma_node* source_node, effect_node_t** effect_chain, ma_node_base** out_effect_node)
 {
 	int bits, sample_rate;
 	bitcrush_node_t* bitcrush;
@@ -308,7 +388,7 @@ static ma_result attach_bitcrush_effect(term_t params, sound_slot_t* sound_slot,
 		return result;
 	}
 
-	result = attach_effect_node_to_sound(sound_slot, &bitcrush->base, EFFECT_BITCRUSH);
+	result = attach_effect_node(source_node, effect_chain, &bitcrush->base, EFFECT_BITCRUSH);
 	if (result != MA_SUCCESS) {
 		if (bitcrush->hold_samples) {
 			free(bitcrush->hold_samples);
@@ -577,9 +657,9 @@ static ma_result init_adbr_envelope_node(adbr_envelope_node_t* node,
 
 /*
  * attach_adbr_envelope()
- * Validate parameters and attach ADBR envelope to sound
+ * Validate parameters and attach ADBR envelope to a node
  */
-static ma_result attach_adbr_envelope(term_t params, sound_slot_t* sound_slot, ma_node_base** out_effect_node)
+static ma_result attach_adbr_envelope(term_t params, ma_node* source_node, effect_node_t** effect_chain, ma_node_base** out_effect_node)
 {
 	float attack, decay, Break, release, break_level, duration_ms;
 	ma_bool32 loop;
@@ -638,7 +718,7 @@ static ma_result attach_adbr_envelope(term_t params, sound_slot_t* sound_slot, m
 		return result;
 	}
 
-	result = attach_effect_node_to_sound(sound_slot, &adbr_envelope->base, EFFECT_ENVELOPE);
+	result = attach_effect_node(source_node, effect_chain, &adbr_envelope->base, EFFECT_ENVELOPE);
 	if (result != MA_SUCCESS) {
 		ma_node_uninit(&adbr_envelope->base, NULL);
 		free(adbr_envelope);
@@ -847,33 +927,33 @@ static ma_result init_lpf_node(lpf_node_t* lpf, double cutoff, ma_uint32 order)
 
 /*
  * attach_lpf_effect()
- * Validate parameters and attach LPF to sound
+ * Validate parameters and attach LPF to a node
  */
-static ma_result attach_lpf_effect(term_t params, sound_slot_t* sound_slot, ma_node_base** out_effect_node)
+static ma_result attach_lpf_effect(term_t params, ma_node* source_node, effect_node_t** effect_chain, ma_node_base** out_effect_node)
 {
 	double cutoff;
-  	int order_int;
-  	lpf_node_t* lpf;
-  	ma_result result;
+	int order_int;
+	lpf_node_t* lpf;
+	ma_result result;
 
-  	if (!get_param_double(params, "cutoff", &cutoff)) {
-  		PL_existence_error("parameter", PL_new_atom("cutoff"));
-  		return MA_ERROR;
-  	}
+	if (!get_param_double(params, "cutoff", &cutoff)) {
+		PL_existence_error("parameter", PL_new_atom("cutoff"));
+		return MA_ERROR;
+	}
 
-  	if (cutoff < 0.0) {
-  		PL_domain_error("non-negative_frequency", params);
-  		return MA_ERROR;
-  	}
+	if (cutoff < 0.0) {
+		PL_domain_error("non-negative_frequency", params);
+		return MA_ERROR;
+	}
 
-  	if (!get_param_int(params, "order", &order_int)) {
-  		order_int = 2;  /* Default to 2nd order */
-  	}
+	if (!get_param_int(params, "order", &order_int)) {
+		order_int = 2;  /* Default to 2nd order */
+	}
 
-  	if (order_int < 0) {
-  		PL_domain_error("non_negative_integer", params);
-  		return MA_ERROR;
-  	}
+	if (order_int < 0) {
+		PL_domain_error("non_negative_integer", params);
+		return MA_ERROR;
+	}
 
 	lpf = (lpf_node_t*)malloc(sizeof(lpf_node_t));
 	if (!lpf) {
@@ -886,7 +966,7 @@ static ma_result attach_lpf_effect(term_t params, sound_slot_t* sound_slot, ma_n
 		return result;
 	}
 
-	result = attach_effect_node_to_sound(sound_slot, &lpf->node.baseNode, EFFECT_LPF);
+	result = attach_effect_node(source_node, effect_chain, &lpf->node.baseNode, EFFECT_LPF);
 	if (result != MA_SUCCESS) {
 		ma_lpf_node_uninit(&lpf->node, NULL);
 		free(lpf);
@@ -1045,33 +1125,33 @@ static ma_result init_hpf_node(hpf_node_t* hpf, double cutoff, ma_uint32 order)
 
 /*
  * attach_hpf_effect()
- * Validate parameters and attach HPF to sound
+ * Validate parameters and attach HPF to a node
  */
-static ma_result attach_hpf_effect(term_t params, sound_slot_t* sound_slot, ma_node_base** out_effect_node)
+static ma_result attach_hpf_effect(term_t params, ma_node* source_node, effect_node_t** effect_chain, ma_node_base** out_effect_node)
 {
 	double cutoff;
-  	int order_int;
-  	hpf_node_t* hpf;
-  	ma_result result;
+	int order_int;
+	hpf_node_t* hpf;
+	ma_result result;
 
-  	if (!get_param_double(params, "cutoff", &cutoff)) {
-  		PL_existence_error("parameter", PL_new_atom("cutoff"));
-  		return MA_ERROR;
-  	}
+	if (!get_param_double(params, "cutoff", &cutoff)) {
+		PL_existence_error("parameter", PL_new_atom("cutoff"));
+		return MA_ERROR;
+	}
 
-  	if (cutoff < 0.0) {
-  		PL_domain_error("non-negative_frequency", params);
-  		return MA_ERROR;
-  	}
+	if (cutoff < 0.0) {
+		PL_domain_error("non-negative_frequency", params);
+		return MA_ERROR;
+	}
 
-  	if (!get_param_int(params, "order", &order_int)) {
-  		order_int = 2;  /* Default to 2nd order */
-  	}
+	if (!get_param_int(params, "order", &order_int)) {
+		order_int = 2;  /* Default to 2nd order */
+	}
 
-  	if (order_int < 0) {
-  		PL_domain_error("non_negative_integer", params);
-  		return MA_ERROR;
-  	}
+	if (order_int < 0) {
+		PL_domain_error("non_negative_integer", params);
+		return MA_ERROR;
+	}
 
 	hpf = (hpf_node_t*)malloc(sizeof(hpf_node_t));
 	if (!hpf) {
@@ -1084,7 +1164,7 @@ static ma_result attach_hpf_effect(term_t params, sound_slot_t* sound_slot, ma_n
 		return result;
 	}
 
-	result = attach_effect_node_to_sound(sound_slot, &hpf->node.baseNode, EFFECT_HPF);
+	result = attach_effect_node(source_node, effect_chain, &hpf->node.baseNode, EFFECT_HPF);
 	if (result != MA_SUCCESS) {
 		ma_hpf_node_uninit(&hpf->node, NULL);
 		free(hpf);
@@ -1245,7 +1325,7 @@ static ma_result init_bpf_node(bpf_node_t* bpf, double cutoff, ma_uint32 order)
  * attach_bpf_effect()
  * Validate parameters and attach BPF to sound
  */
-static ma_result attach_bpf_effect(term_t params, sound_slot_t* sound_slot, ma_node_base** out_effect_node)
+static ma_result attach_bpf_effect(term_t params, ma_node* source_node, effect_node_t** effect_chain, ma_node_base** out_effect_node)
 {
 	double cutoff;
 	int order_int;
@@ -1282,7 +1362,7 @@ static ma_result attach_bpf_effect(term_t params, sound_slot_t* sound_slot, ma_n
 		return result;
 	}
 
-	result = attach_effect_node_to_sound(sound_slot, &bpf->node.baseNode, EFFECT_BPF);
+	result = attach_effect_node(source_node, effect_chain, &bpf->node.baseNode, EFFECT_BPF);
 	if (result != MA_SUCCESS) {
 		ma_bpf_node_uninit(&bpf->node, NULL);
 		free(bpf);
@@ -1448,7 +1528,7 @@ static ma_result init_delay_node(delay_node_t* delay, ma_uint32 delay_in_frames,
  * attach_delay_effect()
  * Validate parameters and attach delay to sound
  */
-static ma_result attach_delay_effect(term_t params, sound_slot_t* sound_slot, ma_node_base** out_effect_node)
+static ma_result attach_delay_effect(term_t params, ma_node* source_node, effect_node_t** effect_chain, ma_node_base** out_effect_node)
 {
 	int delay_in_frames_int;
 	float decay, wet, dry;
@@ -1503,7 +1583,7 @@ static ma_result attach_delay_effect(term_t params, sound_slot_t* sound_slot, ma
 		return result;
 	}
 
-	result = attach_effect_node_to_sound(sound_slot, &delay->node.baseNode, EFFECT_DELAY);
+	result = attach_effect_node(source_node, effect_chain, &delay->node.baseNode, EFFECT_DELAY);
 	if (result != MA_SUCCESS) {
 		ma_delay_node_uninit(&delay->node, NULL);
 		free(delay);
@@ -1797,7 +1877,7 @@ static ma_result init_ping_pong_delay_node(
  * attach_ping_pong_delay_effect()
  * Validate parameters and attach ping-pong delay to sound
  */
-static ma_result attach_ping_pong_delay_effect(term_t params, sound_slot_t* sound_slot, ma_node_base** out_effect_node)
+static ma_result attach_ping_pong_delay_effect(term_t params, ma_node* source_node, effect_node_t** effect_chain, ma_node_base** out_effect_node)
 {
 	int max_delay_int, delay_int;
 	int smoothing_mode_int, crossfade_length_int;
@@ -1879,7 +1959,7 @@ static ma_result attach_ping_pong_delay_effect(term_t params, sound_slot_t* soun
 		}
 	}
 
-	result = attach_effect_node_to_sound(sound_slot, &pp->base, EFFECT_PING_PONG_DELAY);
+	result = attach_effect_node(source_node, effect_chain, &pp->base, EFFECT_PING_PONG_DELAY);
 	if (result != MA_SUCCESS) {
 		free(pp->buffer_l);
 		free(pp->buffer_r);
@@ -2120,7 +2200,7 @@ static foreign_t set_ping_pong_delay_parameters(ping_pong_delay_node_t* pp, term
  * All parameters are optional with sensible defaults.
  * Returns MA_SUCCESS or error code.
  */
-static ma_result attach_reverb_effect(term_t params, sound_slot_t* sound_slot, ma_node_base** out_effect_node)
+static ma_result attach_reverb_effect(term_t params, ma_node* source_node, effect_node_t** effect_chain, ma_node_base** out_effect_node)
 {
 	reverb_node_t* reverb;
 	ma_result result;
@@ -2197,7 +2277,7 @@ static ma_result attach_reverb_effect(term_t params, sound_slot_t* sound_slot, m
 		reverb->dry = value;
 	}
 
-	result = attach_effect_node_to_sound(sound_slot, &reverb->base, EFFECT_REVERB);
+	result = attach_effect_node(source_node, effect_chain, &reverb->base, EFFECT_REVERB);
 	if (result != MA_SUCCESS) {
 		free_reverb_node(reverb);
 		ma_node_uninit(&reverb->base, NULL);
@@ -2380,41 +2460,38 @@ static foreign_t set_reverb_parameters(reverb_node_t* reverb, term_t params_list
  *****************************************************************************/
 
 /*
- * pl_sampler_sound_attach_effect()
- * Attach an effect to a sound's processing chain
+ * attach_effect_to_node()
+ * Generic effect attachment - dispatches to appropriate effect type.
+ * source_type: "sound" or "voice"
  */
-static foreign_t pl_sampler_sound_attach_effect(term_t sound_handle, term_t effect_type, term_t params, term_t effect_handle)
+static foreign_t attach_effect_to_node(ma_sound* sound, effect_node_t** effect_chain, const char* source_type, int slot, term_t effect_type, term_t params, term_t effect_handle)
 {
-	ma_sound* sound;
-	int slot;
 	char* type_str;
 	ma_result result;
 	ma_node_base* effect_node;
-	term_t effect_term;
-	functor_t effect_functor;
-
-	GET_SOUND_WITH_SLOT(sound_handle, sound, slot);
+	term_t effect_term, source_term, arg;
+	functor_t effect_functor, source_functor;
 
 	if (!PL_get_atom_chars(effect_type, &type_str)) {
 		return PL_type_error("atom", effect_type);
 	}
 
 	if (strcmp(type_str, "bitcrush") == 0) {
-		result = attach_bitcrush_effect(params, &g_sounds[slot], &effect_node);
+		result = attach_bitcrush_effect(params, (ma_node*)sound, effect_chain, &effect_node);
 	} else if (strcmp(type_str, "envelope") == 0) {
-		result = attach_adbr_envelope(params, &g_sounds[slot], &effect_node);
+		result = attach_adbr_envelope(params, (ma_node*)sound, effect_chain, &effect_node);
 	} else if (strcmp(type_str, "lpf") == 0) {
-		result = attach_lpf_effect(params, &g_sounds[slot], &effect_node);
+		result = attach_lpf_effect(params, (ma_node*)sound, effect_chain, &effect_node);
 	} else if (strcmp(type_str, "hpf") == 0) {
-		result = attach_hpf_effect(params, &g_sounds[slot], &effect_node);
+		result = attach_hpf_effect(params, (ma_node*)sound, effect_chain, &effect_node);
 	} else if (strcmp(type_str, "bpf") == 0) {
-		result = attach_bpf_effect(params, &g_sounds[slot], &effect_node);
+		result = attach_bpf_effect(params, (ma_node*)sound, effect_chain, &effect_node);
 	} else if (strcmp(type_str, "delay") == 0) {
-		result = attach_delay_effect(params, &g_sounds[slot], &effect_node);
+		result = attach_delay_effect(params, (ma_node*)sound, effect_chain, &effect_node);
 	} else if (strcmp(type_str, "ping_pong_delay") == 0) {
-		result = attach_ping_pong_delay_effect(params, &g_sounds[slot], &effect_node);
+		result = attach_ping_pong_delay_effect(params, (ma_node*)sound, effect_chain, &effect_node);
 	} else if (strcmp(type_str, "reverb") == 0) {
-		result = attach_reverb_effect(params, &g_sounds[slot], &effect_node);
+		result = attach_reverb_effect(params, (ma_node*)sound, effect_chain, &effect_node);
 	} else {
 		return PL_domain_error("effect_type", effect_type);
 	}
@@ -2423,24 +2500,35 @@ static foreign_t pl_sampler_sound_attach_effect(term_t sound_handle, term_t effe
 		return FALSE;
 	}
 
-	/* Build effect(SoundHandle, EffectPointer) term */
-	effect_term = PL_new_term_ref();
+	/* Build effect(source_type(Slot), Pointer) term */
+	source_functor = PL_new_functor(PL_new_atom(source_type), 1);
+	source_term = PL_new_term_ref();
+	if (!PL_unify_functor(source_term, source_functor)) return FALSE;
+	arg = PL_new_term_ref();
+	if (!PL_get_arg(1, source_term, arg) || !PL_unify_integer(arg, slot)) return FALSE;
+
 	effect_functor = PL_new_functor(PL_new_atom("effect"), 2);
-
-	if (!PL_unify_functor(effect_term, effect_functor)) {
-		return FALSE;
-	}
-
-	term_t arg = PL_new_term_ref();
-	if (!PL_get_arg(1, effect_term, arg) || !PL_unify(arg, sound_handle)) {
-		return FALSE;
-	}
-
-	if (!PL_get_arg(2, effect_term, arg) || !PL_unify_pointer(arg, effect_node)) {
-		return FALSE;
-	}
-
+	effect_term = PL_new_term_ref();
+	if (!PL_unify_functor(effect_term, effect_functor)) return FALSE;
+	if (!PL_get_arg(1, effect_term, arg) || !PL_unify(arg, source_term)) return FALSE;
+	if (!PL_get_arg(2, effect_term, arg) || !PL_unify_pointer(arg, effect_node)) return FALSE;
 	return PL_unify(effect_handle, effect_term);
+}
+
+static foreign_t pl_sampler_sound_attach_effect(term_t handle, term_t effect_type, term_t params, term_t effect_handle)
+{
+	int slot;
+	if (!PL_get_integer(handle, &slot) || slot < 0 || slot >= MAX_SOUNDS || !g_sounds[slot].in_use)
+		return PL_existence_error("sound", handle);
+	return attach_effect_to_node(g_sounds[slot].sound, &g_sounds[slot].effect_chain, "sound", slot, effect_type, params, effect_handle);
+}
+
+static foreign_t pl_sampler_voice_attach_effect(term_t handle, term_t effect_type, term_t params, term_t effect_handle)
+{
+	int slot;
+	if (!PL_get_integer(handle, &slot) || slot < 0 || slot >= MAX_VOICES || !g_voices[slot].in_use)
+		return PL_existence_error("voice", handle);
+	return attach_effect_to_node(&g_voices[slot].group, &g_voices[slot].effect_chain, "voice", slot, effect_type, params, effect_handle);
 }
 
 /*
@@ -2558,15 +2646,16 @@ static foreign_t pl_sampler_sound_effects(term_t sound_handle, term_t effects_li
  */
 static foreign_t pl_sampler_effect_set_parameters(term_t effect_handle, term_t params_list)
 {
-	term_t sound_handle_term = PL_new_term_ref();
-	term_t effect_ptr_term = PL_new_term_ref();
-	int sound_slot;
+	ma_sound* source;
+	effect_node_t** effect_chain;
 	void* effect_ptr;
 
-	GET_EFFECT_FROM_HANDLE(effect_handle, sound_slot, effect_ptr);
+	if (!get_effect_info_from_handle(effect_handle, &source, &effect_chain, &effect_ptr)) {
+		return PL_existence_error("effect", effect_handle);
+	}
 
 	/* Find the effect in the chain */
-	effect_node_t* node = g_sounds[sound_slot].effect_chain;
+	effect_node_t* node = *effect_chain;
 	while (node) {
 		if (node->effect_node == effect_ptr) {
 			break;
@@ -2603,17 +2692,20 @@ static foreign_t pl_sampler_effect_set_parameters(term_t effect_handle, term_t p
 
 /*
  * pl_sampler_effect_detach()
- * Remove an effect from the sound's effect chain
+ * Remove an effect from the effect chain
  */
 static foreign_t pl_sampler_effect_detach(term_t effect_handle)
 {
-  	int sound_slot;
-  	void* effect_ptr;
+	ma_sound* source;
+	effect_node_t** effect_chain;
+	void* effect_ptr;
 
-	GET_EFFECT_FROM_HANDLE(effect_handle, sound_slot, effect_ptr);
+	if (!get_effect_info_from_handle(effect_handle, &source, &effect_chain, &effect_ptr)) {
+		return PL_existence_error("effect", effect_handle);
+	}
 
 	/* Find and remove the effect from the chain */
-	effect_node_t* node = g_sounds[sound_slot].effect_chain;
+	effect_node_t* node = *effect_chain;
 	effect_node_t* prev = NULL;
 
 	while (node) {
@@ -2634,17 +2726,15 @@ static foreign_t pl_sampler_effect_detach(term_t effect_handle)
 			if (prev) {
 				prev->next = node->next;
 			} else {
-				g_sounds[sound_slot].effect_chain = node->next;
+				*effect_chain = node->next;
 			}
 
 			free(node);
 
-			/* reconnect the chain: if there are remaining effects, reconnect them */
-			effect_node_t* first_effect = g_sounds[sound_slot].effect_chain;
+			/* reconnect the chain */
+			effect_node_t* first_effect = *effect_chain;
 			if (first_effect) {
-				/* reconnect sound -> first_effect -> endpoint */
-				ma_node_attach_output_bus(g_sounds[sound_slot].sound, 0, first_effect-> effect_node, 0);
-
+				ma_node_attach_output_bus(source, 0, first_effect->effect_node, 0);
 				effect_node_t* current = first_effect;
 				while (current->next) {
 					ma_node_attach_output_bus(current->effect_node, 0, current->next->effect_node, 0);
@@ -2652,7 +2742,7 @@ static foreign_t pl_sampler_effect_detach(term_t effect_handle)
 				}
 				ma_node_attach_output_bus(current->effect_node, 0, ma_engine_get_endpoint(g_engine), 0);
 			} else {
-				ma_node_attach_output_bus(g_sounds[sound_slot].sound, 0, ma_engine_get_endpoint(g_engine), 0);
+				ma_node_attach_output_bus(source, 0, ma_engine_get_endpoint(g_engine), 0);
 			}
 
 			return TRUE;
@@ -2671,6 +2761,7 @@ static foreign_t pl_sampler_effect_detach(term_t effect_handle)
 install_t effects_register_predicates(void)
 {
 	PL_register_foreign("sampler_sound_attach_effect", 4, pl_sampler_sound_attach_effect, 0);
+	PL_register_foreign("sampler_voice_attach_effect", 4, pl_sampler_voice_attach_effect, 0);
 	PL_register_foreign("sampler_sound_effects", 2, pl_sampler_sound_effects, 0);
 	PL_register_foreign("sampler_effect_set_parameters", 2, pl_sampler_effect_set_parameters, 0);
 	PL_register_foreign("sampler_effect_detach", 1, pl_sampler_effect_detach, 0);

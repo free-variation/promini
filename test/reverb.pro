@@ -45,7 +45,7 @@ test(query_reverb_defaults, [nondet]) :-
     abs(Wet - 0.3) < 0.001,
     abs(Dry - 1.0) < 0.001,
     abs(Predelay - 20.0) < 0.001,
-    abs(Bandwidth - 0.9) < 0.001,
+    abs(Bandwidth - 0.7) < 0.001,
     sampler_sound_unload(Sound).
 
 test(query_reverb_custom, [nondet]) :-

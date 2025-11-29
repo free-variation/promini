@@ -56,11 +56,18 @@
     sampler_synth_voice_create/1,
     sampler_synth_voice_start/1,
     sampler_synth_voice_stop/1,
-    sampler_synth_voice_set_frequency/2,
-    sampler_synth_voice_get_frequency/2,
+    sampler_synth_voice_fade/3,
     sampler_synth_voice_set_pan/2,
     sampler_synth_voice_get_pan/2,
-    sampler_synth_voice_unload/1
+    sampler_synth_voice_unload/1,
+    sampler_voice_attach_effect/4,
+    sampler_synth_oscillator_add/4,
+    sampler_synth_oscillator_remove/1,
+    sampler_synth_oscillator_fade/3,
+    sampler_synth_oscillator_set_frequency/2,
+    sampler_synth_oscillator_get_frequency/2,
+    sampler_synth_oscillator_set_phase/2,
+    sampler_synth_oscillator_get_phase/2
   ]).
 
 :- use_foreign_library('../../lib/sampler').

@@ -78,6 +78,19 @@ typedef struct {
 	effect_node_t* effect_chain;
 } sound_slot_t;
 
+/*
+ * Synth voice management
+ */
+#define MAX_VOICES 256
+
+/* Synth voice slot */
+typedef struct {
+	ma_sound_group group;
+	ma_bool32 in_use;
+	ma_bool32 is_voice;
+	effect_node_t* effect_chain;
+} synth_voice_t;
+
 /* Helper macro to validate and retrieve sound from handle */
 #define GET_SOUND_WITH_SLOT(handle_term, sound_var, slot_var) \
     do { \
@@ -254,13 +267,17 @@ typedef struct {
 	float hpf_l, hpf_r;
 	float lpf_l, lpf_r;
 } reverb_node_t;
-/* Shared sound slots array */
 
+/* Shared arrays */
 extern sound_slot_t g_sounds[MAX_SOUNDS];
+extern synth_voice_t g_voices[MAX_VOICES];
 
 /* Helper functions (implemented in sampler.c) */
-extern ma_result attach_effect_node_to_sound(sound_slot_t* sound_slot, ma_node_base* effect_node, effect_type_t type);
 extern void get_engine_format_info(ma_format* format, ma_uint32* channels, ma_uint32* sampleRate);
+extern void free_effect_chain(effect_node_t* effect);
+
+/* Effect functions (implemented in effects.c) */
+extern ma_result attach_effect_node(ma_node* source_node, effect_node_t** effect_chain, ma_node_base* effect_node, effect_type_t type);
 
 /* Reverb functions (implemented in reverb.c) */
 extern ma_node_vtable reverb_vtable;

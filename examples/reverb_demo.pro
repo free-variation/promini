@@ -104,7 +104,7 @@ demo_presets :-
     format('~n=== Hall Reverb ===~n'),
     sampler_sound_attach_reverb(Sound, [
         predelay_ms=40.0, decay=0.75, damping=0.3,
-        bandwidth=0.8, width=1.2, wet=0.35
+        bandwidth=0.8, width=1.2, low_cut=100.0, wet=0.35
     ], _),
     sampler_sound_seek(Sound, 0),
     sampler_sound_start(Sound),
@@ -115,7 +115,7 @@ demo_presets :-
     format('~n=== Cathedral Reverb ===~n'),
     sampler_sound_attach_reverb(Sound, [
         predelay_ms=60.0, decay=0.9, damping=0.2,
-        bandwidth=0.7, width=1.5, wet=0.4
+        bandwidth=0.7, width=1.5, low_cut=120.0, wet=0.4
     ], _),
     sampler_sound_seek(Sound, 0),
     sampler_sound_start(Sound),
@@ -139,7 +139,7 @@ demo_presets :-
     sampler_sound_attach_reverb(Sound, [
         predelay_ms=80.0, decay=0.95, damping=0.15,
         bandwidth=0.6,
-        mod_depth=0.8, width=2.0, wet=0.5
+        mod_depth=0.8, width=2.0, low_cut=150.0, wet=0.5
     ], _),
     sampler_sound_seek(Sound, 0),
     sampler_sound_start(Sound),
@@ -153,12 +153,13 @@ demo_presets :-
         bandwidth=0.5,
         shimmer1_shift=12.0, shimmer1_mix=0.2,
         shimmer2_shift=19.0, shimmer2_mix=0.15,
-        mod_depth=1.0, width=2.0, wet=0.6
+        mod_depth=1.0, width=2.0, low_cut=150.0, wet=0.6
     ], _),
     sampler_sound_seek(Sound, 0),
     sampler_sound_start(Sound),
     sleep(12),
     sampler_sound_stop(Sound),
+    sampler_sound_clear_effects(Sound),
 
     sampler_sound_unload(Sound),
     format('~nPresets demo complete.~n').
