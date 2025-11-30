@@ -4,7 +4,7 @@
  * Licensed under MIT License
  */
 
-#include "sampler_internal.h"
+#include "promini.h"
 
 /******************************************************************************
  * GLOBAL VARIABLES
@@ -518,10 +518,10 @@ static foreign_t pl_mod_lfo_get_frequency(term_t handle_term, term_t freq_term)
 
 install_t mod_register_predicates(void)
 {
-	PL_register_foreign("sampler_mod_lfo_create", 3, pl_mod_lfo_create, 0);
-	PL_register_foreign("sampler_mod_lfo_set_frequency", 2, pl_mod_lfo_set_frequency, 0);
-	PL_register_foreign("sampler_mod_lfo_get_frequency", 2, pl_mod_lfo_get_frequency, 0);
-	PL_register_foreign("sampler_mod_source_unload", 1, pl_mod_source_unload, 0);
-	PL_register_foreign("sampler_mod_route_create", 8, pl_mod_route_create, 0);
-	PL_register_foreign("sampler_mod_route_unload", 1, pl_mod_route_unload, 0);
+	PL_register_foreign("mod_lfo_create", 3, pl_mod_lfo_create, 0);
+	PL_register_foreign("mod_lfo_set_frequency", 2, pl_mod_lfo_set_frequency, 0);
+	PL_register_foreign("mod_lfo_get_frequency", 2, pl_mod_lfo_get_frequency, 0);
+	PL_register_foreign("mod_source_unload", 1, pl_mod_source_unload, 0);
+	PL_register_foreign("mod_route_create", 8, pl_mod_route_create, 0);
+	PL_register_foreign("mod_route_unload", 1, pl_mod_route_unload, 0);
 }

@@ -1,32 +1,32 @@
 :- module(test_sampler, []).
-:- use_module('src/prolog/sampler.pro').
+:- use_module('src/prolog/promini.pro').
 :- use_module(library(plunit)).
 
-:- begin_tests(sampler_init).
+:- begin_tests(promini_init).
 
 test(version, [nondet]) :-
-    sampler_version(Version),
+    promini_version(Version),
     atom(Version).
 
 test(init) :-
-    sampler_init.
+    promini_init.
 
 test(devices, [nondet]) :-
-    sampler_devices(Devices),
+    promini_devices(Devices),
     is_list(Devices).
 
-:- end_tests(sampler_init).
+:- end_tests(promini_init).
 
-:- begin_tests(sampler_data).
+:- begin_tests(sampler_audio).
 
 test(data_load, [nondet]) :-
-    sampler_data_load('audio/counting.wav', Handle),
+    audio_load('audio/counting.wav', Handle),
     integer(Handle),
-    sampler_data_unload(Handle).
+    audio_unload(Handle).
 
 test(data_info, [nondet]) :-
-    sampler_data_load('audio/counting.wav', Handle),
-    sampler_data_info(Handle, data_info(Frames, Channels, SampleRate, Duration)),
+    audio_load('audio/counting.wav', Handle),
+    audio_info(Handle, data_info(Frames, Channels, SampleRate, Duration)),
     integer(Frames),
     Frames > 0,
     integer(Channels),
@@ -35,211 +35,211 @@ test(data_info, [nondet]) :-
     SampleRate > 0,
     number(Duration),
     Duration > 0,
-    sampler_data_unload(Handle).
+    audio_unload(Handle).
 
 test(data_reverse, [nondet]) :-
-    sampler_data_load('audio/counting.wav', Handle),
-    sampler_data_reverse(Handle, Reversed),
+    audio_load('audio/counting.wav', Handle),
+    audio_reverse(Handle, Reversed),
     integer(Reversed),
-    sampler_data_unload(Handle),
-    sampler_data_unload(Reversed).
+    audio_unload(Handle),
+    audio_unload(Reversed).
 
 test(data_load_reversed, [nondet]) :-
-    sampler_data_load_reversed('audio/counting.wav', Handle),
+    audio_load_reversed('audio/counting.wav', Handle),
     integer(Handle),
-    sampler_data_unload(Handle).
+    audio_unload(Handle).
 
 test(data_extract, [nondet]) :-
-    sampler_data_load('audio/counting.wav', Handle),
-    sampler_data_extract(Handle, 0, 1000, Extracted),
+    audio_load('audio/counting.wav', Handle),
+    audio_extract(Handle, 0, 1000, Extracted),
     integer(Extracted),
-    sampler_data_unload(Handle),
-    sampler_data_unload(Extracted).
+    audio_unload(Handle),
+    audio_unload(Extracted).
 
-:- end_tests(sampler_data).
+:- end_tests(sampler_audio).
 
 :- begin_tests(sampler_sound).
 
 test(sound_load, [nondet]) :-
-    sampler_sound_load('audio/counting.wav', Sound),
+    sound_load('audio/counting.wav', Sound),
     integer(Sound),
-    sampler_sound_unload(Sound).
+    sound_unload(Sound).
 
 test(sound_create_from_data, [nondet]) :-
-    sampler_data_load('audio/counting.wav', Data),
-    sampler_sound_create(Data, Sound),
+    audio_load('audio/counting.wav', Data),
+    sound_create(Data, Sound),
     integer(Sound),
-    sampler_sound_unload(Sound),
-    sampler_data_unload(Data).
+    sound_unload(Sound),
+    audio_unload(Data).
 
 test(sound_length, [nondet]) :-
-    sampler_sound_load('audio/counting.wav', Sound),
-    sampler_sound_length(Sound, Length),
+    sound_load('audio/counting.wav', Sound),
+    sound_length(Sound, Length),
     integer(Length),
     Length > 0,
-    sampler_sound_unload(Sound).
+    sound_unload(Sound).
 
 :- end_tests(sampler_sound).
 
 :- begin_tests(sampler_playback).
 
 test(sound_start_stop, [nondet]) :-
-    sampler_sound_load('audio/counting.wav', Sound),
-    sampler_sound_start(Sound),
-    sampler_sound_is_playing(Sound),
+    sound_load('audio/counting.wav', Sound),
+    sound_start(Sound),
+    sound_is_playing(Sound),
     sleep(0.1),
-    sampler_sound_stop(Sound),
-    \+ sampler_sound_is_playing(Sound),
-    sampler_sound_unload(Sound).
+    sound_stop(Sound),
+    \+ sound_is_playing(Sound),
+    sound_unload(Sound).
 
 test(sound_looping, [nondet]) :-
-    sampler_sound_load('audio/counting.wav', Sound),
-    \+ sampler_sound_is_looping(Sound),
-    sampler_sound_loop(Sound),
-    sampler_sound_is_looping(Sound),
-    sampler_sound_no_loop(Sound),
-    \+ sampler_sound_is_looping(Sound),
-    sampler_sound_unload(Sound).
+    sound_load('audio/counting.wav', Sound),
+    \+ sound_is_looping(Sound),
+    sound_loop(Sound),
+    sound_is_looping(Sound),
+    sound_no_loop(Sound),
+    \+ sound_is_looping(Sound),
+    sound_unload(Sound).
 
 test(sound_seek, [nondet]) :-
-    sampler_sound_load('audio/counting.wav', Sound),
-    sampler_sound_seek(Sound, 1000),
-    sampler_sound_get_position(Sound, Pos),
+    sound_load('audio/counting.wav', Sound),
+    sound_seek(Sound, 1000),
+    sound_get_position(Sound, Pos),
     Pos =:= 1000,
-    sampler_sound_unload(Sound).
+    sound_unload(Sound).
 
 test(sound_start_at, [nondet]) :-
-    sampler_sound_load('audio/counting.wav', Sound),
-    sampler_sound_start_at(Sound, 500),
-    sampler_sound_is_playing(Sound),
-    sampler_sound_get_position(Sound, Pos),
+    sound_load('audio/counting.wav', Sound),
+    sound_start_at(Sound, 500),
+    sound_is_playing(Sound),
+    sound_get_position(Sound, Pos),
     Pos >= 500,
-    sampler_sound_stop(Sound),
-    sampler_sound_unload(Sound).
+    sound_stop(Sound),
+    sound_unload(Sound).
 
 :- end_tests(sampler_playback).
 
 :- begin_tests(sampler_parameters).
 
 test(sound_pitch, [nondet]) :-
-    sampler_sound_load('audio/counting.wav', Sound),
-    sampler_sound_set_pitch(Sound, 12.0),
-    sampler_sound_get_pitch(Sound, Pitch),
+    sound_load('audio/counting.wav', Sound),
+    sound_set_pitch(Sound, 12.0),
+    sound_get_pitch(Sound, Pitch),
     Pitch =:= 12.0,
-    sampler_sound_unload(Sound).
+    sound_unload(Sound).
 
 test(sound_pan, [nondet]) :-
-    sampler_sound_load('audio/counting.wav', Sound),
-    sampler_sound_set_pan(Sound, -0.5),
-    sampler_sound_get_pan(Sound, Pan),
+    sound_load('audio/counting.wav', Sound),
+    sound_set_pan(Sound, -0.5),
+    sound_get_pan(Sound, Pan),
     Pan =:= -0.5,
-    sampler_sound_unload(Sound).
+    sound_unload(Sound).
 
 test(sound_pan_mode, [nondet]) :-
-    sampler_sound_load('audio/counting.wav', Sound),
-    sampler_sound_get_pan_mode(Sound, balance),
-    sampler_sound_set_pan_mode(Sound, pan),
-    sampler_sound_get_pan_mode(Sound, pan),
-    sampler_sound_unload(Sound).
+    sound_load('audio/counting.wav', Sound),
+    sound_get_pan_mode(Sound, balance),
+    sound_set_pan_mode(Sound, pan),
+    sound_get_pan_mode(Sound, pan),
+    sound_unload(Sound).
 
 test(sound_volume, [nondet]) :-
-    sampler_sound_load('audio/counting.wav', Sound),
-    sampler_sound_set_volume(Sound, 0.5),
-    sampler_sound_get_volume(Sound, Volume),
+    sound_load('audio/counting.wav', Sound),
+    sound_set_volume(Sound, 0.5),
+    sound_get_volume(Sound, Volume),
     Volume =:= 0.5,
-    sampler_sound_unload(Sound).
+    sound_unload(Sound).
 
 :- end_tests(sampler_parameters).
 
 :- begin_tests(sampler_range).
 
 test(sound_set_range, [nondet]) :-
-    sampler_sound_load('audio/counting.wav', Sound),
-    sampler_sound_set_range(Sound, 100, 1000),
-    sampler_sound_unload(Sound).
+    sound_load('audio/counting.wav', Sound),
+    sound_set_range(Sound, 100, 1000),
+    sound_unload(Sound).
 
 :- end_tests(sampler_range).
 
 :- begin_tests(sampler_polyphony).
 
 test(multiple_sounds, [nondet]) :-
-    sampler_data_load('audio/gong.wav', Data),
-    sampler_sound_create(Data, Sound1),
-    sampler_sound_create(Data, Sound2),
-    sampler_sound_create(Data, Sound3),
-    sampler_sound_start(Sound1),
-    sampler_sound_start(Sound2),
-    sampler_sound_start(Sound3),
-    sampler_sound_is_playing(Sound1),
-    sampler_sound_is_playing(Sound2),
-    sampler_sound_is_playing(Sound3),
+    audio_load('audio/gong.wav', Data),
+    sound_create(Data, Sound1),
+    sound_create(Data, Sound2),
+    sound_create(Data, Sound3),
+    sound_start(Sound1),
+    sound_start(Sound2),
+    sound_start(Sound3),
+    sound_is_playing(Sound1),
+    sound_is_playing(Sound2),
+    sound_is_playing(Sound3),
     sleep(0.1),
-    sampler_sound_stop(Sound1),
-    sampler_sound_stop(Sound2),
-    sampler_sound_stop(Sound3),
-    sampler_sound_unload(Sound1),
-    sampler_sound_unload(Sound2),
-    sampler_sound_unload(Sound3),
-    sampler_data_unload(Data).
+    sound_stop(Sound1),
+    sound_stop(Sound2),
+    sound_stop(Sound3),
+    sound_unload(Sound1),
+    sound_unload(Sound2),
+    sound_unload(Sound3),
+    audio_unload(Data).
 
 :- end_tests(sampler_polyphony).
 
 :- begin_tests(sampler_capture).
 
 test(capture_start_stop, [nondet]) :-
-    sampler_devices(Devices),
+    promini_devices(Devices),
     member(device(Name, capture, _), Devices),
     !,
-    sampler_capture_start(Name, 1.0, Capture, BufferFrames),
+    capture_start(Name, 1.0, Capture, BufferFrames),
     integer(Capture),
     integer(BufferFrames),
     BufferFrames > 0,
-    sampler_capture_stop(Capture).
+    capture_stop(Capture).
 
 test(capture_get_info, [nondet]) :-
-    sampler_devices(Devices),
+    promini_devices(Devices),
     member(device(Name, capture, _), Devices),
     !,
-    sampler_capture_start(Name, 0.5, Capture, _),
-    sampler_capture_get_info(Capture, capture_info(WritePos, Capacity, SampleRate)),
+    capture_start(Name, 0.5, Capture, _),
+    capture_get_info(Capture, capture_info(WritePos, Capacity, SampleRate)),
     integer(WritePos),
     integer(Capacity),
     integer(SampleRate),
     WritePos >= 0,
     Capacity > 0,
     SampleRate > 0,
-    sampler_capture_stop(Capture).
+    capture_stop(Capture).
 
 test(capture_extract, [nondet]) :-
-    sampler_devices(Devices),
+    promini_devices(Devices),
     member(device(Name, capture, _), Devices),
     !,
-    sampler_capture_start(Name, 1.0, Capture, _),
+    capture_start(Name, 1.0, Capture, _),
     sleep(0.2),
-    sampler_capture_get_info(Capture, capture_info(WritePos, Capacity, SampleRate)),
+    capture_get_info(Capture, capture_info(WritePos, Capacity, SampleRate)),
     Offset is -(SampleRate // 10),
     Length is SampleRate // 20,
-    sampler_capture_extract(Capture, Offset, Length, Data),
+    capture_extract(Capture, Offset, Length, Data),
     integer(Data),
-    sampler_data_info(Data, data_info(Frames, Channels, Rate, Duration)),
+    audio_info(Data, data_info(Frames, Channels, Rate, Duration)),
     Frames =:= Length,
     Channels > 0,
     Rate =:= SampleRate,
     Duration > 0,
-    sampler_data_unload(Data),
-    sampler_capture_stop(Capture).
+    audio_unload(Data),
+    capture_stop(Capture).
 
 test(capture_extract_wraparound, [nondet]) :-
-    sampler_devices(Devices),
+    promini_devices(Devices),
     member(device(Name, capture, _), Devices),
     !,
-    sampler_capture_start(Name, 0.1, Capture, BufferFrames),
+    capture_start(Name, 0.1, Capture, BufferFrames),
     sleep(0.2),
     Offset is -BufferFrames + 100,
     Length is 200,
-    sampler_capture_extract(Capture, Offset, Length, Data),
+    capture_extract(Capture, Offset, Length, Data),
     integer(Data),
-    sampler_data_unload(Data),
-    sampler_capture_stop(Capture).
+    audio_unload(Data),
+    capture_stop(Capture).
 
 :- end_tests(sampler_capture).

@@ -14,6 +14,8 @@ When answering design questions, reason from the specific requirements and use c
 
 ## Code Style
 
+C89 standard. Variable declarations at top of blocks, not inline. No `//` comments.
+
 Check existing code before writing new code. Naming conventions:
 
 - Local variables: snake_case (`device`, `input`, `output`, `frame_count`)

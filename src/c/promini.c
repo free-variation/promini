@@ -1,5 +1,5 @@
 /*
- * sampler.c - Prolog interface to miniaudio (engine API)
+ * promini.c - Prolog interface to miniaudio (engine API)
  * Copyright (c) 2025 John Stewart
  * Licensed under MIT License
  */
@@ -12,7 +12,7 @@
 
 #define MINIAUDIO_IMPLEMENTATION
 #include "../../include/miniaudio.h"
-#include "sampler_internal.h"
+#include "promini.h"
 
 
 /******************************************************************************
@@ -104,7 +104,7 @@ pthread_mutex_t g_capture_devices_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 static data_slot_t g_data_buffers[MAX_DATA_BUFFERS] = {{NULL, NULL, 0, MA_FALSE}};
 
-/* Shared sound slots array (declared in sampler_internal.h) */
+/* Shared sound slots array (declared in promini.h) */
 sound_slot_t g_sounds[MAX_SOUNDS] = {{NULL, NULL, -1, MA_FALSE, NULL}};
 
 /* capture device management */
@@ -338,12 +338,12 @@ static int create_data_buffer_from_pcm(void* pData, ma_format format, ma_uint32 
  *****************************************************************************/
 
 /*
- * pl_sampler_data_load()
- * sampler_data_load(+FilePath, -Handle)
+ * pl_audio_load()
+ * sampler_audio_load(+FilePath, -Handle)
  * Loads audio data from file into a shareable buffer.
  * Returns a data handle that can be used to create multiple sounds.
  */
-static foreign_t pl_sampler_data_load(term_t filepath, term_t handle)
+static foreign_t pl_audio_load(term_t filepath, term_t handle)
 {
 	char* path;
 	int slot;
@@ -379,10 +379,10 @@ static foreign_t pl_sampler_data_load(term_t filepath, term_t handle)
 }
 
 /*
- * sampler_data_extract(+SourceHandle, +StartFrame, +Length, -ExtractedHandle)
+ * sampler_audio_extract(+SourceHandle, +StartFrame, +Length, -ExtractedHandle)
  * Extracts a slice of frames into a new buffer.
  */
-static foreign_t pl_sampler_data_extract(term_t source_handle, term_t start_term, term_t length_term, term_t extracted_handle)
+static foreign_t pl_audio_extract(term_t source_handle, term_t start_term, term_t length_term, term_t extracted_handle)
 {
 	ma_audio_buffer* source_buffer;
   	int source_slot;
@@ -443,11 +443,11 @@ static foreign_t pl_sampler_data_extract(term_t source_handle, term_t start_term
 }
 
 /*
- * sampler_data_unload(+Handle)
+ * sampler_audio_unload(+Handle)
  * Decrements reference count on data buffer.
  * Frees the buffer when refcount reaches zero.
  */
-static foreign_t pl_sampler_data_unload(term_t handle)
+static foreign_t pl_audio_unload(term_t handle)
 {
 	int slot;
 
@@ -589,11 +589,11 @@ static ma_sound* get_sound(int index)
  *****************************************************************************/
 
 /*
- * pl_sampler_version()
- * sampler_version(-Version)
+ * pl_promini_version()
+ * promini_version(-Version)
  * Unifies Version with the miniaudio version string.
  */
-static foreign_t pl_sampler_version(term_t version)
+static foreign_t pl_promini_version(term_t version)
 {
     return PL_unify_atom_chars(version, MA_VERSION_STRING);
 }
@@ -619,12 +619,12 @@ static void engine_audio_callback(
 }
 
 /*
- * pl_sampler_init()
- * sampler_init
+ * pl_promini_init()
+ * promini_init
  * Initializes the global miniaudio engine.
  * Returns true if successful or already initialized.
  */
-foreign_t pl_sampler_init(void)
+foreign_t pl_promini_init(void)
 {
     ma_engine_config engine_config;
 	ma_result result;
@@ -658,7 +658,7 @@ foreign_t pl_sampler_init(void)
  * sampler_sound_unload(+Handle)
  * Unloads a sound and frees its resources.
  */
-static foreign_t pl_sampler_sound_unload(term_t handle)
+static foreign_t pl_sound_unload(term_t handle)
 {
     int slot;
 
@@ -675,14 +675,14 @@ static foreign_t pl_sampler_sound_unload(term_t handle)
 }
 
 /*
- * sampler_devices(-Devices)
+ * promini_devices(-Devices)
  * Unifies Devices with a list of available audio devices.
  * Each device is represented as device(Name, Type, IsDefault) where:
  *   - Name is the device name string
  *   - Type is 'playback' or 'capture'
  *   - IsDefault is 'true' or 'false'
  */
-static foreign_t pl_sampler_devices(term_t devices)
+static foreign_t pl_promini_devices(term_t devices)
 {
     ma_context* pContext;
     ma_result result;
@@ -696,7 +696,7 @@ static foreign_t pl_sampler_devices(term_t devices)
 
     /* Auto-initialize engine if needed */
     if (g_engine == NULL) {
-        if (!pl_sampler_init()) {
+        if (!pl_promini_init()) {
             return PL_unify_nil(devices);
         }
     }
@@ -761,11 +761,11 @@ static foreign_t pl_sampler_devices(term_t devices)
  *****************************************************************************/
 
 /*
- * pl_sampler_sound_start()
+ * pl_sound_start()
  * sampler_sound_start(+Handle)
  * Starts playing a sound
  */
-static foreign_t pl_sampler_sound_start(term_t handle)
+static foreign_t pl_sound_start(term_t handle)
 {
 	ma_sound* sound;
 	ma_result result;
@@ -793,7 +793,7 @@ static foreign_t pl_sampler_sound_start(term_t handle)
  * sampler_sound_stop(+Handle)
  * Stops playing a sound
  */
-static foreign_t pl_sampler_sound_stop(term_t handle)
+static foreign_t pl_sound_stop(term_t handle)
 {
 	ma_sound* sound;
 	ma_result result;
@@ -808,7 +808,7 @@ static foreign_t pl_sampler_sound_stop(term_t handle)
  * sampler_sound_is_playing(+Handle)
  * Succeeds if sound is playing, fails otherwise.
  */
-static foreign_t pl_sampler_sound_is_playing(term_t handle)
+static foreign_t pl_sound_is_playing(term_t handle)
 {
 	ma_sound* sound;
 
@@ -821,7 +821,7 @@ static foreign_t pl_sampler_sound_is_playing(term_t handle)
  * sampler_sound_set_looping(+Handle, +Loop)
  * Sets whether a sound should loop
  */
-static foreign_t pl_sampler_sound_set_looping(term_t handle, term_t loop)
+static foreign_t pl_sound_set_looping(term_t handle, term_t loop)
 {
 	ma_sound* sound;
 	char* loop_str;
@@ -843,7 +843,7 @@ static foreign_t pl_sampler_sound_set_looping(term_t handle, term_t loop)
  * sampler_sound_is_looping(+Handle)
  * Succeeds if sound is set to loop, fails otherwise.
  */
-static foreign_t pl_sampler_sound_is_looping(term_t handle)
+static foreign_t pl_sound_is_looping(term_t handle)
 {
 	ma_sound* sound;
 
@@ -856,7 +856,7 @@ static foreign_t pl_sampler_sound_is_looping(term_t handle)
  * sampler_sound_seek(+Handle, +Frame)
  * Seeks to a specific frame position in the sound.
  */
-static foreign_t pl_sampler_sound_seek(term_t handle, term_t frame)
+static foreign_t pl_sound_seek(term_t handle, term_t frame)
 {
 	ma_sound* sound;
 	ma_uint64 frame_index;
@@ -876,7 +876,7 @@ static foreign_t pl_sampler_sound_seek(term_t handle, term_t frame)
  * sampler_sound_get_position(+Handle, -Frame)
  * Gets the current playback position in frames.
  */
-static foreign_t pl_sampler_sound_get_position(term_t handle, term_t frame) {
+static foreign_t pl_sound_get_position(term_t handle, term_t frame) {
 	ma_sound* sound;
 	ma_uint64 cursor;
 	ma_result result;
@@ -897,7 +897,7 @@ static foreign_t pl_sampler_sound_get_position(term_t handle, term_t frame) {
  * Creates a sound instance from a loaded data buffer.
  * Multiple sounds can be created from the same buffer for polyphony.
  */
-static foreign_t pl_sampler_sound_create(term_t data_handle, term_t sound_handle) 
+static foreign_t pl_sound_create(term_t data_handle, term_t sound_handle) 
 {
 	int data_slot;
 	int sound_slot;
@@ -971,7 +971,7 @@ static foreign_t pl_sampler_sound_create(term_t data_handle, term_t sound_handle
  * sampler_sound_set_range(+Handle, +StartFrame, +EndFrame)
  * Sets the playback range for a sound (which frames to play).
  */
-static foreign_t pl_sampler_sound_set_range(term_t handle, term_t start_term, term_t end_term)
+static foreign_t pl_sound_set_range(term_t handle, term_t start_term, term_t end_term)
 {
 	ma_sound* sound;
   	ma_uint64 start_frame;
@@ -1011,7 +1011,7 @@ static foreign_t pl_sampler_sound_set_range(term_t handle, term_t start_term, te
 	return TRUE;
 }
 
-static foreign_t pl_sampler_data_info(term_t data_handle, term_t info)
+static foreign_t pl_audio_info(term_t data_handle, term_t info)
 {
 	ma_audio_buffer* buffer;
 	ma_uint64 frames;
@@ -1043,7 +1043,7 @@ static foreign_t pl_sampler_data_info(term_t data_handle, term_t info)
  * sampler_sound_length(+Handle, -Frames)
  * Gets the total length of a sound in PCM frames.
  */
-static foreign_t pl_sampler_sound_length(term_t handle, term_t frames)
+static foreign_t pl_sound_length(term_t handle, term_t frames)
 {
 	ma_sound* sound;
 	ma_uint64 length;
@@ -1063,7 +1063,7 @@ static foreign_t pl_sampler_sound_length(term_t handle, term_t frames)
  * sampler_sound_set_pitch(+Handle, +Pitch)
  * Sets the pitch in semitones (12 = one octave up, -12 = one octave down).
  */
-static foreign_t pl_sampler_sound_set_pitch(term_t handle, term_t pitch)
+static foreign_t pl_sound_set_pitch(term_t handle, term_t pitch)
 {
 	ma_sound* sound;
 	double pitch_value;
@@ -1084,7 +1084,7 @@ static foreign_t pl_sampler_sound_set_pitch(term_t handle, term_t pitch)
  * sampler_sound_get_pitch(+Handle, -Pitch)
  * Gets pitch in semitones.
  */
-static foreign_t pl_sampler_sound_get_pitch(term_t handle, term_t pitch)
+static foreign_t pl_sound_get_pitch(term_t handle, term_t pitch)
 {
 	ma_sound* sound;
 	float ratio;
@@ -1102,7 +1102,7 @@ static foreign_t pl_sampler_sound_get_pitch(term_t handle, term_t pitch)
  * sampler_sound_set_pan_mode(+Handle, +Mode)
  * Sets the pan mode: "balance" or "pan"
  */
-static foreign_t pl_sampler_sound_set_pan_mode(term_t handle, term_t mode)
+static foreign_t pl_sound_set_pan_mode(term_t handle, term_t mode)
 {
 	ma_sound* sound;
 	char* mode_str;
@@ -1130,7 +1130,7 @@ static foreign_t pl_sampler_sound_set_pan_mode(term_t handle, term_t mode)
  * sampler_sound_get_pan_mode(+Handle, -Mode)
  * Gets the current pan mode as 'balance' or 'pan'.
  */
-static foreign_t pl_sampler_sound_get_pan_mode(term_t handle, term_t mode)
+static foreign_t pl_sound_get_pan_mode(term_t handle, term_t mode)
 {
 	ma_sound* sound;
 	ma_pan_mode pan_mode;
@@ -1153,7 +1153,7 @@ static foreign_t pl_sampler_sound_get_pan_mode(term_t handle, term_t mode)
  * sampler_sound_net_pan(+Handle, +Pan)
  * Sets stereo pan (-1.0 = hard left, 0.0 = center, 1.0 = right).
  */
-static foreign_t pl_sampler_sound_set_pan(term_t handle, term_t pan)
+static foreign_t pl_sound_set_pan(term_t handle, term_t pan)
 {
 	ma_sound* sound;
 	double pan_value;
@@ -1172,7 +1172,7 @@ static foreign_t pl_sampler_sound_set_pan(term_t handle, term_t pan)
  * sampler_sound_get_pan(+Handle, -Pan)
  * Gets current stereo pan value
  */
-static foreign_t pl_sampler_sound_get_pan(term_t handle, term_t pan)
+static foreign_t pl_sound_get_pan(term_t handle, term_t pan)
 {
 	ma_sound* sound;
 	double pan_value;
@@ -1188,7 +1188,7 @@ static foreign_t pl_sampler_sound_get_pan(term_t handle, term_t pan)
  * sampler_sound_set_volume(+Handle, +Volume)
  * Sets volume (1.0 = normal, 0.0 = silence, >1.0 = amplification).
  */
-static foreign_t pl_sampler_sound_set_volume(term_t handle, term_t volume)
+static foreign_t pl_sound_set_volume(term_t handle, term_t volume)
 {
 	ma_sound* sound;
 	double volume_value;
@@ -1207,7 +1207,7 @@ static foreign_t pl_sampler_sound_set_volume(term_t handle, term_t volume)
  * sampler_sound_get_volume(+Handle, -Volume)
  * Gets current volume.
  */
-static foreign_t pl_sampler_sound_get_volume(term_t handle, term_t volume)
+static foreign_t pl_sound_get_volume(term_t handle, term_t volume)
 {
 	ma_sound* sound;
 	float volume_value;
@@ -1220,10 +1220,10 @@ static foreign_t pl_sampler_sound_get_volume(term_t handle, term_t volume)
 }
 
 /*
- * sampler_data_reverse(+SourceHandle, -ReversedHandle)
+ * sampler_audio_reverse(+SourceHandle, -ReversedHandle)
  * Creates a reversed copy of a data buffer
  */
-static foreign_t pl_sampler_data_reverse(term_t source_handle, term_t reversed_handle)
+static foreign_t pl_audio_reverse(term_t source_handle, term_t reversed_handle)
 {
 	ma_audio_buffer* source_buffer;
 	int slot;
@@ -1313,7 +1313,7 @@ static void capture_data_callback(ma_device* device, void* output, const void*in
  * sampler_capture_start(+DeviceName, +PeriodSeconds, -CaptureHandle, -BufferFrames)
  * starts capture from specified device into ring buffer.
  */
-static foreign_t pl_sampler_capture_start(term_t device_name, term_t period_term, term_t capture_handle, term_t buffer_frames_out)
+static foreign_t pl_capture_start(term_t device_name, term_t period_term, term_t capture_handle, term_t buffer_frames_out)
 {
 	char* name;
 	double period_seconds;
@@ -1422,7 +1422,7 @@ static foreign_t pl_sampler_capture_start(term_t device_name, term_t period_term
  * sampler_capture_stop(+CaptureHandle)
  * Stops capture and frees resources.
  */
-static foreign_t pl_sampler_capture_stop(term_t capture_handle)
+static foreign_t pl_capture_stop(term_t capture_handle)
 {
 	capture_slot_t* capture;
 
@@ -1436,7 +1436,7 @@ static foreign_t pl_sampler_capture_stop(term_t capture_handle)
  * sampler_capture_get_info(+CaptureHandle, -Info)
  * Returns capture_ifo(WritePosition, Capacity, SampleRate)
  */
-static foreign_t pl_sampler_capture_get_info(term_t capture_handle, term_t info)
+static foreign_t pl_capture_get_info(term_t capture_handle, term_t info)
 {
 	capture_slot_t* capture;
   	ma_uint64 write_position;
@@ -1467,7 +1467,7 @@ static foreign_t pl_sampler_capture_get_info(term_t capture_handle, term_t info)
  * Extracts frames from capture buffer to a new data buffer.
  * RelativeOffset is negative frames from current write position.
  */
-static foreign_t pl_sampler_capture_extract(term_t capture_handle, term_t offset_term, term_t length_term, term_t data_handle)
+static foreign_t pl_capture_extract(term_t capture_handle, term_t offset_term, term_t length_term, term_t data_handle)
 {
 	capture_slot_t* capture;
   	int offset_int;
@@ -1563,50 +1563,50 @@ static foreign_t pl_sampler_capture_extract(term_t capture_handle, term_t offset
  *****************************************************************************/
 
 /*
- * sampler_register_predicates()
- * Register sampler foreign predicates with SWI-Prolog.
+ * promini_register_predicates()
+ * Register promini foreign predicates with SWI-Prolog.
  */
-install_t sampler_register_predicates(void)
+install_t promini_register_predicates(void)
 {
-    PL_register_foreign("sampler_version", 1, pl_sampler_version, 0);
-    PL_register_foreign("sampler_init", 0, pl_sampler_init, 0);
-    PL_register_foreign("sampler_devices", 1, pl_sampler_devices, 0);
-    PL_register_foreign("sampler_sound_unload", 1, pl_sampler_sound_unload, 0);
-	PL_register_foreign("sampler_sound_start", 1, pl_sampler_sound_start, 0);
-	PL_register_foreign("sampler_sound_stop", 1, pl_sampler_sound_stop, 0);
-	PL_register_foreign("sampler_sound_is_playing", 1, pl_sampler_sound_is_playing, 0);
-	PL_register_foreign("sampler_sound_set_looping", 2, pl_sampler_sound_set_looping, 0);
-	PL_register_foreign("sampler_sound_is_looping", 1, pl_sampler_sound_is_looping, 0);
-	PL_register_foreign("sampler_data_load", 2, pl_sampler_data_load, 0);
-	PL_register_foreign("sampler_data_unload", 1, pl_sampler_data_unload, 0);
-	PL_register_foreign("sampler_sound_create", 2, pl_sampler_sound_create, 0);
-	PL_register_foreign("sampler_sound_seek", 2, pl_sampler_sound_seek, 0);
-	PL_register_foreign("sampler_sound_get_position", 2, pl_sampler_sound_get_position, 0);
-	PL_register_foreign("sampler_data_info", 2, pl_sampler_data_info, 0);
-	PL_register_foreign("sampler_sound_length", 2, pl_sampler_sound_length, 0);
-	PL_register_foreign("sampler_sound_set_pitch", 2, pl_sampler_sound_set_pitch, 0);
-	PL_register_foreign("sampler_sound_get_pitch", 2, pl_sampler_sound_get_pitch, 0);
-	PL_register_foreign("sampler_sound_set_pan", 2, pl_sampler_sound_set_pan, 0);
-	PL_register_foreign("sampler_sound_get_pan", 2, pl_sampler_sound_get_pan, 0);
-	PL_register_foreign("sampler_sound_set_pan_mode", 2, pl_sampler_sound_set_pan_mode, 0);
-	PL_register_foreign("sampler_sound_get_pan_mode", 2, pl_sampler_sound_get_pan_mode, 0);
-	PL_register_foreign("sampler_sound_set_volume", 2, pl_sampler_sound_set_volume, 0);
-	PL_register_foreign("sampler_sound_get_volume", 2, pl_sampler_sound_get_volume, 0);
-	PL_register_foreign("sampler_data_reverse", 2, pl_sampler_data_reverse, 0);
-	PL_register_foreign("sampler_sound_set_range", 3, pl_sampler_sound_set_range, 0);
-	PL_register_foreign("sampler_data_extract", 4, pl_sampler_data_extract, 0);
-	PL_register_foreign("sampler_capture_start", 4, pl_sampler_capture_start, 0);
-	PL_register_foreign("sampler_capture_stop", 1, pl_sampler_capture_stop, 0);
-	PL_register_foreign("sampler_capture_get_info", 2, pl_sampler_capture_get_info, 0);
-	PL_register_foreign("sampler_capture_extract", 4, pl_sampler_capture_extract, 0);
+    PL_register_foreign("promini_version", 1, pl_promini_version, 0);
+    PL_register_foreign("promini_init", 0, pl_promini_init, 0);
+    PL_register_foreign("promini_devices", 1, pl_promini_devices, 0);
+    PL_register_foreign("sound_unload", 1, pl_sound_unload, 0);
+	PL_register_foreign("sound_start", 1, pl_sound_start, 0);
+	PL_register_foreign("sound_stop", 1, pl_sound_stop, 0);
+	PL_register_foreign("sound_is_playing", 1, pl_sound_is_playing, 0);
+	PL_register_foreign("sound_set_looping", 2, pl_sound_set_looping, 0);
+	PL_register_foreign("sound_is_looping", 1, pl_sound_is_looping, 0);
+	PL_register_foreign("audio_load", 2, pl_audio_load, 0);
+	PL_register_foreign("audio_unload", 1, pl_audio_unload, 0);
+	PL_register_foreign("sound_create", 2, pl_sound_create, 0);
+	PL_register_foreign("sound_seek", 2, pl_sound_seek, 0);
+	PL_register_foreign("sound_get_position", 2, pl_sound_get_position, 0);
+	PL_register_foreign("audio_info", 2, pl_audio_info, 0);
+	PL_register_foreign("sound_length", 2, pl_sound_length, 0);
+	PL_register_foreign("sound_set_pitch", 2, pl_sound_set_pitch, 0);
+	PL_register_foreign("sound_get_pitch", 2, pl_sound_get_pitch, 0);
+	PL_register_foreign("sound_set_pan", 2, pl_sound_set_pan, 0);
+	PL_register_foreign("sound_get_pan", 2, pl_sound_get_pan, 0);
+	PL_register_foreign("sound_set_pan_mode", 2, pl_sound_set_pan_mode, 0);
+	PL_register_foreign("sound_get_pan_mode", 2, pl_sound_get_pan_mode, 0);
+	PL_register_foreign("sound_set_volume", 2, pl_sound_set_volume, 0);
+	PL_register_foreign("sound_get_volume", 2, pl_sound_get_volume, 0);
+	PL_register_foreign("audio_reverse", 2, pl_audio_reverse, 0);
+	PL_register_foreign("sound_set_range", 3, pl_sound_set_range, 0);
+	PL_register_foreign("audio_extract", 4, pl_audio_extract, 0);
+	PL_register_foreign("capture_start", 4, pl_capture_start, 0);
+	PL_register_foreign("capture_stop", 1, pl_capture_stop, 0);
+	PL_register_foreign("capture_get_info", 2, pl_capture_get_info, 0);
+	PL_register_foreign("capture_extract", 4, pl_capture_extract, 0);
 }
 
 /*
- * uninstall_sampler()
+ * uninstall_promini()
  * Called when the foreign library is unloaded.
  * Cleans up the engine.
  */
-install_t uninstall_sampler(void)
+install_t uninstall_promini(void)
 {
     int i;
 

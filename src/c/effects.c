@@ -10,7 +10,7 @@
 #endif
 
 
-#include "sampler_internal.h"
+#include "promini.h"
 
 
 /******************************************************************************
@@ -2515,7 +2515,7 @@ static foreign_t attach_effect_to_node(ma_sound* sound, effect_node_t** effect_c
 	return PL_unify(effect_handle, effect_term);
 }
 
-static foreign_t pl_sampler_sound_attach_effect(term_t handle, term_t effect_type, term_t params, term_t effect_handle)
+static foreign_t pl_sound_attach_effect(term_t handle, term_t effect_type, term_t params, term_t effect_handle)
 {
 	int slot;
 	if (!PL_get_integer(handle, &slot) || slot < 0 || slot >= MAX_SOUNDS || !g_sounds[slot].in_use)
@@ -2523,7 +2523,7 @@ static foreign_t pl_sampler_sound_attach_effect(term_t handle, term_t effect_typ
 	return attach_effect_to_node(g_sounds[slot].sound, &g_sounds[slot].effect_chain, "sound", slot, effect_type, params, effect_handle);
 }
 
-static foreign_t pl_sampler_voice_attach_effect(term_t handle, term_t effect_type, term_t params, term_t effect_handle)
+static foreign_t pl_voice_attach_effect(term_t handle, term_t effect_type, term_t params, term_t effect_handle)
 {
 	int slot;
 	if (!PL_get_integer(handle, &slot) || slot < 0 || slot >= MAX_VOICES || !g_voices[slot].in_use)
@@ -2532,10 +2532,10 @@ static foreign_t pl_sampler_voice_attach_effect(term_t handle, term_t effect_typ
 }
 
 /*
- * pl_sampler_sound_effects()
+ * pl_sound_effects()
  * Query all effects attached to a sound
  */
-static foreign_t pl_sampler_sound_effects(term_t sound_handle, term_t effects_list)
+static foreign_t pl_sound_effects(term_t sound_handle, term_t effects_list)
 {
 	ma_sound* sound;
 	int slot;
@@ -2641,10 +2641,10 @@ static foreign_t pl_sampler_sound_effects(term_t sound_handle, term_t effects_li
 }
 
 /*
- * pl_sampler_effect_set_parameters()
+ * pl_effect_set_parameters()
  * Set parameters on an effect
  */
-static foreign_t pl_sampler_effect_set_parameters(term_t effect_handle, term_t params_list)
+static foreign_t pl_effect_set_parameters(term_t effect_handle, term_t params_list)
 {
 	ma_sound* source;
 	effect_node_t** effect_chain;
@@ -2691,10 +2691,10 @@ static foreign_t pl_sampler_effect_set_parameters(term_t effect_handle, term_t p
 }
 
 /*
- * pl_sampler_effect_detach()
+ * pl_effect_detach()
  * Remove an effect from the effect chain
  */
-static foreign_t pl_sampler_effect_detach(term_t effect_handle)
+static foreign_t pl_effect_detach(term_t effect_handle)
 {
 	ma_sound* source;
 	effect_node_t** effect_chain;
@@ -2760,11 +2760,11 @@ static foreign_t pl_sampler_effect_detach(term_t effect_handle)
  */
 install_t effects_register_predicates(void)
 {
-	PL_register_foreign("sampler_sound_attach_effect", 4, pl_sampler_sound_attach_effect, 0);
-	PL_register_foreign("sampler_voice_attach_effect", 4, pl_sampler_voice_attach_effect, 0);
-	PL_register_foreign("sampler_sound_effects", 2, pl_sampler_sound_effects, 0);
-	PL_register_foreign("sampler_effect_set_parameters", 2, pl_sampler_effect_set_parameters, 0);
-	PL_register_foreign("sampler_effect_detach", 1, pl_sampler_effect_detach, 0);
+	PL_register_foreign("sound_attach_effect", 4, pl_sound_attach_effect, 0);
+	PL_register_foreign("voice_attach_effect", 4, pl_voice_attach_effect, 0);
+	PL_register_foreign("sound_effects", 2, pl_sound_effects, 0);
+	PL_register_foreign("effect_set_parameters", 2, pl_effect_set_parameters, 0);
+	PL_register_foreign("effect_detach", 1, pl_effect_detach, 0);
 }
 
 /*

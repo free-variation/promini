@@ -1,4 +1,4 @@
-# Makefile for sampler - Prolog interface to miniaudio
+# Makefile for promini - Prolog interface to miniaudio
 
 # Detect operating system
 UNAME_S := $(shell uname -s)
@@ -26,10 +26,10 @@ else
 endif
 
 # Source and output
-SRC := src/c/sampler.c src/c/synth.c src/c/effects.c src/c/init.c src/c/reverb.c src/c/mod.c
-HEADERS := src/c/sampler_internal.h
+SRC := src/c/promini.c src/c/synth.c src/c/effects.c src/c/init.c src/c/reverb.c src/c/mod.c
+HEADERS := src/c/promini.h
 LIBDIR := lib
-TARGET := $(LIBDIR)/sampler.$(SOEXT)
+TARGET := $(LIBDIR)/promini.$(SOEXT)
 
 # Default target
 all: $(TARGET)

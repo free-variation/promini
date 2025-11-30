@@ -5,7 +5,7 @@
  */
 
 
-#include "sampler_internal.h"
+#include "promini.h"
 #include <time.h>
 
 
@@ -156,7 +156,7 @@ static void free_oscillator_slot(int index)
 
 /*
  * pl_synth_voice_create()
- * sampler_synth_voice_create(-Handle)
+ * synth_voice_create(-Handle)
  * Creates a new empty voice group.
  */
 static foreign_t pl_synth_voice_create(term_t handle)
@@ -185,8 +185,8 @@ static foreign_t pl_synth_voice_create(term_t handle)
 }
 
 /*
- * pl_sampler_synth_voices_in_use()
- * sampler_synth_voices_in_use(-Count)
+ * pl_synth_voices_in_use()
+ * synth_voices_in_use(-Count)
  * Returns the number of voices currently in use.
  */
 static foreign_t pl_synth_voices_in_use(term_t count)
@@ -205,7 +205,7 @@ static foreign_t pl_synth_voices_in_use(term_t count)
 
 /*
  * pl_synth_voice_start()
- * sampler_synth_voice_start(+Handle)
+ * synth_voice_start(+Handle)
  * Starts playing a voice by starting all its oscillators.
  */
 static foreign_t pl_synth_voice_start(term_t handle)
@@ -233,7 +233,7 @@ static foreign_t pl_synth_voice_start(term_t handle)
 
 /*
  * pl_synth_voice_stop()
- * sampler_synth_voice_stop(+Handle)
+ * synth_voice_stop(+Handle)
  * Stops playing a voice by stopping all its oscillators.
  */
 static foreign_t pl_synth_voice_stop(term_t handle)
@@ -262,7 +262,7 @@ static foreign_t pl_synth_voice_stop(term_t handle)
 
 /*
  * pl_synth_voice_fade()
- * sampler_synth_voice_fade(+Handle, +TargetVolume, +Ms)
+ * synth_voice_fade(+Handle, +TargetVolume, +Ms)
  * Fades a voice to target volume over specified milliseconds.
  * Use -1.0 for TargetVolume to fade from current volume.
  */
@@ -294,7 +294,7 @@ static foreign_t pl_synth_voice_fade(term_t handle, term_t volume_term, term_t m
 
 /*
  * pl_synth_voice_set_pan()
- * sampler_synth_voice_set_pan(+Handle, +Pan)
+ * synth_voice_set_pan(+Handle, +Pan)
  * Sets the pan position of a voice (-1.0 left, 0.0 center, 1.0 right).
  */
 static foreign_t pl_synth_voice_set_pan(term_t handle, term_t pan_term)
@@ -320,7 +320,7 @@ static foreign_t pl_synth_voice_set_pan(term_t handle, term_t pan_term)
 
 /*
  * pl_synth_voice_get_pan()
- * sampler_synth_voice_get_pan(+Handle, -Pan)
+ * synth_voice_get_pan(+Handle, -Pan)
  * Gets the pan position of a voice.
  */
 static foreign_t pl_synth_voice_get_pan(term_t handle, term_t pan_term)
@@ -335,7 +335,7 @@ static foreign_t pl_synth_voice_get_pan(term_t handle, term_t pan_term)
 
 /*
  * pl_synth_voice_unload()
- * sampler_synth_voice_unload(+Handle)
+ * synth_voice_unload(+Handle)
  * Unloads a voice and frees its resources.
  */
 static foreign_t pl_synth_voice_unload(term_t handle)
@@ -360,7 +360,7 @@ static foreign_t pl_synth_voice_unload(term_t handle)
 
 /*
  * pl_synth_oscillator_add()
- * sampler_synth_oscillator_add(+VoiceHandle, +Frequency, +Phase, -OscHandle)
+ * synth_oscillator_add(+VoiceHandle, +Frequency, +Phase, -OscHandle)
  * Adds a sine oscillator to a voice.
  */
 static foreign_t pl_synth_oscillator_add(term_t voice_handle, term_t freq_term,
@@ -441,7 +441,7 @@ static foreign_t pl_synth_oscillator_add(term_t voice_handle, term_t freq_term,
 
 /*
  * pl_synth_oscillator_remove()
- * sampler_synth_oscillator_remove(+OscHandle)
+ * synth_oscillator_remove(+OscHandle)
  * Removes an oscillator from its voice.
  */
 static foreign_t pl_synth_oscillator_remove(term_t osc_handle)
@@ -481,7 +481,7 @@ static foreign_t pl_synth_oscillator_remove(term_t osc_handle)
 
 /*
  * pl_synth_noise_add()
- * sampler_synth_noise_add(+VoiceHandle, +Type, -NoiseHandle)
+ * synth_noise_add(+VoiceHandle, +Type, -NoiseHandle)
  * Adds a noise generator to a voice.
  * Type is one of: white, pink, brownian
  */
@@ -562,7 +562,7 @@ static foreign_t pl_synth_noise_add(term_t voice_handle, term_t type_term, term_
 
 /*
  * pl_synth_oscillator_fade()
- * sampler_synth_oscillator_fade(+OscHandle, +TargetVolume, +Ms)
+ * synth_oscillator_fade(+OscHandle, +TargetVolume, +Ms)
  * Fades an oscillator to target volume over specified milliseconds.
  */
 static foreign_t pl_synth_oscillator_fade(term_t osc_handle, term_t volume_term, term_t ms_term)
@@ -593,7 +593,7 @@ static foreign_t pl_synth_oscillator_fade(term_t osc_handle, term_t volume_term,
 
 /*
  * pl_synth_oscillator_set_volume()
- * sampler_synth_oscillator_set_volume(+OscHandle, +Volume)
+ * synth_oscillator_set_volume(+OscHandle, +Volume)
  * Sets the volume of an oscillator or noise source.
  */
 static foreign_t pl_synth_oscillator_set_volume(term_t osc_handle, term_t volume_term)
@@ -615,7 +615,7 @@ static foreign_t pl_synth_oscillator_set_volume(term_t osc_handle, term_t volume
 
 /*
  * pl_synth_oscillator_get_volume()
- * sampler_synth_oscillator_get_volume(+OscHandle, -Volume)
+ * synth_oscillator_get_volume(+OscHandle, -Volume)
  * Gets the volume of an oscillator or noise source.
  */
 static foreign_t pl_synth_oscillator_get_volume(term_t osc_handle, term_t volume_term)
@@ -630,7 +630,7 @@ static foreign_t pl_synth_oscillator_get_volume(term_t osc_handle, term_t volume
 
 /*
  * pl_synth_oscillator_set_frequency()
- * sampler_synth_oscillator_set_frequency(+OscHandle, +Frequency)
+ * synth_oscillator_set_frequency(+OscHandle, +Frequency)
  * Sets the frequency of an oscillator.
  */
 static foreign_t pl_synth_oscillator_set_frequency(term_t osc_handle, term_t freq_term)
@@ -655,7 +655,7 @@ static foreign_t pl_synth_oscillator_set_frequency(term_t osc_handle, term_t fre
 
 /*
  * pl_synth_oscillator_get_frequency()
- * sampler_synth_oscillator_get_frequency(+OscHandle, -Frequency)
+ * synth_oscillator_get_frequency(+OscHandle, -Frequency)
  * Gets the frequency of an oscillator.
  */
 static foreign_t pl_synth_oscillator_get_frequency(term_t osc_handle, term_t freq_term)
@@ -670,7 +670,7 @@ static foreign_t pl_synth_oscillator_get_frequency(term_t osc_handle, term_t fre
 
 /*
  * pl_synth_oscillator_set_phase()
- * sampler_synth_oscillator_set_phase(+OscHandle, +Phase)
+ * synth_oscillator_set_phase(+OscHandle, +Phase)
  * Sets the phase of an oscillator (0.0 to 1.0).
  */
 static foreign_t pl_synth_oscillator_set_phase(term_t osc_handle, term_t phase_term)
@@ -695,7 +695,7 @@ static foreign_t pl_synth_oscillator_set_phase(term_t osc_handle, term_t phase_t
 
 /*
  * pl_synth_oscillator_get_phase()
- * sampler_synth_oscillator_get_phase(+OscHandle, -Phase)
+ * synth_oscillator_get_phase(+OscHandle, -Phase)
  * Gets the phase of an oscillator (0.0 to 1.0).
  */
 static foreign_t pl_synth_oscillator_get_phase(term_t osc_handle, term_t phase_term)
@@ -723,24 +723,24 @@ static foreign_t pl_synth_oscillator_get_phase(term_t osc_handle, term_t phase_t
  */
 install_t synth_register_predicates(void)
 {
-	PL_register_foreign("sampler_synth_voices_in_use", 1, pl_synth_voices_in_use, 0);
-	PL_register_foreign("sampler_synth_voice_create", 1, pl_synth_voice_create, 0);
-	PL_register_foreign("sampler_synth_voice_start", 1, pl_synth_voice_start, 0);
-	PL_register_foreign("sampler_synth_voice_stop", 1, pl_synth_voice_stop, 0);
-	PL_register_foreign("sampler_synth_voice_fade", 3, pl_synth_voice_fade, 0);
-	PL_register_foreign("sampler_synth_voice_set_pan", 2, pl_synth_voice_set_pan, 0);
-	PL_register_foreign("sampler_synth_voice_get_pan", 2, pl_synth_voice_get_pan, 0);
-	PL_register_foreign("sampler_synth_voice_unload", 1, pl_synth_voice_unload, 0);
-	PL_register_foreign("sampler_synth_oscillator_add", 4, pl_synth_oscillator_add, 0);
-	PL_register_foreign("sampler_synth_oscillator_remove", 1, pl_synth_oscillator_remove, 0);
-	PL_register_foreign("sampler_synth_noise_add", 3, pl_synth_noise_add, 0);
-	PL_register_foreign("sampler_synth_oscillator_fade", 3, pl_synth_oscillator_fade, 0);
-	PL_register_foreign("sampler_synth_oscillator_set_volume", 2, pl_synth_oscillator_set_volume, 0);
-	PL_register_foreign("sampler_synth_oscillator_get_volume", 2, pl_synth_oscillator_get_volume, 0);
-	PL_register_foreign("sampler_synth_oscillator_set_frequency", 2, pl_synth_oscillator_set_frequency, 0);
-	PL_register_foreign("sampler_synth_oscillator_get_frequency", 2, pl_synth_oscillator_get_frequency, 0);
-	PL_register_foreign("sampler_synth_oscillator_set_phase", 2, pl_synth_oscillator_set_phase, 0);
-	PL_register_foreign("sampler_synth_oscillator_get_phase", 2, pl_synth_oscillator_get_phase, 0);
+	PL_register_foreign("synth_voices_in_use", 1, pl_synth_voices_in_use, 0);
+	PL_register_foreign("synth_voice_create", 1, pl_synth_voice_create, 0);
+	PL_register_foreign("synth_voice_start", 1, pl_synth_voice_start, 0);
+	PL_register_foreign("synth_voice_stop", 1, pl_synth_voice_stop, 0);
+	PL_register_foreign("synth_voice_fade", 3, pl_synth_voice_fade, 0);
+	PL_register_foreign("synth_voice_set_pan", 2, pl_synth_voice_set_pan, 0);
+	PL_register_foreign("synth_voice_get_pan", 2, pl_synth_voice_get_pan, 0);
+	PL_register_foreign("synth_voice_unload", 1, pl_synth_voice_unload, 0);
+	PL_register_foreign("synth_oscillator_add", 4, pl_synth_oscillator_add, 0);
+	PL_register_foreign("synth_oscillator_remove", 1, pl_synth_oscillator_remove, 0);
+	PL_register_foreign("synth_noise_add", 3, pl_synth_noise_add, 0);
+	PL_register_foreign("synth_oscillator_fade", 3, pl_synth_oscillator_fade, 0);
+	PL_register_foreign("synth_oscillator_set_volume", 2, pl_synth_oscillator_set_volume, 0);
+	PL_register_foreign("synth_oscillator_get_volume", 2, pl_synth_oscillator_get_volume, 0);
+	PL_register_foreign("synth_oscillator_set_frequency", 2, pl_synth_oscillator_set_frequency, 0);
+	PL_register_foreign("synth_oscillator_get_frequency", 2, pl_synth_oscillator_get_frequency, 0);
+	PL_register_foreign("synth_oscillator_set_phase", 2, pl_synth_oscillator_set_phase, 0);
+	PL_register_foreign("synth_oscillator_get_phase", 2, pl_synth_oscillator_get_phase, 0);
 }
 
 /* uninstall_synth()

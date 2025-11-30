@@ -1,16 +1,22 @@
 /*
  * reverb.c - True stereo Dattorro plate reverb
- * Based on Jon Dattorro's "Effect Design Part 1" paper
+ *
+ * Based on Jon Dattorro's "Effect Design Part 1" paper (1997)
  * https://ccrma.stanford.edu/~dattorro/EffectDesignPart1.pdf
+ *
+ * Reference implementation: Valley Audio Plateau (MIT License)
+ * https://github.com/ValleyAudio/ValleyRackFree/tree/main/src/Plateau
  *
  * True stereo: two independent channels with cross-feed coupling.
  * Each channel: predelay → input LPF → 4 diffusers → tank (2 halves)
  * Output: multiple taps from tank combined per Dattorro Table 2.
  */
 
-#include "sampler_internal.h"
+#include "promini.h"
 
 #define MAX_PREDELAY 9600  /* 200ms at 48kHz */
+
+static const float mod_freq_ratios[4] = {1.0f, 1.5f, 1.2f, 1.8f};
 
 /* ============================================================================
  * Basic DSP primitives
@@ -73,6 +79,7 @@ static float* alloc_buffer(ma_uint32 size) {
 
 /* ============================================================================
  * Pitch shifter for shimmer effect
+ * 4-grain overlap-add pitch shifting (see SuperCollider PitchShift for similar approach)
  * ============================================================================ */
 
 /* Read from buffer with cubic interpolation (Catmull-Rom) */
@@ -113,9 +120,10 @@ static float pitchshift_process(reverb_pitchshift_t* ps, float input,
                                  float shift_semitones, float mix,
                                  ma_uint32 sample_rate) {
 	float ratio, pchratio1, samp_slope, startpos;
-	float d1, d2, frac, value;
-	ma_uint32 mask, idsamp, irdphase, irdphaseb;
+	float value;
+	ma_uint32 mask;
 	ma_uint32 framesize;
+	float read_pos;
 	float slope;
 	int i;
 
@@ -186,16 +194,12 @@ static float pitchshift_process(reverb_pitchshift_t* ps, float input,
 		/* Update delay position */
 		ps->dsamp[i] += ps->dsamp_slope[i];
 
-		/* Read with linear interpolation */
-		idsamp = (ma_uint32)ps->dsamp[i];
-		frac = ps->dsamp[i] - (float)idsamp;
-		irdphase = (ps->write_pos - idsamp) & mask;
-		irdphaseb = (irdphase - 1) & mask;
-		d1 = ps->buffer[irdphase];
-		d2 = ps->buffer[irdphaseb];
+		/* read with cubic interpolation */
+		read_pos = (float)ps->write_pos - ps->dsamp[i];
+		while (read_pos < 0.0f) read_pos += (float)ps->size;
 
-		/* Add windowed sample */
-		value += (d1 + frac * (d2 - d1)) * ps->ramp[i];
+		/* add windowed sample */
+		value += buffer_read_cubic_ps(ps->buffer, ps->size, read_pos) * ps->ramp[i];
 
 		/* Update ramp */
 		ps->ramp[i] += ps->ramp_slope[i];
@@ -268,6 +272,7 @@ static ma_result init_tank_half(reverb_tank_half_t* th, int half_idx, ma_uint32 
 	th->decay_diff1_buf = alloc_buffer(size);
 	if (!th->decay_diff1_buf) return MA_OUT_OF_MEMORY;
 	th->decay_diff1_mask = size - 1;
+	th->decay_diff1_out = 0.0f;
 
 	/* Pre-damping delay with taps */
 	if (init_delay_line(&th->pre_damp,
@@ -351,6 +356,7 @@ static float process_tank_half(reverb_tank_half_t* th, ma_uint32 t, float input,
 	if (mod_delay < 1) mod_delay = 1;
 	x = allpass_process(th->decay_diff1_buf, th->decay_diff1_mask, t,
 	                    mod_delay, decay_diff1_gain, input);
+	th->decay_diff1_out = x;
 
 	/* Pre-damping delay */
 	delay_write(th->pre_damp.buffer, th->pre_damp.mask, t, x);
@@ -376,7 +382,8 @@ static float process_tank_half(reverb_tank_half_t* th, ma_uint32 t, float input,
 /* Get output taps from tank - Dattorro Table 2 */
 static void get_tank_output(reverb_tank_half_t* tank, ma_uint32 t, float* out_l, float* out_r) {
 	/* Left output: taps from tank[1] positive, tank[0] negative */
-	*out_l  = delay_read(tank[1].pre_damp.buffer, tank[1].pre_damp.mask, t, tank[1].pre_damp.tap1);
+	*out_l = tank[1].decay_diff1_out;
+	*out_l += delay_read(tank[1].pre_damp.buffer, tank[1].pre_damp.mask, t, tank[1].pre_damp.tap1);
 	*out_l += delay_read(tank[1].pre_damp.buffer, tank[1].pre_damp.mask, t, tank[1].pre_damp.tap2);
 	*out_l -= delay_read(tank[1].decay_diff2_buf, tank[1].decay_diff2_mask, t, tank[1].decay_diff2_tap2);
 	*out_l += delay_read(tank[1].post_damp.buffer, tank[1].post_damp.mask, t, tank[1].post_damp.tap2);
@@ -385,7 +392,8 @@ static void get_tank_output(reverb_tank_half_t* tank, ma_uint32 t, float* out_l,
 	*out_l += delay_read(tank[0].post_damp.buffer, tank[0].post_damp.mask, t, tank[0].post_damp.tap1);
 
 	/* Right output: taps from tank[0] positive, tank[1] negative */
-	*out_r  = delay_read(tank[0].pre_damp.buffer, tank[0].pre_damp.mask, t, tank[0].pre_damp.tap1);
+	*out_r = tank[0].decay_diff1_out;
+	*out_r += delay_read(tank[0].pre_damp.buffer, tank[0].pre_damp.mask, t, tank[0].pre_damp.tap1);
 	*out_r += delay_read(tank[0].pre_damp.buffer, tank[0].pre_damp.mask, t, tank[0].pre_damp.tap2);
 	*out_r -= delay_read(tank[0].decay_diff2_buf, tank[0].decay_diff2_mask, t, tank[0].decay_diff2_tap2);
 	*out_r += delay_read(tank[0].post_damp.buffer, tank[0].post_damp.mask, t, tank[0].post_damp.tap2);
@@ -399,7 +407,7 @@ static void process_channel(reverb_channel_t* ch, ma_uint32 t, float input,
                             ma_uint32 predelay_samples, float bandwidth,
                             float input_diff1, float input_diff2,
                             float decay, float decay_diff1, float decay_diff2,
-                            float damping, ma_int32 mod_offset,
+                            float damping, ma_int32 mod_offset0, ma_int32 mod_offset1,
                             float* out_l, float* out_r) {
 	float x, feedback0, feedback1;
 
@@ -429,9 +437,9 @@ static void process_channel(reverb_channel_t* ch, ma_uint32 t, float input,
 
 	/* Process tank halves with cross-feedback */
 	process_tank_half(&ch->tank[0], t, x + feedback0, decay,
-	                  decay_diff1, decay_diff2, damping, mod_offset);
+	                  decay_diff1, decay_diff2, damping, mod_offset0);
 	process_tank_half(&ch->tank[1], t, x + feedback1, decay,
-	                  decay_diff1, decay_diff2, damping, -mod_offset);
+	                  decay_diff1, decay_diff2, damping, mod_offset1);
 
 	/* Get stereo output from taps */
 	get_tank_output(ch->tank, t, out_l, out_r);
@@ -452,7 +460,7 @@ static void reverb_process_pcm_frames(
 	ma_uint32 frame_count = *frame_count_in;
 	const float* in = frames_in[0];
 	float* out = frames_out[0];
-	ma_uint32 i;
+	ma_uint32 i, j;
 	ma_uint32 sample_rate;
 
 	/* Get parameters */
@@ -461,9 +469,11 @@ static void reverb_process_pcm_frames(
 	float input_diff1, input_diff2;
 	float decay_diff1, decay_diff2;
 	float decay;
-	ma_int32 mod_offset;
+	ma_int32 mod_offset[4];
+	float dc_coeff;
 
 	get_engine_format_info(NULL, NULL, &sample_rate);
+	dc_coeff = expf(-2.0f * M_PI * 20.0f/ (float)sample_rate);
 
 	predelay_samples = (ma_uint32)(reverb->predelay_ms * sample_rate / 1000.0f);
 	if (predelay_samples > MAX_PREDELAY) predelay_samples = MAX_PREDELAY;
@@ -495,9 +505,11 @@ static void reverb_process_pcm_frames(
 		float mid, side;
 
 		/* Slow modulation for chorus effect in tank */
-		reverb->mod_phase += reverb->mod_rate / (float)sample_rate;
-		if (reverb->mod_phase >= 1.0f) reverb->mod_phase -= 1.0f;
-		mod_offset = (ma_int32)(sinf(reverb->mod_phase * 2.0f * M_PI) * reverb->mod_depth * 16.0f);
+		for (j = 0; j < 4; j++) {
+			reverb->mod_phase[j] += reverb->mod_rate * mod_freq_ratios[j] / (float)sample_rate;
+			if (reverb->mod_phase[j] >= 1.0f) reverb->mod_phase[j] -= 1.0f;
+			mod_offset[j] = (ma_int32)(sinf(reverb->mod_phase[j] * 2.0f * M_PI) * reverb->mod_depth * 16.0f);
+		}
 
 		/* Process both channels */
 		process_channel(&reverb->channels[0], reverb->t,
@@ -505,7 +517,7 @@ static void reverb_process_pcm_frames(
 		                predelay_samples, bandwidth,
 		                input_diff1, input_diff2,
 		                decay, decay_diff1, decay_diff2,
-		                damping, mod_offset,
+		                damping, mod_offset[0], mod_offset[1],
 		                &wet_l0, &wet_r0);
 
 		process_channel(&reverb->channels[1], reverb->t,
@@ -513,7 +525,7 @@ static void reverb_process_pcm_frames(
 		                predelay_samples, bandwidth,
 		                input_diff1, input_diff2,
 		                decay, decay_diff1, decay_diff2,
-		                damping, mod_offset,
+		                damping, mod_offset[2], mod_offset[3],
 		                &wet_l1, &wet_r1);
 
 		/* Combine stereo outputs from both channels */
@@ -537,6 +549,12 @@ static void reverb_process_pcm_frames(
 		wet_l = (mid + side) * width_compensation;
 		wet_r = (mid - side) * width_compensation;
 
+		/* DC blocking (20Hz HPF) */
+		reverb->dc_block_l = dc_coeff * reverb->dc_block_l + (1.0f - dc_coeff) * wet_l;
+		reverb->dc_block_r = dc_coeff * reverb->dc_block_r + (1.0f - dc_coeff) * wet_r;
+		wet_l -= reverb->dc_block_l;
+		wet_r -= reverb->dc_block_r;
+
 		/* Output tone shaping - HPF (low_cut) and LPF (high_cut) */
 		if (reverb->low_cut > 0.0f) {
 			float hpf_coeff = 1.0f - (2.0f * M_PI * reverb->low_cut / (float)sample_rate);
@@ -547,8 +565,7 @@ static void reverb_process_pcm_frames(
 		}
 
 		if (reverb->high_cut > 0.0f && reverb->high_cut < (float)sample_rate * 0.5f) {
-			float lpf_coeff = 2.0f * M_PI * reverb->high_cut / (float)sample_rate;
-			if (lpf_coeff > 1.0f) lpf_coeff = 1.0f;
+			float lpf_coeff = 1.0f - expf(-2.0f * M_PI * reverb->high_cut / (float) sample_rate);
 			reverb->lpf_l += lpf_coeff * (wet_l - reverb->lpf_l);
 			reverb->lpf_r += lpf_coeff * (wet_r - reverb->lpf_r);
 			wet_l = reverb->lpf_l;
@@ -676,11 +693,16 @@ ma_result init_reverb_node(reverb_node_t* reverb, ma_uint32 sample_rate) {
 
 	/* Initialize internal state */
 	reverb->t = 0;
-	reverb->mod_phase = 0.0f;
+	reverb->mod_phase[0] = 0.0f;
+	reverb->mod_phase[1] = 0.25f;
+	reverb->mod_phase[2] = 0.5f;
+	reverb->mod_phase[3] = 0.75f;
 	reverb->hpf_l = 0.0f;
 	reverb->hpf_r = 0.0f;
 	reverb->lpf_l = 0.0f;
 	reverb->lpf_r = 0.0f;
+	reverb->dc_block_l = 0.0f;
+	reverb->dc_block_r = 0.0f;
 
 	return MA_SUCCESS;
 }

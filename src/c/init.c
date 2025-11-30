@@ -4,7 +4,7 @@
  * Licensed under MIT License
  */
 
-#include "sampler_internal.h"
+#include "promini.h"
 
 
 /*
@@ -14,7 +14,7 @@
  */
 install_t install(void)
 {
-    sampler_register_predicates();
+    promini_register_predicates();
     synth_register_predicates();
     effects_register_predicates();
     mod_register_predicates();
@@ -30,5 +30,5 @@ install_t uninstall(void)
 	uninstall_mod();
 	uninstall_synth();
 	uninstall_effects();
-	uninstall_sampler();
+	uninstall_promini();
 }

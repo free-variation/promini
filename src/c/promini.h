@@ -1,11 +1,11 @@
 /*
- * sampler_internal.h - Shared definitions for sampler and synth modules
+ * promini.h - Shared definitions for promini modules
  * Copyright (c) 2025 John Stewart
  * Licensed under MIT License
  */
 
-#ifndef SAMPLER_INTERNAL_H
-#define SAMPLER_INTERNAL_H
+#ifndef PROMINI_H
+#define PROMINI_H
 
 #include <stdlib.h>
 #include <string.h>
@@ -17,12 +17,12 @@
 
 /*
  * Shared global engine
- * Initialized by sampler.c, shared with synth.c
+ * Initialized by promini.c, shared with other modules
  */
 extern ma_engine* g_engine;
 
 /* Forward declaration for initialization */
-extern foreign_t pl_sampler_init(void);
+extern foreign_t pl_promini_init(void);
 
 /*
  * Macro to ensure engine is initialized before operations
@@ -30,7 +30,7 @@ extern foreign_t pl_sampler_init(void);
 #define ENSURE_ENGINE_INITIALIZED() \
     do { \
         if (g_engine == NULL) { \
-            if (!pl_sampler_init()) { \
+            if (!pl_promini_init()) { \
                 return FALSE; \
             } \
         } \
@@ -214,6 +214,7 @@ typedef struct {
 	float* decay_diff1_buf;
 	ma_uint32 decay_diff1_mask;
 	ma_uint32 decay_diff1_delay;
+	float decay_diff1_out;
 
 	reverb_delay_line_t pre_damp;
 
@@ -286,9 +287,10 @@ typedef struct {
 
 	/* internal state */
 	ma_uint32 t;
-	float mod_phase;
+	float mod_phase[4];
 	float hpf_l, hpf_r;
 	float lpf_l, lpf_r;
+	float dc_block_l, dc_block_r;
 } reverb_node_t;
 
 /*
@@ -356,7 +358,7 @@ extern sound_slot_t g_sounds[MAX_SOUNDS];
 extern synth_voice_t g_voices[MAX_VOICES];
 extern synth_oscillator_t g_oscillators[MAX_OSCILLATORS];
 
-/* Helper functions (implemented in sampler.c) */
+/* Helper functions (implemented in promini.c) */
 extern void get_engine_format_info(ma_format* format, ma_uint32* channels, ma_uint32* sampleRate);
 extern void free_effect_chain(effect_node_t* effect);
 extern data_slot_t* get_data_slot(int index);
@@ -370,13 +372,13 @@ extern ma_result init_reverb_node(reverb_node_t* reverb, ma_uint32 sample_rate);
 extern void free_reverb_node(reverb_node_t* reverb);
 
 /* Module registration functions */
-extern install_t sampler_register_predicates(void);
+extern install_t promini_register_predicates(void);
 extern install_t synth_register_predicates(void);
 extern install_t effects_register_predicates(void);
 
-/* Module cleanupfunctions */
-extern install_t uninstall_sampler(void);
+/* Module cleanup functions */
+extern install_t uninstall_promini(void);
 extern install_t uninstall_synth(void);
 extern install_t uninstall_effects(void);
 
-#endif /* SAMPLER_INTERNAL_H */
+#endif /* PROMINI_H */
