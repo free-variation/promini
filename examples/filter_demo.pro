@@ -98,7 +98,7 @@ demo_combined :-
     sound_stop(Sound),
 
     format('Clearing effects...~n'),
-    sound_clear_effects(Sound),
+    clear_effects(sound(Sound)),
 
     format('Attaching narrow band-pass (HPF 800 Hz + LPF 1200 Hz)...~n'),
     sound_attach_effect(Sound, hpf, [cutoff=800.0], _),
@@ -157,7 +157,7 @@ demo_bpf :-
     sound_stop(Sound),
 
     format('Clearing and adding band-pass at 500 Hz (lower frequencies)...~n'),
-    sound_clear_effects(Sound),
+    clear_effects(sound(Sound)),
     sound_attach_effect(Sound, bpf, [cutoff=500.0], _),
     sound_seek(Sound, 0),
     sound_start(Sound),
@@ -165,7 +165,7 @@ demo_bpf :-
     sound_stop(Sound),
 
     format('Clearing and adding band-pass at 2000 Hz (higher frequencies)...~n'),
-    sound_clear_effects(Sound),
+    clear_effects(sound(Sound)),
     sound_attach_effect(Sound, bpf, [cutoff=2000.0], _),
     sound_seek(Sound, 0),
     sound_start(Sound),
@@ -173,7 +173,7 @@ demo_bpf :-
     sound_stop(Sound),
 
     format('Clearing and adding band-pass at 1000 Hz, order 8 (narrower band)...~n'),
-    sound_clear_effects(Sound),
+    clear_effects(sound(Sound)),
     sound_attach_effect(Sound, bpf, [cutoff=1000.0, order=8], _),
     sound_seek(Sound, 0),
     sound_start(Sound),

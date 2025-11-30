@@ -339,7 +339,7 @@ static int create_data_buffer_from_pcm(void* pData, ma_format format, ma_uint32 
 
 /*
  * pl_audio_load()
- * sampler_audio_load(+FilePath, -Handle)
+ * audio_load(+FilePath, -Handle)
  * Loads audio data from file into a shareable buffer.
  * Returns a data handle that can be used to create multiple sounds.
  */
@@ -379,7 +379,7 @@ static foreign_t pl_audio_load(term_t filepath, term_t handle)
 }
 
 /*
- * sampler_audio_extract(+SourceHandle, +StartFrame, +Length, -ExtractedHandle)
+ * audio_extract(+SourceHandle, +StartFrame, +Length, -ExtractedHandle)
  * Extracts a slice of frames into a new buffer.
  */
 static foreign_t pl_audio_extract(term_t source_handle, term_t start_term, term_t length_term, term_t extracted_handle)
@@ -443,7 +443,7 @@ static foreign_t pl_audio_extract(term_t source_handle, term_t start_term, term_
 }
 
 /*
- * sampler_audio_unload(+Handle)
+ * audio_unload(+Handle)
  * Decrements reference count on data buffer.
  * Frees the buffer when refcount reaches zero.
  */
@@ -655,7 +655,7 @@ foreign_t pl_promini_init(void)
 }
 
 /*
- * sampler_sound_unload(+Handle)
+ * sound_unload(+Handle)
  * Unloads a sound and frees its resources.
  */
 static foreign_t pl_sound_unload(term_t handle)
@@ -762,7 +762,7 @@ static foreign_t pl_promini_devices(term_t devices)
 
 /*
  * pl_sound_start()
- * sampler_sound_start(+Handle)
+ * sound_start(+Handle)
  * Starts playing a sound
  */
 static foreign_t pl_sound_start(term_t handle)
@@ -790,7 +790,7 @@ static foreign_t pl_sound_start(term_t handle)
 }
 
 /*
- * sampler_sound_stop(+Handle)
+ * sound_stop(+Handle)
  * Stops playing a sound
  */
 static foreign_t pl_sound_stop(term_t handle)
@@ -805,7 +805,7 @@ static foreign_t pl_sound_stop(term_t handle)
 }
 
 /*
- * sampler_sound_is_playing(+Handle)
+ * sound_is_playing(+Handle)
  * Succeeds if sound is playing, fails otherwise.
  */
 static foreign_t pl_sound_is_playing(term_t handle)
@@ -818,7 +818,7 @@ static foreign_t pl_sound_is_playing(term_t handle)
 }
 
 /*
- * sampler_sound_set_looping(+Handle, +Loop)
+ * sound_set_looping(+Handle, +Loop)
  * Sets whether a sound should loop
  */
 static foreign_t pl_sound_set_looping(term_t handle, term_t loop)
@@ -840,7 +840,7 @@ static foreign_t pl_sound_set_looping(term_t handle, term_t loop)
 }
 
 /*
- * sampler_sound_is_looping(+Handle)
+ * sound_is_looping(+Handle)
  * Succeeds if sound is set to loop, fails otherwise.
  */
 static foreign_t pl_sound_is_looping(term_t handle)
@@ -853,7 +853,7 @@ static foreign_t pl_sound_is_looping(term_t handle)
 }
 
 /*
- * sampler_sound_seek(+Handle, +Frame)
+ * sound_seek(+Handle, +Frame)
  * Seeks to a specific frame position in the sound.
  */
 static foreign_t pl_sound_seek(term_t handle, term_t frame)
@@ -873,7 +873,7 @@ static foreign_t pl_sound_seek(term_t handle, term_t frame)
 }
 
 /*
- * sampler_sound_get_position(+Handle, -Frame)
+ * sound_get_position(+Handle, -Frame)
  * Gets the current playback position in frames.
  */
 static foreign_t pl_sound_get_position(term_t handle, term_t frame) {
@@ -893,7 +893,7 @@ static foreign_t pl_sound_get_position(term_t handle, term_t frame) {
 
 
 /* 
- * sampler_sound_create(+DataHandle, -SoundHandle)
+ * sound_create(+DataHandle, -SoundHandle)
  * Creates a sound instance from a loaded data buffer.
  * Multiple sounds can be created from the same buffer for polyphony.
  */
@@ -968,7 +968,7 @@ static foreign_t pl_sound_create(term_t data_handle, term_t sound_handle)
 }
 
 /*
- * sampler_sound_set_range(+Handle, +StartFrame, +EndFrame)
+ * sound_set_range(+Handle, +StartFrame, +EndFrame)
  * Sets the playback range for a sound (which frames to play).
  */
 static foreign_t pl_sound_set_range(term_t handle, term_t start_term, term_t end_term)
@@ -1040,7 +1040,7 @@ static foreign_t pl_audio_info(term_t data_handle, term_t info)
 }
 
 /*
- * sampler_sound_length(+Handle, -Frames)
+ * sound_length(+Handle, -Frames)
  * Gets the total length of a sound in PCM frames.
  */
 static foreign_t pl_sound_length(term_t handle, term_t frames)
@@ -1060,7 +1060,7 @@ static foreign_t pl_sound_length(term_t handle, term_t frames)
 }
 
 /*
- * sampler_sound_set_pitch(+Handle, +Pitch)
+ * sound_set_pitch(+Handle, +Pitch)
  * Sets the pitch in semitones (12 = one octave up, -12 = one octave down).
  */
 static foreign_t pl_sound_set_pitch(term_t handle, term_t pitch)
@@ -1081,7 +1081,7 @@ static foreign_t pl_sound_set_pitch(term_t handle, term_t pitch)
 }
 
 /*
- * sampler_sound_get_pitch(+Handle, -Pitch)
+ * sound_get_pitch(+Handle, -Pitch)
  * Gets pitch in semitones.
  */
 static foreign_t pl_sound_get_pitch(term_t handle, term_t pitch)
@@ -1099,7 +1099,7 @@ static foreign_t pl_sound_get_pitch(term_t handle, term_t pitch)
 }
 
 /*
- * sampler_sound_set_pan_mode(+Handle, +Mode)
+ * sound_set_pan_mode(+Handle, +Mode)
  * Sets the pan mode: "balance" or "pan"
  */
 static foreign_t pl_sound_set_pan_mode(term_t handle, term_t mode)
@@ -1127,7 +1127,7 @@ static foreign_t pl_sound_set_pan_mode(term_t handle, term_t mode)
 }
 
 /*
- * sampler_sound_get_pan_mode(+Handle, -Mode)
+ * sound_get_pan_mode(+Handle, -Mode)
  * Gets the current pan mode as 'balance' or 'pan'.
  */
 static foreign_t pl_sound_get_pan_mode(term_t handle, term_t mode)
@@ -1150,7 +1150,7 @@ static foreign_t pl_sound_get_pan_mode(term_t handle, term_t mode)
 }
 
 /*
- * sampler_sound_net_pan(+Handle, +Pan)
+ * sound_set_pan(+Handle, +Pan)
  * Sets stereo pan (-1.0 = hard left, 0.0 = center, 1.0 = right).
  */
 static foreign_t pl_sound_set_pan(term_t handle, term_t pan)
@@ -1169,7 +1169,7 @@ static foreign_t pl_sound_set_pan(term_t handle, term_t pan)
 }
 
 /*
- * sampler_sound_get_pan(+Handle, -Pan)
+ * sound_get_pan(+Handle, -Pan)
  * Gets current stereo pan value
  */
 static foreign_t pl_sound_get_pan(term_t handle, term_t pan)
@@ -1185,7 +1185,7 @@ static foreign_t pl_sound_get_pan(term_t handle, term_t pan)
 }
 
 /*
- * sampler_sound_set_volume(+Handle, +Volume)
+ * sound_set_volume(+Handle, +Volume)
  * Sets volume (1.0 = normal, 0.0 = silence, >1.0 = amplification).
  */
 static foreign_t pl_sound_set_volume(term_t handle, term_t volume)
@@ -1204,7 +1204,7 @@ static foreign_t pl_sound_set_volume(term_t handle, term_t volume)
 }
 
 /*
- * sampler_sound_get_volume(+Handle, -Volume)
+ * sound_get_volume(+Handle, -Volume)
  * Gets current volume.
  */
 static foreign_t pl_sound_get_volume(term_t handle, term_t volume)
@@ -1220,7 +1220,7 @@ static foreign_t pl_sound_get_volume(term_t handle, term_t volume)
 }
 
 /*
- * sampler_audio_reverse(+SourceHandle, -ReversedHandle)
+ * audio_reverse(+SourceHandle, -ReversedHandle)
  * Creates a reversed copy of a data buffer
  */
 static foreign_t pl_audio_reverse(term_t source_handle, term_t reversed_handle)
@@ -1310,7 +1310,7 @@ static void capture_data_callback(ma_device* device, void* output, const void*in
 }
 
 /*
- * sampler_capture_start(+DeviceName, +PeriodSeconds, -CaptureHandle, -BufferFrames)
+ * capture_start(+DeviceName, +PeriodSeconds, -CaptureHandle, -BufferFrames)
  * starts capture from specified device into ring buffer.
  */
 static foreign_t pl_capture_start(term_t device_name, term_t period_term, term_t capture_handle, term_t buffer_frames_out)
@@ -1419,7 +1419,7 @@ static foreign_t pl_capture_start(term_t device_name, term_t period_term, term_t
 }
 
 /*
- * sampler_capture_stop(+CaptureHandle)
+ * capture_stop(+CaptureHandle)
  * Stops capture and frees resources.
  */
 static foreign_t pl_capture_stop(term_t capture_handle)
@@ -1433,8 +1433,8 @@ static foreign_t pl_capture_stop(term_t capture_handle)
 }
 
 /*
- * sampler_capture_get_info(+CaptureHandle, -Info)
- * Returns capture_ifo(WritePosition, Capacity, SampleRate)
+ * capture_get_info(+CaptureHandle, -Info)
+ * Returns capture_info(WritePosition, Capacity, SampleRate)
  */
 static foreign_t pl_capture_get_info(term_t capture_handle, term_t info)
 {
@@ -1463,7 +1463,7 @@ static foreign_t pl_capture_get_info(term_t capture_handle, term_t info)
 }
 
 /*
- * sampler_capture_extract(+CaptureHandle, +RelativeOffset, +Length, -DataHandle)
+ * capture_extract(+CaptureHandle, +RelativeOffset, +Length, -DataHandle)
  * Extracts frames from capture buffer to a new data buffer.
  * RelativeOffset is negative frames from current write position.
  */

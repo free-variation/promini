@@ -44,10 +44,10 @@
     sound_attach_delay/5,
     sound_attach_ping_pong_delay/6,
     sound_attach_reverb/3,
-    sound_effects/2,
+    effects/2,
     effect_set_parameters/2,
     effect_detach/1,
-    sound_clear_effects/1,
+    clear_effects/1,
     capture_start/4,
     capture_stop/1,
     capture_get_info/2,
@@ -124,9 +124,9 @@ sound_attach_ping_pong_delay(Sound, MaxDelayInFrames, DelayInFrames, Feedback, W
 sound_attach_reverb(Sound, Params, Effect) :-
     sound_attach_effect(Sound, reverb, Params, Effect).
 
-sound_clear_effects(Sound) :-
-    sound_effects(Sound, Effects),
-    maplist(effect_to_handle(Sound), Effects, Handles),
+clear_effects(Source) :-
+    effects(Source, Effects),
+    maplist(effect_to_handle, Effects, Handles),
     maplist(effect_detach, Handles).
 
-effect_to_handle(Sound, effect(_Type, Ptr, _Params), effect(Sound, Ptr)).
+effect_to_handle(effect(Source, _Type, Ptr, _Params), effect(Source, Ptr)).

@@ -2532,19 +2532,47 @@ static foreign_t pl_voice_attach_effect(term_t handle, term_t effect_type, term_
 }
 
 /*
- * pl_sound_effects()
- * Query all effects attached to a sound
+ * pl_effects()
+ * Query all effects attached to a sound or voice.
+ * First arg: sound(N) or voice(N)
  */
-static foreign_t pl_sound_effects(term_t sound_handle, term_t effects_list)
+static foreign_t pl_effects(term_t source_handle, term_t effects_list)
 {
-	ma_sound* sound;
+	term_t slot_term = PL_new_term_ref();
+	functor_t f;
 	int slot;
+	effect_node_t* effect_chain;
 	effect_node_t* effect;
+	const char* source_type;
 	int count = 0;
 
-	GET_SOUND_WITH_SLOT(sound_handle, sound, slot);
+	if (!PL_get_functor(source_handle, &f)) {
+		return PL_type_error("sound_or_voice", source_handle);
+	}
+	if (!PL_get_arg(1, source_handle, slot_term)) {
+		return PL_type_error("sound_or_voice", source_handle);
+	}
+	if (!PL_get_integer(slot_term, &slot)) {
+		return PL_type_error("integer", slot_term);
+	}
 
-	for (effect = g_sounds[slot].effect_chain; effect != NULL; effect = effect->next) {
+	if (f == PL_new_functor(PL_new_atom("sound"), 1)) {
+		if (slot < 0 || slot >= MAX_SOUNDS || !g_sounds[slot].in_use) {
+			return PL_existence_error("sound", source_handle);
+		}
+		effect_chain = g_sounds[slot].effect_chain;
+		source_type = "sound";
+	} else if (f == PL_new_functor(PL_new_atom("voice"), 1)) {
+		if (slot < 0 || slot >= MAX_VOICES || !g_voices[slot].in_use) {
+			return PL_existence_error("voice", source_handle);
+		}
+		effect_chain = g_voices[slot].effect_chain;
+		source_type = "voice";
+	} else {
+		return PL_type_error("sound_or_voice", source_handle);
+	}
+
+	for (effect = effect_chain; effect != NULL; effect = effect->next) {
 		count++;
 	}
 
@@ -2554,13 +2582,14 @@ static foreign_t pl_sound_effects(term_t sound_handle, term_t effects_list)
 	if (count > 0) {
 		effect_node_t** effects_array = malloc(count * sizeof(effect_node_t*));
 		int i = 0;
-		for (effect = g_sounds[slot].effect_chain; effect != NULL; effect = effect->next) {
+		for (effect = effect_chain; effect != NULL; effect = effect->next) {
 			effects_array[i++] = effect;
 		}
 
 		term_t effect_term = PL_new_term_ref();
-		term_t args = PL_new_term_refs(3);
-		functor_t effect_functor = PL_new_functor(PL_new_atom("effect"), 3);
+		term_t args = PL_new_term_refs(4);
+		functor_t effect_functor = PL_new_functor(PL_new_atom("effect"), 4);
+		functor_t source_functor = PL_new_functor(PL_new_atom(source_type), 1);
 
 		for (i = count - 1; i >= 0; i--) {
 			effect = effects_array[i];
@@ -2613,12 +2642,29 @@ static foreign_t pl_sound_effects(term_t sound_handle, term_t effects_list)
 				return FALSE;
 			}
 
-			PL_put_atom_chars(args+0, type_str);
-			if (!PL_put_pointer(args+1, effect->effect_node)) {
+			/* Build source(Slot) term */
+			term_t source_term = PL_new_term_ref();
+			term_t slot_arg = PL_new_term_ref();
+			if (!PL_put_integer(slot_arg, slot)) {
 				free(effects_array);
 				return FALSE;
 			}
-			if (!PL_put_term(args+2, params_list)) {
+			if (!PL_cons_functor_v(source_term, source_functor, slot_arg)) {
+				free(effects_array);
+				return FALSE;
+			}
+
+			/* Build effect(source(Slot), Type, Ptr, Params) */
+			if (!PL_put_term(args+0, source_term)) {
+				free(effects_array);
+				return FALSE;
+			}
+			PL_put_atom_chars(args+1, type_str);
+			if (!PL_put_pointer(args+2, effect->effect_node)) {
+				free(effects_array);
+				return FALSE;
+			}
+			if (!PL_put_term(args+3, params_list)) {
 				free(effects_array);
 				return FALSE;
 			}
@@ -2762,7 +2808,7 @@ install_t effects_register_predicates(void)
 {
 	PL_register_foreign("sound_attach_effect", 4, pl_sound_attach_effect, 0);
 	PL_register_foreign("voice_attach_effect", 4, pl_voice_attach_effect, 0);
-	PL_register_foreign("sound_effects", 2, pl_sound_effects, 0);
+	PL_register_foreign("effects", 2, pl_effects, 0);
 	PL_register_foreign("effect_set_parameters", 2, pl_effect_set_parameters, 0);
 	PL_register_foreign("effect_detach", 1, pl_effect_detach, 0);
 }

@@ -17,7 +17,7 @@ demo_delay :-
     sound_stop(Sound),
 
     format('Clearing and adding echo effect (0.3s delay, 50%% feedback)...~n'),
-    sound_clear_effects(Sound),
+    clear_effects(sound(Sound)),
     sound_attach_effect(Sound, delay, [delay_in_frames=13230, decay=0.5, wet=0.8, dry=1.0], _),
     sound_seek(Sound, 0),
     sound_start(Sound),
@@ -25,7 +25,7 @@ demo_delay :-
     sound_stop(Sound),
 
     format('Clearing and adding short slapback delay (0.1s, no feedback)...~n'),
-    sound_clear_effects(Sound),
+    clear_effects(sound(Sound)),
     sound_attach_effect(Sound, delay, [delay_in_frames=4410, decay=0.0, wet=0.6, dry=1.0], _),
     sound_seek(Sound, 0),
     sound_start(Sound),
@@ -33,7 +33,7 @@ demo_delay :-
     sound_stop(Sound),
 
     format('Clearing and adding long echo (1s delay, 70%% feedback)...~n'),
-    sound_clear_effects(Sound),
+    clear_effects(sound(Sound)),
     sound_attach_effect(Sound, delay, [delay_in_frames=44100, decay=0.7, wet=0.5, dry=1.0], _),
     sound_seek(Sound, 0),
     sound_start(Sound),
@@ -106,7 +106,7 @@ demo_ping_pong :-
     sound_stop(Sound),
 
     format('Clearing and adding ping-pong with feedback (0.25s, 50%% feedback)...~n'),
-    sound_clear_effects(Sound),
+    clear_effects(sound(Sound)),
     sound_attach_ping_pong_delay(Sound, 22050, 11025, 0.5, 0.8, _),
     sound_seek(Sound, 0),
     sound_start(Sound),
@@ -114,7 +114,7 @@ demo_ping_pong :-
     sound_stop(Sound),
 
     format('Clearing and adding fast ping-pong (0.1s, 70%% feedback)...~n'),
-    sound_clear_effects(Sound),
+    clear_effects(sound(Sound)),
     sound_attach_ping_pong_delay(Sound, 22050, 4410, 0.7, 0.8, _),
     sound_seek(Sound, 0),
     sound_start(Sound),
@@ -122,7 +122,7 @@ demo_ping_pong :-
     sound_stop(Sound),
 
     format('Clearing and adding slow ping-pong (0.5s, 60%% feedback)...~n'),
-    sound_clear_effects(Sound),
+    clear_effects(sound(Sound)),
     sound_attach_ping_pong_delay(Sound, 44100, 22050, 0.6, 0.7, _),
     sound_seek(Sound, 0),
     sound_start(Sound),
@@ -192,7 +192,7 @@ demo_smoothing_modes :-
     sweep_delay(Effect0, 22050, 4410, 20),
     sleep(1),
     sound_stop(Sound),
-    sound_clear_effects(Sound),
+    clear_effects(sound(Sound)),
 
     format('~n=== Mode 1: Pitch-shift smoothing (tape delay style) ===~n'),
     sound_attach_effect(Sound, ping_pong_delay, [max_delay_in_frames=44100, delay_in_frames=22050, feedback=0.5, wet=0.8, smoothing_mode=1, smoothing_speed=0.1], Effect1),
@@ -206,7 +206,7 @@ demo_smoothing_modes :-
     effect_set_parameters(Effect1, [delay_in_frames=22050]),
     sleep(5),
     sound_stop(Sound),
-    sound_clear_effects(Sound),
+    clear_effects(sound(Sound)),
 
     format('~n=== Mode 2: Crossfade smoothing ===~n'),
     sound_attach_effect(Sound, ping_pong_delay, [max_delay_in_frames=44100, delay_in_frames=22050, feedback=0.5, wet=0.8, smoothing_mode=2, crossfade_length=2048], Effect2),

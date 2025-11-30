@@ -240,7 +240,7 @@ static void set_oscillator_frequency(void* target, float value)
 /*
  * pl_mod_source_unload()
  * Unloads a modulation source and removes any routes using it.
- * sampler_mod_source_unload(+Handle)
+ * mod_source_unload(+Handle)
  */
 static foreign_t pl_mod_source_unload(term_t handle_term)
 {
@@ -281,7 +281,7 @@ static foreign_t pl_mod_source_unload(term_t handle_term)
 /* 
  * pl_mod_route_create()
  * Creates a modulation route from source to target parameter.
- * sampler_mod_route_create(+SourceHandle, +TargetType, +TargetHandle, +Param, +Depth, +Offset, +Slew, -RouteHandle)
+ * mod_route_create(+SourceHandle, +TargetType, +TargetHandle, +Param, +Depth, +Offset, +Slew, -RouteHandle)
  */
 static foreign_t pl_mod_route_create(
 		term_t source_term,
@@ -361,7 +361,7 @@ static foreign_t pl_mod_route_create(
 /*
  * pl_mod_route_unload()
  * Removes a modulation route.
- * sampler_mod_route_unload(+Handle)
+ * mod_route_unload(+Handle)
  */
 static foreign_t pl_mod_route_unload(term_t handle_term)
 {
@@ -390,7 +390,7 @@ static foreign_t pl_mod_route_unload(term_t handle_term)
 /*
  * pl_mod_lfo_create()
  * Createas an LFO modulation source.
- * sampler_mod_lfo_create(+Type, +Freq, -Handle)
+ * mod_lfo_create(+Type, +Freq, -Handle)
  * Type is one of: sine, square, triangle, sawtooth
  */
 static foreign_t pl_mod_lfo_create(term_t type_term, term_t freq_term, term_t handle_term)
@@ -462,7 +462,7 @@ static void set_lfo_frequency(void* target, float value)
 
 /*
  * pl_mod_lfo_set_frequency()
- * sampler_mod_lfo_set_frequency(+Handle, +Freq)
+ * mod_lfo_set_frequency(+Handle, +Freq)
  */
 static foreign_t pl_mod_lfo_set_frequency(term_t handle_term, term_t freq_term)
 {
@@ -489,7 +489,7 @@ static foreign_t pl_mod_lfo_set_frequency(term_t handle_term, term_t freq_term)
 
 /*
  * pl_mod_lfo_get_frequency()
- * sampler_mod_lfo_get_frequency(+Handle, -Freq)
+ * mod_lfo_get_frequency(+Handle, -Freq)
  */
 static foreign_t pl_mod_lfo_get_frequency(term_t handle_term, term_t freq_term)
 {

@@ -58,7 +58,7 @@ test(sound_set_parameters, [nondet]) :-
     sound_load('audio/counting.wav', Sound),
     sound_attach_effect(Sound, lpf, [cutoff=1000.0], Effect),
     effect_set_parameters(Effect, [cutoff=2000.0]),
-    sound_effects(Sound, [effect(lpf, _, Params)]),
+    effects(sound(Sound), [effect(sound(Sound), lpf, _, Params)]),
     memberchk(cutoff=Cutoff, Params),
     abs(Cutoff - 2000.0) < 0.001,
     sound_unload(Sound).
@@ -66,9 +66,9 @@ test(sound_set_parameters, [nondet]) :-
 test(sound_detach_effect, [nondet]) :-
     sound_load('audio/counting.wav', Sound),
     sound_attach_bitcrush(Sound, 8, 8000, Effect),
-    sound_effects(Sound, [_]),
+    effects(sound(Sound), [_]),
     effect_detach(Effect),
-    sound_effects(Sound, []),
+    effects(sound(Sound), []),
     sound_unload(Sound).
 
 % Voice effect tests

@@ -17,7 +17,7 @@ demo_reverb :-
     sound_stop(Sound),
 
     format('Clearing and adding hall reverb (longer decay, more predelay)...~n'),
-    sound_clear_effects(Sound),
+    clear_effects(sound(Sound)),
     sound_attach_reverb(Sound, [decay=0.8, predelay_ms=50.0, damping=0.3, wet=0.4], _),
     sound_seek(Sound, 0),
     sound_start(Sound),
@@ -25,7 +25,7 @@ demo_reverb :-
     sound_stop(Sound),
 
     format('Clearing and adding ambient reverb (very long decay, high diffusion)...~n'),
-    sound_clear_effects(Sound),
+    clear_effects(sound(Sound)),
     sound_attach_reverb(Sound, [decay=0.95, predelay_ms=80.0, damping=0.2, wet=0.5, width=1.5], _),
     sound_seek(Sound, 0),
     sound_start(Sound),
@@ -33,7 +33,7 @@ demo_reverb :-
     sound_stop(Sound),
 
     format('Clearing and adding shimmer reverb (octave up)...~n'),
-    sound_clear_effects(Sound),
+    clear_effects(sound(Sound)),
     sound_attach_reverb(Sound, [decay=0.85, shimmer1_shift=12.0, shimmer1_mix=0.3, wet=0.5, damping=0.4], _),
     sound_seek(Sound, 0),
     sound_start(Sound),
@@ -99,7 +99,7 @@ demo_presets :-
     sound_start(Sound),
     sleep(5),
     sound_stop(Sound),
-    sound_clear_effects(Sound),
+    clear_effects(sound(Sound)),
 
     format('~n=== Hall Reverb ===~n'),
     sound_attach_reverb(Sound, [
@@ -110,7 +110,7 @@ demo_presets :-
     sound_start(Sound),
     sleep(6),
     sound_stop(Sound),
-    sound_clear_effects(Sound),
+    clear_effects(sound(Sound)),
 
     format('~n=== Cathedral Reverb ===~n'),
     sound_attach_reverb(Sound, [
@@ -121,7 +121,7 @@ demo_presets :-
     sound_start(Sound),
     sleep(8),
     sound_stop(Sound),
-    sound_clear_effects(Sound),
+    clear_effects(sound(Sound)),
 
     format('~n=== Shimmer Reverb ===~n'),
     sound_attach_reverb(Sound, [
@@ -133,7 +133,7 @@ demo_presets :-
     sound_start(Sound),
     sleep(8),
     sound_stop(Sound),
-    sound_clear_effects(Sound),
+    clear_effects(sound(Sound)),
 
     format('~n=== Ambient/Pad Reverb ===~n'),
     sound_attach_reverb(Sound, [
@@ -145,7 +145,7 @@ demo_presets :-
     sound_start(Sound),
     sleep(10),
     sound_stop(Sound),
-    sound_clear_effects(Sound),
+    clear_effects(sound(Sound)),
 
     format('~n=== Blackhole-style Reverb ===~n'),
     sound_attach_reverb(Sound, [
@@ -159,7 +159,7 @@ demo_presets :-
     sound_start(Sound),
     sleep(12),
     sound_stop(Sound),
-    sound_clear_effects(Sound),
+    clear_effects(sound(Sound)),
 
     sound_unload(Sound),
     format('~nPresets demo complete.~n').
@@ -181,7 +181,7 @@ demo_shimmer :-
     sound_start(Sound),
     sleep(5),
     sound_stop(Sound),
-    sound_clear_effects(Sound),
+    clear_effects(sound(Sound)),
 
     format('~n=== Subtle shimmer (+12 semitones, low mix) ===~n'),
     sound_attach_reverb(Sound, [
@@ -192,7 +192,7 @@ demo_shimmer :-
     sound_start(Sound),
     sleep(6),
     sound_stop(Sound),
-    sound_clear_effects(Sound),
+    clear_effects(sound(Sound)),
 
     format('~n=== Strong shimmer (+12 semitones, high mix) ===~n'),
     sound_attach_reverb(Sound, [
@@ -203,7 +203,7 @@ demo_shimmer :-
     sound_start(Sound),
     sleep(6),
     sound_stop(Sound),
-    sound_clear_effects(Sound),
+    clear_effects(sound(Sound)),
 
     format('~n=== Fifth up shimmer (+7 semitones) ===~n'),
     sound_attach_reverb(Sound, [
@@ -214,7 +214,7 @@ demo_shimmer :-
     sound_start(Sound),
     sleep(6),
     sound_stop(Sound),
-    sound_clear_effects(Sound),
+    clear_effects(sound(Sound)),
 
     format('~n=== Dual shimmer (octave + fifth) ===~n'),
     sound_attach_reverb(Sound, [
@@ -226,7 +226,7 @@ demo_shimmer :-
     sound_start(Sound),
     sleep(8),
     sound_stop(Sound),
-    sound_clear_effects(Sound),
+    clear_effects(sound(Sound)),
 
     format('~n=== Downward shimmer (-12 semitones) ===~n'),
     sound_attach_reverb(Sound, [
@@ -259,7 +259,7 @@ demo_filtering :-
     sound_start(Sound),
     sleep(5),
     sound_stop(Sound),
-    sound_clear_effects(Sound),
+    clear_effects(sound(Sound)),
 
     format('~n=== Dark reverb (low bandwidth, high damping) ===~n'),
     sound_attach_reverb(Sound, [
@@ -270,7 +270,7 @@ demo_filtering :-
     sound_start(Sound),
     sleep(5),
     sound_stop(Sound),
-    sound_clear_effects(Sound),
+    clear_effects(sound(Sound)),
 
     format('~n=== Very dark (bandwidth 0.1, damping 0.95) ===~n'),
     sound_attach_reverb(Sound, [
@@ -281,7 +281,7 @@ demo_filtering :-
     sound_start(Sound),
     sleep(6),
     sound_stop(Sound),
-    sound_clear_effects(Sound),
+    clear_effects(sound(Sound)),
 
     format('~n=== Bright input, dark tail (high bandwidth, high damping) ===~n'),
     sound_attach_reverb(Sound, [
@@ -292,7 +292,7 @@ demo_filtering :-
     sound_start(Sound),
     sleep(6),
     sound_stop(Sound),
-    sound_clear_effects(Sound),
+    clear_effects(sound(Sound)),
 
     format('~n=== Dark input, bright tail (low bandwidth, low damping) ===~n'),
     sound_attach_reverb(Sound, [
@@ -318,7 +318,7 @@ demo_low_cut :-
     sound_start(Sound),
     sleep(6),
     sound_stop(Sound),
-    sound_clear_effects(Sound),
+    clear_effects(sound(Sound)),
 
     format('~n=== Default low_cut (80 Hz) ===~n'),
     sound_attach_reverb(Sound, [
@@ -328,7 +328,7 @@ demo_low_cut :-
     sound_start(Sound),
     sleep(6),
     sound_stop(Sound),
-    sound_clear_effects(Sound),
+    clear_effects(sound(Sound)),
 
     format('~n=== Higher low_cut (150 Hz) - tighter bass ===~n'),
     sound_attach_reverb(Sound, [
@@ -338,7 +338,7 @@ demo_low_cut :-
     sound_start(Sound),
     sleep(6),
     sound_stop(Sound),
-    sound_clear_effects(Sound),
+    clear_effects(sound(Sound)),
 
     format('~n=== High low_cut (250 Hz) - thin reverb ===~n'),
     sound_attach_reverb(Sound, [

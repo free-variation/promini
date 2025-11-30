@@ -1,4 +1,4 @@
-:- module(test_sampler, []).
+:- module(test_promini, []).
 :- use_module('src/prolog/promini.pro').
 :- use_module(library(plunit)).
 
@@ -17,7 +17,7 @@ test(devices, [nondet]) :-
 
 :- end_tests(promini_init).
 
-:- begin_tests(sampler_audio).
+:- begin_tests(promini_audio).
 
 test(data_load, [nondet]) :-
     audio_load('audio/counting.wav', Handle),
@@ -56,9 +56,9 @@ test(data_extract, [nondet]) :-
     audio_unload(Handle),
     audio_unload(Extracted).
 
-:- end_tests(sampler_audio).
+:- end_tests(promini_audio).
 
-:- begin_tests(sampler_sound).
+:- begin_tests(promini_sound).
 
 test(sound_load, [nondet]) :-
     sound_load('audio/counting.wav', Sound),
@@ -79,9 +79,9 @@ test(sound_length, [nondet]) :-
     Length > 0,
     sound_unload(Sound).
 
-:- end_tests(sampler_sound).
+:- end_tests(promini_sound).
 
-:- begin_tests(sampler_playback).
+:- begin_tests(promini_playback).
 
 test(sound_start_stop, [nondet]) :-
     sound_load('audio/counting.wav', Sound),
@@ -117,9 +117,9 @@ test(sound_start_at, [nondet]) :-
     sound_stop(Sound),
     sound_unload(Sound).
 
-:- end_tests(sampler_playback).
+:- end_tests(promini_playback).
 
-:- begin_tests(sampler_parameters).
+:- begin_tests(promini_parameters).
 
 test(sound_pitch, [nondet]) :-
     sound_load('audio/counting.wav', Sound),
@@ -149,18 +149,18 @@ test(sound_volume, [nondet]) :-
     Volume =:= 0.5,
     sound_unload(Sound).
 
-:- end_tests(sampler_parameters).
+:- end_tests(promini_parameters).
 
-:- begin_tests(sampler_range).
+:- begin_tests(promini_range).
 
 test(sound_set_range, [nondet]) :-
     sound_load('audio/counting.wav', Sound),
     sound_set_range(Sound, 100, 1000),
     sound_unload(Sound).
 
-:- end_tests(sampler_range).
+:- end_tests(promini_range).
 
-:- begin_tests(sampler_polyphony).
+:- begin_tests(promini_polyphony).
 
 test(multiple_sounds, [nondet]) :-
     audio_load('audio/gong.wav', Data),
@@ -182,9 +182,9 @@ test(multiple_sounds, [nondet]) :-
     sound_unload(Sound3),
     audio_unload(Data).
 
-:- end_tests(sampler_polyphony).
+:- end_tests(promini_polyphony).
 
-:- begin_tests(sampler_capture).
+:- begin_tests(promini_capture).
 
 test(capture_start_stop, [nondet]) :-
     promini_devices(Devices),
@@ -242,4 +242,4 @@ test(capture_extract_wraparound, [nondet]) :-
     audio_unload(Data),
     capture_stop(Capture).
 
-:- end_tests(sampler_capture).
+:- end_tests(promini_capture).

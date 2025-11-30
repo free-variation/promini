@@ -69,7 +69,7 @@ static float* alloc_buffer(ma_uint32 size) {
 	return buf;
 }
 
-/* Types defined in sampler_internal.h:
+/* Types defined in promini.h:
  * - reverb_delay_line_t
  * - reverb_tank_half_t
  * - reverb_channel_t
