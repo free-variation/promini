@@ -39,7 +39,6 @@
     audio_extract/4,
     sound_attach_effect/4,
     sound_attach_bitcrush/4,
-    sound_attach_envelope/8,
     sound_attach_bpf/4,
     sound_attach_delay/5,
     sound_attach_ping_pong_delay/6,
@@ -74,6 +73,8 @@
     mod_lfo_create/3,
     mod_lfo_set_frequency/2,
     mod_lfo_get_frequency/2,
+    mod_envelope_create/8,
+    mod_envelope_trigger/1,
     mod_source_unload/1,
     mod_route_create/8,
     mod_route_unload/1
@@ -108,9 +109,6 @@ sound_load(Path, SoundHandle) :-
 
 sound_attach_bitcrush(Sound, Bits, SampleRate, Effect) :-
     sound_attach_effect(Sound, bitcrush, [bits=Bits, sample_rate=SampleRate], Effect).
-
-sound_attach_envelope(Sound, Attack, Decay, Break, BreakLevel, DurationMs, Loop, Effect) :-
-    sound_attach_effect(Sound, envelope, [attack=Attack, decay=Decay, break=Break, break_level=BreakLevel, duration_ms=DurationMs, loop=Loop], Effect).
 
 sound_attach_bpf(Sound, Cutoff, Order, Effect) :-
     sound_attach_effect(Sound, bpf, [cutoff=Cutoff, order=Order], Effect).

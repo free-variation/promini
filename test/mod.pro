@@ -72,4 +72,32 @@ test(source_unload_removes_routes, [nondet, cleanup(synth_voice_unload(V))]) :-
     mod_route_create(L, oscillator, O, frequency, 100.0, 440.0, 0.0, _R),
     mod_source_unload(L).
 
+% Envelope tests
+
+test(create_envelope, [nondet, cleanup(mod_source_unload(E))]) :-
+    mod_envelope_create(0.1, 0.2, 0.3, 0.5, 0.4, 1000.0, false, E),
+    integer(E),
+    E >= 0.
+
+test(create_envelope_looping, [nondet, cleanup(mod_source_unload(E))]) :-
+    mod_envelope_create(0.1, 0.1, 0.6, 0.7, 0.2, 500.0, true, E),
+    integer(E),
+    E >= 0.
+
+test(envelope_trigger, [nondet, cleanup(mod_source_unload(E))]) :-
+    mod_envelope_create(0.2, 0.3, 0.3, 0.5, 0.2, 200.0, false, E),
+    mod_envelope_trigger(E).
+
+test(envelope_route_to_oscillator, [nondet, cleanup((
+    mod_route_unload(R),
+    mod_source_unload(E),
+    synth_voice_unload(V)
+))]) :-
+    synth_voice_create(V),
+    synth_oscillator_add(V, 440.0, 0.5, O),
+    mod_envelope_create(0.1, 0.2, 0.5, 0.7, 0.2, 100.0, false, E),
+    mod_route_create(E, oscillator, O, frequency, 100.0, 440.0, 0.0, R),
+    integer(R),
+    R >= 0.
+
 :- end_tests(mod).

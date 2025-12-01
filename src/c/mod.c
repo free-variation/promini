@@ -95,9 +95,9 @@ install_t uninstall_mod(void)
  * read_source_value()
  * Reads the current value from a modulation source.
  * Advances the source state by frame_count frames.
- * Returns a value in [-1, 1].
+ * Returns a value in [-1, 1] for LFO/noise, [0, 1] for envelope.
  */
-static float read_source_value(mod_source_t* src, ma_uint32 frame_count)
+static float read_source_value(mod_source_t* src, ma_uint32 frame_count, ma_uint32 sample_rate)
 {
 	float value = 0.0f;
 	float waveform_buf[512];
@@ -106,6 +106,7 @@ static float read_source_value(mod_source_t* src, ma_uint32 frame_count)
 	float* samples;
 	ma_uint64 buf_frames;
 	ma_uint32 channels, pos, i;
+	float stage_frames, increment;
 
 	switch(src->type) {
 		case MOD_SOURCE_WAVEFORM:
@@ -138,12 +139,58 @@ static float read_source_value(mod_source_t* src, ma_uint32 frame_count)
 			}
 			value /= channels;
 
-			/* advance cursor, wrap at buffer end for looping 
-			 * while loop handles extreme rate values that jump multiple buffer lengths 
-			 */
+			/* advance cursor, wrap at buffer end for looping */
 			src->source.sampler.cursor += frame_count * src->source.sampler.rate;
 			while (src->source.sampler.cursor >= buf_frames) {
 				src->source.sampler.cursor -= buf_frames;
+			}
+			break;
+
+		case MOD_SOURCE_ENVELOPE:
+			/* calculate envelope value based on stage */
+			switch (src->source.envelope.stage) {
+				case 0: /* attack: 0 -> 1 */
+					value = src->source.envelope.stage_progress;
+					break;
+				case 1: /* decay: 1 -> break_level */
+					value = 1.0f - src->source.envelope.stage_progress *
+					        (1.0f - src->source.envelope.break_level);
+					break;
+				case 2: /* break: hold at break_level */
+					value = src->source.envelope.break_level;
+					break;
+				case 3: /* release: break_level -> 0 */
+					value = src->source.envelope.break_level *
+					        (1.0f - src->source.envelope.stage_progress);
+					break;
+				default: /* done */
+					value = 0.0f;
+					break;
+			}
+
+			/* advance stage progress */
+			if (src->source.envelope.stage < 4) {
+				float proportion;
+				switch (src->source.envelope.stage) {
+					case 0: proportion = src->source.envelope.attack; break;
+					case 1: proportion = src->source.envelope.decay; break;
+					case 2: proportion = src->source.envelope.brk; break;
+					case 3: proportion = src->source.envelope.release; break;
+					default: proportion = 0.0f; break;
+				}
+				stage_frames = (src->source.envelope.duration_ms / 1000.0f) *
+				               proportion * sample_rate;
+				increment = stage_frames > 0.0f ? (float)frame_count / stage_frames : 1.0f;
+				src->source.envelope.stage_progress += increment;
+
+				/* check for stage transition */
+				if (src->source.envelope.stage_progress >= 1.0f) {
+					src->source.envelope.stage++;
+					src->source.envelope.stage_progress = 0.0f;
+					if (src->source.envelope.stage > 3 && src->source.envelope.loop) {
+						src->source.envelope.stage = 0;
+					}
+				}
 			}
 			break;
 
@@ -174,7 +221,7 @@ void process_modulation(ma_uint32 frame_count, ma_uint32 sample_rate)
 		src = &g_mod_sources[i];
 		if (!src->in_use) continue;
 
-		raw_value = read_source_value(src, frame_count);
+		raw_value = read_source_value(src, frame_count, sample_rate);
 
 		/* apply sample & hold if enabled 
 		 * only update output when counter exceeds interval
@@ -513,6 +560,92 @@ static foreign_t pl_mod_lfo_get_frequency(term_t handle_term, term_t freq_term)
 }
 
 /******************************************************************************
+ * ENVELOPE
+ *****************************************************************************/
+
+/*
+ * pl_mod_envelope_create()
+ * Creates an ADBR envelope modulation source.
+ * mod_envelope_create(+Attack, +Decay, +Break, +BreakLevel, +Release, +DurationMs, +Loop, -Handle)
+ * Attack, Decay, Break, Release are proportions (should sum to 1.0)
+ * BreakLevel is the level at the break point (0.0-1.0)
+ * DurationMs is the total envelope time in milliseconds
+ * Loop is true/false
+ */
+static foreign_t pl_mod_envelope_create(
+		term_t attack_term,
+		term_t decay_term,
+		term_t break_term,
+		term_t break_level_term,
+		term_t release_term,
+		term_t duration_term,
+		term_t loop_term,
+		term_t handle_term)
+{
+	double attack, decay, brk, break_level, release, duration;
+	int loop_int;
+	int slot;
+	mod_source_t* src;
+
+	if (!PL_get_float(attack_term, &attack)) return FALSE;
+	if (!PL_get_float(decay_term, &decay)) return FALSE;
+	if (!PL_get_float(break_term, &brk)) return FALSE;
+	if (!PL_get_float(break_level_term, &break_level)) return FALSE;
+	if (!PL_get_float(release_term, &release)) return FALSE;
+	if (!PL_get_float(duration_term, &duration)) return FALSE;
+	if (!PL_get_bool(loop_term, &loop_int)) return FALSE;
+
+	pthread_mutex_lock(&g_mod_mutex);
+	slot = allocate_source_slot();
+	if (slot < 0) {
+		pthread_mutex_unlock(&g_mod_mutex);
+		return PL_resource_error("mod_source_slots");
+	}
+
+	src = &g_mod_sources[slot];
+	src->type = MOD_SOURCE_ENVELOPE;
+	src->source.envelope.attack = (float)attack;
+	src->source.envelope.decay = (float)decay;
+	src->source.envelope.brk = (float)brk;
+	src->source.envelope.break_level = (float)break_level;
+	src->source.envelope.release = (float)release;
+	src->source.envelope.duration_ms = (float)duration;
+	src->source.envelope.loop = loop_int ? MA_TRUE : MA_FALSE;
+	src->source.envelope.stage = 4; /* start in "done" state until triggered */
+	src->source.envelope.stage_progress = 0.0f;
+
+	pthread_mutex_unlock(&g_mod_mutex);
+	return PL_unify_integer(handle_term, slot);
+}
+
+/*
+ * pl_mod_envelope_trigger()
+ * Triggers (restarts) an envelope from the beginning.
+ * mod_envelope_trigger(+Handle)
+ */
+static foreign_t pl_mod_envelope_trigger(term_t handle_term)
+{
+	int slot;
+	mod_source_t* src;
+
+	if (!PL_get_integer(handle_term, &slot)) return FALSE;
+	if (slot < 0 || slot >= MAX_MOD_SOURCES) return FALSE;
+
+	pthread_mutex_lock(&g_mod_mutex);
+	src = &g_mod_sources[slot];
+	if (!src->in_use || src->type != MOD_SOURCE_ENVELOPE) {
+		pthread_mutex_unlock(&g_mod_mutex);
+		return FALSE;
+	}
+
+	src->source.envelope.stage = 0;
+	src->source.envelope.stage_progress = 0.0f;
+
+	pthread_mutex_unlock(&g_mod_mutex);
+	return TRUE;
+}
+
+/******************************************************************************
  * REGISTRATION
  *****************************************************************************/
 
@@ -521,6 +654,8 @@ install_t mod_register_predicates(void)
 	PL_register_foreign("mod_lfo_create", 3, pl_mod_lfo_create, 0);
 	PL_register_foreign("mod_lfo_set_frequency", 2, pl_mod_lfo_set_frequency, 0);
 	PL_register_foreign("mod_lfo_get_frequency", 2, pl_mod_lfo_get_frequency, 0);
+	PL_register_foreign("mod_envelope_create", 8, pl_mod_envelope_create, 0);
+	PL_register_foreign("mod_envelope_trigger", 1, pl_mod_envelope_trigger, 0);
 	PL_register_foreign("mod_source_unload", 1, pl_mod_source_unload, 0);
 	PL_register_foreign("mod_route_create", 8, pl_mod_route_create, 0);
 	PL_register_foreign("mod_route_unload", 1, pl_mod_route_unload, 0);

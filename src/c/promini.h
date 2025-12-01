@@ -61,7 +61,6 @@ typedef struct {
 typedef enum {
 	EFFECT_NONE = 0,
 	EFFECT_BITCRUSH,
-	EFFECT_ENVELOPE,
 	EFFECT_REVERB,
 	EFFECT_LPF,
 	EFFECT_HPF,
@@ -135,20 +134,6 @@ typedef struct {
 	ma_uint64 hold_counter;
 	ma_uint32 hold_interval;
 } bitcrush_node_t;
-
-/* ADBR envelope node */
-typedef struct {
-	ma_node_base base;
-	float attack;
-	float decay;
-	float Break;
-	float release;
-	float break_level;
-	float duration_ms;
-	ma_bool32 loop;
-	ma_uint32 stage;
-	float stage_progress;
-} adbr_envelope_node_t;
 
 /* Low-pass filter node */
 typedef struct {
@@ -305,7 +290,8 @@ typedef enum {
 	MOD_SOURCE_NONE = 0,
 	MOD_SOURCE_WAVEFORM,
 	MOD_SOURCE_NOISE,
-	MOD_SOURCE_SAMPLER
+	MOD_SOURCE_SAMPLER,
+	MOD_SOURCE_ENVELOPE
 } mod_source_type_t;
 
 /* modulation source */
@@ -320,6 +306,17 @@ typedef struct {
 			float cursor;
 			float rate;
 		} sampler;
+		struct {
+			float attack;      /* proportion of duration */
+			float decay;       /* proportion of duration */
+			float brk;         /* proportion of duration */
+			float release;     /* proportion of duration */
+			float break_level; /* level at break point (0-1) */
+			float duration_ms; /* total envelope time */
+			ma_bool32 loop;    /* restart after release */
+			ma_uint32 stage;   /* 0=attack, 1=decay, 2=break, 3=release, 4=done */
+			float stage_progress; /* 0-1 within current stage */
+		} envelope;
 	} source;
 	ma_bool32 sh_enabled;
 	ma_uint32 sh_interval;

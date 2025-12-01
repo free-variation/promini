@@ -769,21 +769,8 @@ static foreign_t pl_sound_start(term_t handle)
 {
 	ma_sound* sound;
 	ma_result result;
-	int slot;
-	effect_node_t* effect;
 
-	GET_SOUND_WITH_SLOT(handle, sound, slot);
-
-	/* reset all envelope nodes in effect chain */
-	effect = g_sounds[slot].effect_chain;
-	while (effect != NULL) {
-		if (effect->type == EFFECT_ENVELOPE) {
-			adbr_envelope_node_t* envelope = (adbr_envelope_node_t*)effect->effect_node;
-			envelope->stage = 0;
-			envelope->stage_progress = 0.0f;
-		}
-		effect = effect->next;
-	}
+	GET_SOUND_FROM_HANDLE(handle, sound);
 
 	result = ma_sound_start(sound);
 	return (result == MA_SUCCESS) ? TRUE : FALSE;

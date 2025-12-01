@@ -30,12 +30,6 @@ test(sound_attach_bpf, [nondet]) :-
     Effect = effect(sound(Sound), _),
     sound_unload(Sound).
 
-test(sound_attach_envelope, [nondet]) :-
-    sound_load('audio/counting.wav', Sound),
-    sound_attach_envelope(Sound, 0.1, 0.2, 0.3, 0.5, 1000.0, false, Effect),
-    Effect = effect(sound(Sound), _),
-    sound_unload(Sound).
-
 test(sound_attach_delay, [nondet]) :-
     sound_load('audio/counting.wav', Sound),
     sound_attach_delay(Sound, 22050, 0.5, 0.8, Effect),
@@ -98,13 +92,6 @@ test(voice_attach_bpf, [nondet]) :-
     synth_voice_create(Voice),
     synth_oscillator_add(Voice, 440.0, 0.0, _),
     voice_attach_effect(Voice, bpf, [cutoff=1000.0, order=2], Effect),
-    Effect = effect(voice(Voice), _),
-    synth_voice_unload(Voice).
-
-test(voice_attach_envelope, [nondet]) :-
-    synth_voice_create(Voice),
-    synth_oscillator_add(Voice, 440.0, 0.0, _),
-    voice_attach_effect(Voice, envelope, [attack=0.1, decay=0.2, break=0.3, break_level=0.5, duration_ms=1000.0, loop=false], Effect),
     Effect = effect(voice(Voice), _),
     synth_voice_unload(Voice).
 

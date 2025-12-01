@@ -146,8 +146,10 @@ spawn_grains(Capture, SampleRate, GrainLength, N, Acc, Sounds) :-
     Pan is PanInt / 10.0,
     sound_set_pan(Sound, Pan),
 
-    % Envelope: 10ms attack, 20ms decay, 20ms sustain, 50% level
-    sound_attach_envelope(Sound, 0.1, 0.2, 0.2, 0.5, 50.0, false, _),
+    % Random volume
+    random_between(3, 10, VolInt),
+    Vol is VolInt / 10.0,
+    sound_set_volume(Sound, Vol),
 
     % Start with slight delay
     random_between(0, 100, DelayMs),
