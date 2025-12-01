@@ -112,6 +112,91 @@ demo_dual_envelope :-
     format('Demo complete!~n~n').
 
 
+demo_tremolo :-
+    format('~n=== Tremolo Demo (LFO -> Oscillator Volume) ===~n~n'),
+
+    synth_voice_create(Voice),
+    synth_oscillator_add(Voice, 440.0, 0.5, Osc),
+
+    % LFO modulating volume: 0.2 to 0.8 at 5 Hz
+    mod_lfo_create(sine, 5.0, Lfo),
+    mod_route_create(Lfo, oscillator, Osc, volume, 0.3, 0.5, 0.0, Route),
+
+    format('Playing tremolo for 3 seconds...~n'),
+    synth_voice_start(Voice),
+    sleep(3.0),
+
+    mod_route_unload(Route),
+    mod_source_unload(Lfo),
+    synth_voice_unload(Voice),
+    format('Demo complete!~n~n').
+
+
+demo_amp_envelope :-
+    format('~n=== Amp Envelope Demo (Envelope -> Oscillator Volume) ===~n~n'),
+
+    synth_voice_create(Voice),
+    synth_oscillator_add(Voice, 440.0, 0.0, Osc),
+
+    % Envelope controlling volume (0 to 1)
+    mod_envelope_create(0.1, 0.2, 0.4, 0.6, 0.3, 300.0, false, Env),
+    mod_route_create(Env, oscillator, Osc, volume, 1.0, 0.0, 0.0, Route),
+
+    format('Playing triggered notes with amp envelope...~n'),
+    synth_voice_start(Voice),
+
+    trigger_notes(Env, 6, 0.5),
+
+    sleep(0.5),
+    mod_route_unload(Route),
+    mod_source_unload(Env),
+    synth_voice_unload(Voice),
+    format('Demo complete!~n~n').
+
+
+demo_guitar_tremolo :-
+    format('~n=== Guitar Tremolo Demo (LFO -> Sound Volume) ===~n~n'),
+
+    sound_load('audio/guitar.wav', Sound),
+    sound_loop(Sound),
+
+    % LFO modulating volume at 4 Hz
+    mod_lfo_create(sine, 4.0, Lfo),
+    mod_route_create(Lfo, sound, Sound, volume, 0.4, 0.5, 0.0, Route),
+
+    format('Playing guitar with tremolo for 5 seconds...~n'),
+    sound_start(Sound),
+    sleep(5.0),
+
+    sound_stop(Sound),
+    mod_route_unload(Route),
+    mod_source_unload(Lfo),
+    sound_unload(Sound),
+    format('Demo complete!~n~n').
+
+
+demo_guitar_swell :-
+    format('~n=== Guitar Swell Demo (Envelope -> Sound Volume) ===~n~n'),
+
+    sound_load('audio/guitar.wav', Sound),
+    sound_loop(Sound),
+
+    % Slow swell envelope (2 seconds)
+    mod_envelope_create(0.5, 0.0, 0.3, 0.5, 0.2, 2000.0, true, Env),
+    mod_route_create(Env, sound, Sound, volume, 1.0, 0.0, 0.0, Route),
+
+    format('Playing guitar with looping swell for 6 seconds...~n'),
+    sound_start(Sound),
+    mod_envelope_trigger(Env),
+    sleep(6.0),
+
+    sound_stop(Sound),
+    mod_route_unload(Route),
+    mod_source_unload(Env),
+    sound_unload(Sound),
+    format('Demo complete!~n~n').
+
+
 % Helper to trigger envelope N times with delay between
 trigger_notes(_, 0, _) :- !.
 trigger_notes(Env, N, Delay) :-
@@ -146,3 +231,75 @@ main_looping :-
 main_dual :-
     promini_init,
     demo_dual_envelope.
+
+main_tremolo :-
+    promini_init,
+    demo_tremolo.
+
+main_amp :-
+    promini_init,
+    demo_amp_envelope.
+
+main_guitar_tremolo :-
+    promini_init,
+    demo_guitar_tremolo.
+
+main_guitar_swell :-
+    promini_init,
+    demo_guitar_swell.
+
+
+demo_auto_pan :-
+    format('~n=== Auto-Pan Demo (LFO -> Pan Effect) ===~n~n'),
+
+    synth_voice_create(Voice),
+    synth_oscillator_add(Voice, 440.0, 0.5, _Osc),
+
+    format('Playing without pan for 3 seconds...~n'),
+    synth_voice_start(Voice),
+    sleep(3.0),
+
+    % Attach pan effect and route LFO to it
+    format('Adding pan effect with LFO modulation...~n'),
+    voice_attach_effect(Voice, pan, [pan=0.0], effect(_Source, PanPtr)),
+    mod_lfo_create(sine, 0.5, Lfo),
+    mod_route_create(Lfo, pan, PanPtr, pan, 1.0, 0.0, 0.0, Route),
+
+    format('Playing with auto-pan for 6 seconds...~n'),
+    sleep(6.0),
+
+    mod_route_unload(Route),
+    mod_source_unload(Lfo),
+    synth_voice_unload(Voice),
+    format('Demo complete!~n~n').
+
+
+demo_guitar_pan :-
+    format('~n=== Guitar Auto-Pan Demo (LFO -> Pan Effect) ===~n~n'),
+
+    sound_load('audio/guitar.wav', Sound),
+    sound_loop(Sound),
+
+    % Attach pan effect and route LFO to it
+    sound_attach_effect(Sound, pan, [pan=0.0], effect(_Source, PanPtr)),
+    mod_lfo_create(triangle, 0.25, Lfo),
+    mod_route_create(Lfo, pan, PanPtr, pan, 1.0, 0.0, 0.0, Route),
+
+    format('Playing guitar with auto-pan for 8 seconds...~n'),
+    sound_start(Sound),
+    sleep(8.0),
+
+    sound_stop(Sound),
+    mod_route_unload(Route),
+    mod_source_unload(Lfo),
+    sound_unload(Sound),
+    format('Demo complete!~n~n').
+
+
+main_auto_pan :-
+    promini_init,
+    demo_auto_pan.
+
+main_guitar_pan :-
+    promini_init,
+    demo_guitar_pan.

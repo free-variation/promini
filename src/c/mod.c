@@ -260,7 +260,7 @@ void process_modulation(ma_uint32 frame_count, ma_uint32 sample_rate)
 			route->current_value = target_value;
 		}
 
-		route->setter(route->target, route->current_value);
+		route->setter(route->target, route->current_value, frame_count);
 	}
 
 	pthread_mutex_unlock(&g_mod_mutex);
@@ -273,12 +273,57 @@ void process_modulation(ma_uint32 frame_count, ma_uint32 sample_rate)
  * set_oscillator_frequency()
  * Setter for oscillator frequency. Target is synth_oscillator_t*.
  */
-static void set_oscillator_frequency(void* target, float value)
+static void set_oscillator_frequency(void* target, float value, ma_uint32 frame_count)
 {
 	synth_oscillator_t* osc = (synth_oscillator_t*)target;
+	(void)frame_count;
 	ma_waveform_set_frequency(&osc->source.waveform, value);
 }
 
+/*
+ * set_oscillator_volume()
+ * Setter for oscillator volume. Target is synth_oscillator_t*.
+ * Uses fade matching frame_count to avoid clicks.
+ */
+static void set_oscillator_volume(void* target, float value, ma_uint32 frame_count)
+{
+	synth_oscillator_t* osc = (synth_oscillator_t*)target;
+	ma_sound_set_fade_in_pcm_frames(&osc->sound, -1, value, frame_count);
+}
+
+/*
+ * set_voice_volume()
+ * Setter for voice volume. Target is synth_voice_t*.
+ * Uses fade matching frame_count to avoid clicks.
+ */
+static void set_voice_volume(void* target, float value, ma_uint32 frame_count)
+{
+	synth_voice_t* voice = (synth_voice_t*)target;
+	ma_sound_group_set_fade_in_pcm_frames(&voice->group, -1, value, frame_count);
+}
+
+/*
+ * set_sound_volume()
+ * Setter for sound volume. Target is sound_slot_t*.
+ * Uses fade matching frame_count to avoid clicks.
+ */
+static void set_sound_volume(void* target, float value, ma_uint32 frame_count)
+{
+	sound_slot_t* slot = (sound_slot_t*)target;
+	ma_sound_set_fade_in_pcm_frames(slot->sound, -1, value, frame_count);
+}
+
+/*
+ * set_effect_pan()
+ * Setter for pan effect. Target is pan_node_t*.
+ * Sets target_pan which is interpolated at sample rate in the effect callback.
+ */
+static void set_effect_pan(void* target, float value, ma_uint32 frame_count)
+{
+	pan_node_t* node = (pan_node_t*)target;
+	(void)frame_count;
+	node->target_pan = value;
+}
 
 /******************************************************************************
  * SOURCE AND ROUTE MANAGEMENT
@@ -351,7 +396,6 @@ static foreign_t pl_mod_route_create(
 
 	if (!PL_get_integer(source_term, &source_slot)) return FALSE;
 	if (!PL_get_atom_chars(type_term, &target_type)) return FALSE;
-	if (!PL_get_integer(target_term, &target_handle)) return FALSE;
 	if (!PL_get_atom_chars(param_term, &param)) return FALSE;
 	if (!PL_get_float(depth_term, &depth)) return FALSE;
 	if (!PL_get_float(offset_term, &offset)) return FALSE;
@@ -366,14 +410,50 @@ static foreign_t pl_mod_route_create(
 	setter = NULL;
 
 	if (strcmp(target_type, "oscillator") == 0) {
+		if (!PL_get_integer(target_term, &target_handle)) return FALSE;
 		if (target_handle < 0 || target_handle >= MAX_OSCILLATORS || !g_oscillators[target_handle].in_use) {
 			return PL_existence_error("oscillator", target_term);
 		}
+		target = &g_oscillators[target_handle];
 		if (strcmp(param, "frequency") == 0) {
-			target = &g_oscillators[target_handle];
 			setter = set_oscillator_frequency;
+		} else if (strcmp(param, "volume") == 0) {
+			setter = set_oscillator_volume;
 		} else {
 			return PL_domain_error("oscillator_param", param_term);
+		}
+	} else if (strcmp(target_type, "voice") == 0) {
+		if (!PL_get_integer(target_term, &target_handle)) return FALSE;
+		if (target_handle < 0 || target_handle >= MAX_VOICES || !g_voices[target_handle].in_use) {
+			return PL_existence_error("voice", target_term);
+		}
+		target = &g_voices[target_handle];
+		if (strcmp(param, "volume") == 0) {
+			setter = set_voice_volume;
+		} else {
+			return PL_domain_error("voice_param", param_term);
+		}
+	} else if (strcmp(target_type, "sound") == 0) {
+		if (!PL_get_integer(target_term, &target_handle)) return FALSE;
+		if (target_handle < 0 || target_handle >= MAX_SOUNDS || !g_sounds[target_handle].in_use) {
+			return PL_existence_error("sound", target_term);
+		}
+		target = &g_sounds[target_handle];
+		if (strcmp(param, "volume") == 0) {
+			setter = set_sound_volume;
+		} else {
+			return PL_domain_error("sound_param", param_term);
+		}
+	} else if (strcmp(target_type, "pan") == 0) {
+		void* ptr;
+		if (!PL_get_pointer(target_term, &ptr)) {
+			return PL_type_error("pointer", target_term);
+		}
+		target = ptr;
+		if (strcmp(param, "pan") == 0) {
+			setter = set_effect_pan;
+		} else {
+			return PL_domain_error("pan_param", param_term);
 		}
 	} else {
 		return PL_domain_error("target_type", type_term);

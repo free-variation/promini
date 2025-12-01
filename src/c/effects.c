@@ -2057,6 +2057,180 @@ static foreign_t set_reverb_parameters(reverb_node_t* reverb, term_t params_list
 	return TRUE;
 }
 
+/******************************************************************************
+ * PAN EFFECT
+ *****************************************************************************/
+
+/*
+ * pan_process_pcm_frames()
+ * Interpolate toward target pan each frame, applies stereo panning.
+ */
+static void pan_process_pcm_frames(
+		ma_node* node,
+		const float** frames_in,
+		ma_uint32* frame_count_in,
+		float** frames_out,
+		ma_uint32* frame_count_out)
+{
+	pan_node_t* pan_node;
+	ma_uint32 channels;
+	ma_uint32 frame_count;
+	const float* input;
+	float* output;
+	ma_uint32 i;
+	float step, p, left_gain, right_gain;
+
+	(void)frame_count_in;
+
+	pan_node = (pan_node_t*)node;
+	channels = ma_node_get_output_channels(node, 0);
+	frame_count = *frame_count_out;
+	input = frames_in[0];
+	output = frames_out[0];
+
+	/* pan only applies to stereo; pass through for other channel counts */
+	if (channels != 2) {
+		memcpy(output, input, frame_count * channels * sizeof(float));
+		return;
+	}
+
+	step = (pan_node->target_pan - pan_node->current_pan) / frame_count;
+
+	for (i = 0; i < frame_count; i++) {
+		pan_node->current_pan += step;
+		p = pan_node->current_pan * 0.5f + 0.5f; /* -1 .. 1 -> 0 .. 1 */
+		left_gain = 1.0f - p;
+		right_gain = p;
+
+		output[i * 2 + 0] = input[i * 2 + 0] * left_gain + input[i * 2 + 1] * (1.0f - right_gain);
+		output[i * 2 + 1] = input[i * 2 + 0] * (1.0f - left_gain) + input[i * 2 + 1] * right_gain;
+	}
+
+	pan_node->current_pan = pan_node->target_pan;
+}
+
+static ma_node_vtable pan_vtable = {
+	pan_process_pcm_frames,
+	NULL,
+	1,  /* 1 input bus */
+	1,  /* 1 output bus */
+	0
+};
+
+/*
+ * init_pan_node()
+ * Initialize a pan effect node.
+ */
+static ma_result init_pan_node(pan_node_t* node, float initial_pan)
+{
+	ma_result result;
+
+	result = init_effect_node_base(&node->base, &pan_vtable);
+	if (result != MA_SUCCESS) {
+		return result;
+	}
+
+	node->current_pan = initial_pan;
+	node->target_pan = initial_pan;
+
+	return MA_SUCCESS;
+}
+
+/*
+ * attach_pan_effect()
+ * Create and attach a pan effect to the given source node.
+ */
+static ma_result attach_pan_effect(term_t params, ma_node* source_node, effect_node_t** effect_chain, ma_node_base** out_effect_node)
+{
+	float pan;
+	pan_node_t* node;
+	ma_result result;
+
+	if (!get_param_float(params, "pan", &pan)) {
+		pan = 0.0f;
+	}
+
+	node = (pan_node_t*)malloc(sizeof(pan_node_t));
+	if (!node) {
+		return MA_OUT_OF_MEMORY;
+	}
+
+	result = init_pan_node(node, pan);
+	if (result != MA_SUCCESS) {
+		free(node);
+		return result;
+	}
+
+	result = attach_effect_node(source_node, effect_chain, &node->base, EFFECT_PAN);
+	if (result != MA_SUCCESS) {
+		ma_node_uninit(&node->base, NULL);
+		free(node);
+		return result;
+	}
+
+	*out_effect_node = &node->base;
+	return MA_SUCCESS;
+}
+
+/*
+ * query_pan_params()
+ * Get the current pan value.
+ */
+static int query_pan_params(pan_node_t* node, term_t params_list)
+{
+	term_t param = PL_new_term_ref();
+	functor_t f = PL_new_functor(PL_new_atom("="), 2);
+
+	if (!PL_unify_list(params_list, param, params_list)) return FALSE;
+	if (!PL_unify_functor(param, f)) return FALSE;
+	term_t key = PL_new_term_ref();
+	term_t val = PL_new_term_ref();
+	if (!PL_get_arg(1, param, key) || !PL_unify_atom_chars(key, "pan")) return FALSE;
+	if (!PL_get_arg(2, param, val) || !PL_unify_float(val, node->target_pan)) return FALSE;
+
+	return PL_unify_nil(params_list);
+}
+
+/*
+ * set_pan_parameters()
+ * Set pan effect parameters from a Prolog list.
+ */
+static foreign_t set_pan_parameters(pan_node_t* node, term_t params_list)
+{
+	term_t list = PL_copy_term_ref(params_list);
+	term_t head = PL_new_term_ref();
+	functor_t eq_functor = PL_new_functor(PL_new_atom("="), 2);
+
+	while (PL_get_list(list, head, list)) {
+		term_t key_term = PL_new_term_ref();
+		term_t value_term = PL_new_term_ref();
+		char* param_name;
+
+		if (!PL_is_functor(head, eq_functor)) {
+			return PL_type_error("key_value_pair", head);
+		}
+		if (!PL_get_arg(1, head, key_term)) {
+			return FALSE;
+		}
+		if (!PL_get_arg(2, head, value_term)) {
+			return FALSE;
+		}
+		if (!PL_get_atom_chars(key_term, &param_name)) {
+			return PL_type_error("atom", key_term);
+		}
+
+		if (strcmp(param_name, "pan") == 0) {
+			double pan;
+			if (!PL_get_float(value_term, &pan)) {
+				return PL_type_error("float", value_term);
+			}
+			node->target_pan = (float)pan;
+		}
+	}
+
+	return TRUE;
+}
+
 
 /******************************************************************************
  * PROLOG INTERFACE
@@ -2093,6 +2267,8 @@ static foreign_t attach_effect_to_node(ma_sound* sound, effect_node_t** effect_c
 		result = attach_ping_pong_delay_effect(params, (ma_node*)sound, effect_chain, &effect_node);
 	} else if (strcmp(type_str, "reverb") == 0) {
 		result = attach_reverb_effect(params, (ma_node*)sound, effect_chain, &effect_node);
+	} else if (strcmp(type_str, "pan") == 0) {
+		result = attach_pan_effect(params, (ma_node*)sound, effect_chain, &effect_node);
 	} else {
 		return PL_domain_error("effect_type", effect_type);
 	}
@@ -2229,6 +2405,10 @@ static foreign_t pl_effects(term_t source_handle, term_t effects_list)
 					type_str = "reverb";
 					query_result = query_reverb_params((reverb_node_t*)effect->effect_node, params_list);
 					break;
+				case EFFECT_PAN:
+					type_str = "pan";
+					query_result = query_pan_params((pan_node_t*)effect->effect_node, params_list);
+					break;
 				default:
 					type_str = "unknown";
 					break;
@@ -2326,6 +2506,8 @@ static foreign_t pl_effect_set_parameters(term_t effect_handle, term_t params_li
 			return set_ping_pong_delay_parameters((ping_pong_delay_node_t*)node->effect_node, params_list);
 		case EFFECT_REVERB:
 			return set_reverb_parameters((reverb_node_t*)node->effect_node, params_list);
+		case EFFECT_PAN:
+			return set_pan_parameters((pan_node_t*)node->effect_node, params_list);
 		default:
 			return PL_domain_error("effect_type", effect_handle);
 	}

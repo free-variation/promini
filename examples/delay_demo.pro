@@ -180,6 +180,27 @@ sweep_delay_up_(Effect, Delay, Target, Step) :-
     NewDelay is Delay + Step,
     sweep_delay_up_(Effect, NewDelay, Target, Step).
 
+demo_ping_pong_voice :-
+    format('~n=== Ping Pong Delay on Voice ===~n~n'),
+
+    synth_voice_create(Voice),
+    synth_oscillator_add(Voice, 440.0, 0.5, _Osc),
+
+    format('Playing without effect for 3 seconds...~n'),
+    synth_voice_start(Voice),
+    sleep(3.0),
+
+    % Fast ping pong: 100ms delay, 0.6 feedback, 0.7 wet
+    format('Adding fast ping pong delay (100ms)...~n'),
+    voice_attach_effect(Voice, ping_pong_delay,
+        [max_delay_in_frames=48000, delay_in_frames=4800, feedback=0.6, wet=0.7], _Effect),
+
+    format('Playing with ping pong for 6 seconds...~n'),
+    sleep(6.0),
+
+    synth_voice_unload(Voice),
+    format('Demo complete!~n~n').
+
 demo_smoothing_modes :-
     format('Loading sound...~n'),
     sound_load('audio/counting.wav', Sound),

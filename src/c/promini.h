@@ -66,7 +66,8 @@ typedef enum {
 	EFFECT_HPF,
 	EFFECT_BPF,
 	EFFECT_DELAY,
-	EFFECT_PING_PONG_DELAY
+	EFFECT_PING_PONG_DELAY,
+	EFFECT_PAN
 } effect_type_t;
 
 /* Effect chain node */
@@ -278,6 +279,13 @@ typedef struct {
 	float dc_block_l, dc_block_r;
 } reverb_node_t;
 
+/* pan effect node */
+typedef struct {
+	ma_node_base base;
+	float current_pan;
+	float target_pan;
+} pan_node_t;
+
 /*
  * Modulation system
  */
@@ -326,7 +334,7 @@ typedef struct {
 } mod_source_t;
 
 /* modulation setter function */
-typedef void (*mod_setter_t)(void* target, float value);
+typedef void (*mod_setter_t)(void* target, float value, ma_uint32 frame_count);
 
 /* modulation route */
 typedef struct {
