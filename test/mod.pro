@@ -207,4 +207,31 @@ test(pan_effect_set_parameters, [nondet, cleanup(synth_voice_unload(V))]) :-
     voice_attach_effect(V, pan, [pan=0.0], Effect),
     effect_set_parameters(Effect, [pan=0.5]).
 
+% Moog cutoff routing tests
+
+test(route_sound_moog_cutoff, [nondet, cleanup((
+    mod_route_unload(R),
+    mod_source_unload(L),
+    sound_unload(S)
+))]) :-
+    sound_load('audio/guitar.wav', S),
+    sound_attach_effect(S, moog, [cutoff=1000.0], effect(_Source, MoogPtr)),
+    mod_lfo_create(sine, 1.0, L),
+    mod_route_create(L, moog, MoogPtr, cutoff, 500.0, 1000.0, 0.0, R),
+    integer(R),
+    R >= 0.
+
+test(route_voice_moog_cutoff, [nondet, cleanup((
+    mod_route_unload(R),
+    mod_source_unload(L),
+    synth_voice_unload(V)
+))]) :-
+    synth_voice_create(V),
+    synth_oscillator_add(V, 440.0, 0.5, _O),
+    voice_attach_effect(V, moog, [cutoff=2000.0], effect(_Source, MoogPtr)),
+    mod_lfo_create(sine, 1.0, L),
+    mod_route_create(L, moog, MoogPtr, cutoff, 1000.0, 1500.0, 0.0, R),
+    integer(R),
+    R >= 0.
+
 :- end_tests(mod).

@@ -325,6 +325,24 @@ static void set_effect_pan(void* target, float value, ma_uint32 frame_count)
 	node->target_pan = value;
 }
 
+/*
+ * set_moog_cutoff()
+ * Setter for Moog cutoff.  Target is moog_node_t*
+ * Uses per-sample interpolation so just sets target
+ */
+static void set_moog_cutoff(void* target, float value, ma_uint32 frame_count)
+{
+	moog_node_t* moog = (moog_node_t*)target;
+
+	(void)frame_count;
+
+	if (value < 20.0f) {
+		value = 20.0f;
+	}
+
+	moog->target_cutoff = value;
+}
+
 /******************************************************************************
  * SOURCE AND ROUTE MANAGEMENT
  *****************************************************************************/
@@ -454,6 +472,17 @@ static foreign_t pl_mod_route_create(
 			setter = set_effect_pan;
 		} else {
 			return PL_domain_error("pan_param", param_term);
+		}
+	} else if (strcmp(target_type, "moog") == 0) {
+		void* ptr;
+		if (!PL_get_pointer(target_term, &ptr)) {
+			return PL_type_error("pointer", target_term);
+		}
+		target = ptr;
+		if (strcmp(param, "cutoff") == 0) {
+			setter = set_moog_cutoff;
+		} else {
+			return PL_domain_error("moog_param", param_term);
 		}
 	} else {
 		return PL_domain_error("target_type", type_term);

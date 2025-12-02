@@ -19,7 +19,7 @@
 
 /* Macro to define parameter parsers with error checking */
 #define DEFINE_GET_PARAM(suffix, type, get_code) \
-static ma_bool32 get_param_##suffix(term_t params, const char* key, type* value) \
+	static ma_bool32 get_param_##suffix(term_t params, const char* key, type* value) \
 { \
 	term_t head = PL_new_term_ref(); \
 	term_t tail = PL_new_term_ref(); \
@@ -27,7 +27,7 @@ static ma_bool32 get_param_##suffix(term_t params, const char* key, type* value)
 	functor_t equals_functor = PL_new_functor(PL_new_atom("="), 2); \
 	\
 	if (!PL_put_term(tmp, params)) \
-		return MA_FALSE; \
+	return MA_FALSE; \
 	\
 	while (PL_get_list(tmp, head, tail)) { \
 		term_t arg1 = PL_new_term_ref(); \
@@ -37,53 +37,53 @@ static ma_bool32 get_param_##suffix(term_t params, const char* key, type* value)
 		\
 		if (PL_get_functor(head, &f) && f == equals_functor) { \
 			if (!PL_get_arg(1, head, arg1) || !PL_get_arg(2, head, arg2)) \
-				return MA_FALSE; \
+			return MA_FALSE; \
 			\
 			if (PL_get_atom_chars(arg1, &key_str) && strcmp(key_str, key) == 0) { \
 				get_code \
 			} \
 		} \
 		if (!PL_put_term(tmp, tail)) \
-			return MA_FALSE; \
+		return MA_FALSE; \
 	} \
 	return MA_FALSE; \
 }
 
 DEFINE_GET_PARAM(int, int, {
-	if (!PL_get_integer(arg2, value)) {
+		if (!PL_get_integer(arg2, value)) {
 		PL_type_error("integer", arg2);
 		return MA_FALSE;
-	}
-	return MA_TRUE;
-})
+		}
+		return MA_TRUE;
+		})
 
 DEFINE_GET_PARAM(float, float, {
-	double dval;
-	if (!PL_get_float(arg2, &dval)) {
+		double dval;
+		if (!PL_get_float(arg2, &dval)) {
 		PL_type_error("float", arg2);
 		return MA_FALSE;
-	}
-	*value = (float)dval;
-	return MA_TRUE;
-})
+		}
+		*value = (float)dval;
+		return MA_TRUE;
+		})
 
 DEFINE_GET_PARAM(bool, ma_bool32, {
-	int bval;
-	if (!PL_get_bool(arg2, &bval)) {
+		int bval;
+		if (!PL_get_bool(arg2, &bval)) {
 		PL_type_error("bool", arg2);
 		return MA_FALSE;
-	}
-	*value = bval ? MA_TRUE : MA_FALSE;
-	return MA_TRUE;
-})
+		}
+		*value = bval ? MA_TRUE : MA_FALSE;
+		return MA_TRUE;
+		})
 
 DEFINE_GET_PARAM(double, double, {
-  	if (!PL_get_float(arg2, value)) {
-  		PL_type_error("float", arg2);
-  		return MA_FALSE;
-  	}
-  	return MA_TRUE;
-  })
+		if (!PL_get_float(arg2, value)) {
+		PL_type_error("float", arg2);
+		return MA_FALSE;
+		}
+		return MA_TRUE;
+		})
 
 /*
  * init_effect_node_base()
@@ -228,14 +228,14 @@ static void bitcrush_process_pcm_frames(
 		ma_uint32* frame_count_out)
 {
 	bitcrush_node_t* bitcrush;
-  	ma_uint32 channels;
-  	ma_uint32 frame_count;
-  	ma_uint32 total_samples;
-  	float levels;
-  	ma_uint32 frame;
-  	ma_uint32 channel;
-  	const float* input;
-  	float* output;
+	ma_uint32 channels;
+	ma_uint32 frame_count;
+	ma_uint32 total_samples;
+	float levels;
+	ma_uint32 frame;
+	ma_uint32 channel;
+	const float* input;
+	float* output;
 
 	bitcrush = (bitcrush_node_t*)node;
 	channels = ma_node_get_output_channels(node, 0);
@@ -511,9 +511,9 @@ static foreign_t set_bitcrush_parameters(bitcrush_node_t* bitcrush, term_t param
 static ma_result init_lpf_node(lpf_node_t* lpf, double cutoff, ma_uint32 order)
 {
 	ma_lpf_node_config lpf_config;
-  	ma_uint32 channels;
-  	ma_uint32 sample_rate;
-  	ma_result result;
+	ma_uint32 channels;
+	ma_uint32 sample_rate;
+	ma_result result;
 
 	get_engine_format_info(NULL, &channels, &sample_rate);
 
@@ -709,9 +709,9 @@ static foreign_t set_lpf_parameters(lpf_node_t* lpf, term_t params_list)
 static ma_result init_hpf_node(hpf_node_t* hpf, double cutoff, ma_uint32 order)
 {
 	ma_hpf_node_config hpf_config;
-  	ma_uint32 channels;
-  	ma_uint32 sample_rate;
-  	ma_result result;
+	ma_uint32 channels;
+	ma_uint32 sample_rate;
+	ma_result result;
 
 	get_engine_format_info(NULL, &channels, &sample_rate);
 
@@ -2080,8 +2080,6 @@ static void pan_process_pcm_frames(
 	ma_uint32 i;
 	float step, p, left_gain, right_gain;
 
-	(void)frame_count_in;
-
 	pan_node = (pan_node_t*)node;
 	channels = ma_node_get_output_channels(node, 0);
 	frame_count = *frame_count_out;
@@ -2091,6 +2089,8 @@ static void pan_process_pcm_frames(
 	/* pan only applies to stereo; pass through for other channel counts */
 	if (channels != 2) {
 		memcpy(output, input, frame_count * channels * sizeof(float));
+		*frame_count_in = frame_count;
+		*frame_count_out = frame_count;
 		return;
 	}
 
@@ -2107,6 +2107,9 @@ static void pan_process_pcm_frames(
 	}
 
 	pan_node->current_pan = pan_node->target_pan;
+
+	*frame_count_in = frame_count;
+	*frame_count_out = frame_count;
 }
 
 static ma_node_vtable pan_vtable = {
@@ -2178,17 +2181,22 @@ static ma_result attach_pan_effect(term_t params, ma_node* source_node, effect_n
  */
 static int query_pan_params(pan_node_t* node, term_t params_list)
 {
-	term_t param = PL_new_term_ref();
-	functor_t f = PL_new_functor(PL_new_atom("="), 2);
+	term_t param_args = PL_new_term_refs(2);
+	functor_t eq_functor = PL_new_functor(PL_new_atom("="), 2);
+	term_t param_term = PL_new_term_ref();
 
-	if (!PL_unify_list(params_list, param, params_list)) return FALSE;
-	if (!PL_unify_functor(param, f)) return FALSE;
-	term_t key = PL_new_term_ref();
-	term_t val = PL_new_term_ref();
-	if (!PL_get_arg(1, param, key) || !PL_unify_atom_chars(key, "pan")) return FALSE;
-	if (!PL_get_arg(2, param, val) || !PL_unify_float(val, node->target_pan)) return FALSE;
+	PL_put_atom_chars(param_args+0, "pan");
+	if (!PL_put_float(param_args+1, node->target_pan)) {
+		return FALSE;
+	}
+	if (!PL_cons_functor_v(param_term, eq_functor, param_args)) {
+		return FALSE;
+	}
+	if (!PL_cons_list(params_list, param_term, params_list)) {
+		return FALSE;
+	}
 
-	return PL_unify_nil(params_list);
+	return TRUE;
 }
 
 /*
@@ -2225,6 +2233,323 @@ static foreign_t set_pan_parameters(pan_node_t* node, term_t params_list)
 				return PL_type_error("float", value_term);
 			}
 			node->target_pan = (float)pan;
+		}
+	}
+
+	return TRUE;
+}
+
+/******************************************************************************
+ * MOOG LADDER FILTER
+ *****************************************************************************/
+
+#define MOOG_VT 0.312
+#define MOOG_INPUT_SCALE 0.5
+#define MOOG_OVERSAMPLE 2
+
+/*
+ * moog_process_one_sample()
+ * Process one sample through the 4-pole ladder filter.
+ */
+/*
+ * moog_process_one_sample()
+ * Process one sample through the 4-pole ladder filter.
+ */
+static void moog_process_one_sample(
+		moog_node_t* moog,
+		double input_sample,
+		double g,
+		double vt2,
+		double sample_rate_2x,
+		ma_uint32 channel)
+{
+	double in_sample;
+	double dv0, dv1, dv2, dv3;
+
+	in_sample = input_sample + ((double)moog->current_resonance * moog->v[3][channel]);
+
+	dv0 = -g * (tanh(in_sample / vt2) + moog->tv[0][channel]);
+	moog->v[0][channel] += (dv0 + moog->dv[0][channel]) / (2.0 * sample_rate_2x);
+	moog->dv[0][channel] = dv0;
+	moog->tv[0][channel] = tanh(moog->v[0][channel] / vt2);
+
+	dv1 = g * (moog->tv[0][channel] - moog->tv[1][channel]);
+	moog->v[1][channel] += (dv1 + moog->dv[1][channel]) / (2.0 * sample_rate_2x);
+	moog->dv[1][channel] = dv1;
+	moog->tv[1][channel] = tanh(moog->v[1][channel] / vt2);
+
+	dv2 = g * (moog->tv[1][channel] - moog->tv[2][channel]);
+	moog->v[2][channel] += (dv2 + moog->dv[2][channel]) / (2.0 * sample_rate_2x);
+	moog->dv[2][channel] = dv2;
+	moog->tv[2][channel] = tanh(moog->v[2][channel] / vt2);
+
+	dv3 = g * (moog->tv[2][channel] - moog->tv[3][channel]);
+	moog->v[3][channel] += (dv3 + moog->dv[3][channel]) / (2.0 * sample_rate_2x);
+	moog->dv[3][channel] = dv3;
+	moog->tv[3][channel] = tanh(moog->v[3][channel] / vt2);
+}
+
+/*
+ * moog_process_pcm_frames()
+ * Process audio through 4-pole Moog ladder filter.
+ * Based on D'Angelo and Valimaki, ICASSP 2013,
+ */
+static void moog_process_pcm_frames(
+		ma_node* node,
+		const float** frames_in,
+		ma_uint32* frame_count_in,
+		float** frames_out,
+		ma_uint32* frame_count_out)
+{
+	moog_node_t* moog;
+	ma_uint32 channels;
+	ma_uint32 frame_count;
+	const float* input;
+	float* output;
+	ma_uint32 frame, channel;
+	float cutoff_step, res_step;
+	double dv0, dv1, dv2, dv3;
+	double vt2, g, x;
+	double in_sample;
+	double sample_rate, sample_rate_2x;
+	double current_sample, interp_sample, drive_input;
+
+	moog = (moog_node_t*)node;
+	frame_count = *frame_count_out;
+	input = frames_in[0];
+	output = frames_out[0];
+	channels = ma_node_get_output_channels(node, 0);
+	sample_rate = (double)ma_engine_get_sample_rate(g_engine);
+	sample_rate_2x = sample_rate * MOOG_OVERSAMPLE;
+	vt2 = 2.0 * MOOG_VT;
+
+	cutoff_step = (moog->target_cutoff - moog->current_cutoff) / (float)frame_count;
+	res_step = (moog->target_resonance - moog->current_resonance) / (float)frame_count;
+
+	for (frame = 0; frame < frame_count; frame++) {
+		moog->current_cutoff += cutoff_step;
+		moog->current_resonance += res_step;
+
+		/* bilinear tranfrom pre-warp for frequency accuracy */
+		x = (M_PI * (double)moog->current_cutoff) / sample_rate_2x;
+		g = 4.0 * M_PI * MOOG_VT * (double)moog->current_cutoff * (1.0 - x) / (1.0 + x);
+
+		for (channel = 0; channel < channels; channel++) {
+			current_sample = (double)input[frame * channels + channel];
+
+			/* interpolated sample: midpoint between previous and current */
+			interp_sample = (moog->prev_input[channel] + current_sample) * 0.5;
+
+			/* first pass: process interpolated sample */
+			drive_input = interp_sample * MOOG_INPUT_SCALE * (double)moog->drive;
+			moog_process_one_sample(moog, drive_input, g, vt2, sample_rate_2x, channel);
+
+			/* second pass: process current sample */
+			drive_input = current_sample * MOOG_INPUT_SCALE * (double)moog->drive;
+			moog_process_one_sample(moog, drive_input, g, vt2, sample_rate_2x, channel);
+
+			/* store for next frame's interpolation */
+			moog->prev_input[channel] = (float)current_sample;
+			
+			output[frame * channels + channel] = (float)(moog->v[3][channel] / MOOG_INPUT_SCALE);	
+		}
+	}
+
+	moog->current_cutoff = moog->target_cutoff;
+	moog->current_resonance = moog->target_resonance;
+
+	*frame_count_in = frame_count;
+	*frame_count_out = frame_count;
+}
+
+static ma_node_vtable moog_vtable = {
+	moog_process_pcm_frames,
+	NULL,
+	1,
+	1,
+	0
+};
+
+/*
+ * moog_node_init()
+ * Initialize moog ladder filter node
+ */
+static ma_result moog_node_init(moog_node_t* node) 
+{
+	ma_result result;
+	int pole, channel;
+
+	result = init_effect_node_base(&node->base, &moog_vtable);
+	if (result != MA_SUCCESS) {
+		return result;
+	}
+
+	for (pole = 0; pole < 4; pole++) {
+		for (channel = 0; channel < 2; channel++) {
+			node->v[pole][channel] = 0.0;
+			node->dv[pole][channel] = 0.0;
+			node->tv[pole][channel] = 0.0;
+		}
+	}
+
+	node->prev_input[0] = 0.0f;
+	node->prev_input[1] = 0.0f;
+
+	node->current_cutoff = 1000.0f;
+	node->target_cutoff = node->current_cutoff;
+	node->current_resonance = 0.0f;
+	node->target_resonance = node->current_resonance;
+	node->drive = 1.0f;
+
+	return MA_SUCCESS;
+}
+
+/*
+ * attach_moog_effect()
+ * Attach moog ladder filter to effect chain.
+ */
+static ma_result attach_moog_effect(term_t params, ma_node* source, effect_node_t** chain, ma_node_base** out_node)
+{
+	moog_node_t* node;
+	ma_result result;
+	float cutoff = 1000.0f;
+	float resonance = 0.0f;
+	float drive = 1.0f;
+
+	if (!get_param_float(params, "cutoff", &cutoff)) {
+		cutoff = 1000.0f;
+	}
+	if (!get_param_float(params, "resonance", &resonance)) {
+		resonance = 0.0f;
+	}
+	if (!get_param_float(params, "drive", &drive)) {
+		drive = 1.0f;
+	}
+
+	node = malloc(sizeof(moog_node_t));
+	if (!node) {
+		return MA_OUT_OF_MEMORY;
+	}
+
+	result = moog_node_init(node);
+	if (result != MA_SUCCESS) {
+		free(node);
+		return result;
+	}
+
+	node->current_cutoff = cutoff;
+	node->target_cutoff = cutoff;
+	node->current_resonance = resonance;
+	node->target_resonance = resonance;
+	node->drive = drive;
+
+	result = attach_effect_node(source, chain, &node->base, EFFECT_MOOG);
+	if (result != MA_SUCCESS) {
+		ma_node_uninit(&node->base, NULL);
+		free(node);
+		return result;
+	}
+
+	*out_node = &node->base;
+	return MA_SUCCESS;
+}
+
+/*
+ * query_moog_params()
+ * Get current moog filter parameters.
+ */
+static int query_moog_params(moog_node_t* node, term_t params_list)
+{
+	term_t param_args = PL_new_term_refs(2);
+	functor_t eq_functor = PL_new_functor(PL_new_atom("="), 2);
+	term_t param_term = PL_new_term_ref();
+
+	PL_put_atom_chars(param_args+0, "drive");
+	if (!PL_put_float(param_args+1, node->drive)) {
+		return FALSE;
+	}
+	if (!PL_cons_functor_v(param_term, eq_functor, param_args)) {
+		return FALSE;
+	}
+	if (!PL_cons_list(params_list, param_term, params_list)) {
+		return FALSE;
+	}
+
+	PL_put_atom_chars(param_args+0, "resonance");
+	if (!PL_put_float(param_args+1, node->target_resonance)) {
+		return FALSE;
+	}
+	if (!PL_cons_functor_v(param_term, eq_functor, param_args)) {
+		return FALSE;
+	}
+	if (!PL_cons_list(params_list, param_term, params_list)) {
+		return FALSE;
+	}
+
+	PL_put_atom_chars(param_args+0, "cutoff");
+	if (!PL_put_float(param_args+1, node->target_cutoff)) {
+		return FALSE;
+	}
+	if (!PL_cons_functor_v(param_term, eq_functor, param_args)) {
+		return FALSE;
+	}
+	if (!PL_cons_list(params_list, param_term, params_list)) {
+		return FALSE;
+	}
+
+	return TRUE;
+}
+
+/*
+ * set_moog_parameters()
+ * Set moog filter parameters from a Prolog list.
+ */
+static foreign_t set_moog_parameters(moog_node_t* node, term_t params_list)
+{
+	term_t list = PL_copy_term_ref(params_list);
+	term_t head = PL_new_term_ref();
+	functor_t eq_functor = PL_new_functor(PL_new_atom("="), 2);
+
+	while (PL_get_list(list, head, list)) {
+		term_t key_term = PL_new_term_ref();
+		term_t value_term = PL_new_term_ref();
+		char* param_name;
+
+		if (!PL_is_functor(head, eq_functor)) {
+			return PL_type_error("key_value_pair", head);
+		}
+		if (!PL_get_arg(1, head, key_term)) {
+			return FALSE;
+		}
+		if (!PL_get_arg(2, head, value_term)) {
+			return FALSE;
+		}
+		if (!PL_get_atom_chars(key_term, &param_name)) {
+			return PL_type_error("atom", key_term);
+		}
+
+		if (strcmp(param_name, "cutoff") == 0) {
+			double cutoff;
+			if (!PL_get_float(value_term, &cutoff)) {
+				return PL_type_error("float", value_term);
+			}
+			if (cutoff < 20.0) cutoff = 20.0;
+			node->target_cutoff = (float)cutoff;
+		} else if (strcmp(param_name, "resonance") == 0) {
+			double resonance;
+			if (!PL_get_float(value_term, &resonance)) {
+				return PL_type_error("float", value_term);
+			}
+			if (resonance < 0.0) resonance = 0.0;
+			if (resonance > 4.0) resonance = 4.0;
+			node->target_resonance = (float)resonance;
+		} else if (strcmp(param_name, "drive") == 0) {
+			double drive;
+			if (!PL_get_float(value_term, &drive)) {
+				return PL_type_error("float", value_term);
+			}
+			if (drive < 0.1) drive = 0.1;
+			node->drive = (float)drive;
 		}
 	}
 
@@ -2269,6 +2594,8 @@ static foreign_t attach_effect_to_node(ma_sound* sound, effect_node_t** effect_c
 		result = attach_reverb_effect(params, (ma_node*)sound, effect_chain, &effect_node);
 	} else if (strcmp(type_str, "pan") == 0) {
 		result = attach_pan_effect(params, (ma_node*)sound, effect_chain, &effect_node);
+	} else if (strcmp(type_str, "moog") == 0) {
+		result = attach_moog_effect(params, (ma_node*)sound, effect_chain, &effect_node);
 	} else {
 		return PL_domain_error("effect_type", effect_type);
 	}
@@ -2409,6 +2736,10 @@ static foreign_t pl_effects(term_t source_handle, term_t effects_list)
 					type_str = "pan";
 					query_result = query_pan_params((pan_node_t*)effect->effect_node, params_list);
 					break;
+				case EFFECT_MOOG:
+					type_str = "moog";
+					query_result = query_moog_params((moog_node_t*)effect->effect_node, params_list);
+					break;
 				default:
 					type_str = "unknown";
 					break;
@@ -2508,6 +2839,8 @@ static foreign_t pl_effect_set_parameters(term_t effect_handle, term_t params_li
 			return set_reverb_parameters((reverb_node_t*)node->effect_node, params_list);
 		case EFFECT_PAN:
 			return set_pan_parameters((pan_node_t*)node->effect_node, params_list);
+		case EFFECT_MOOG:
+			return set_moog_parameters((moog_node_t*)node->effect_node, params_list);
 		default:
 			return PL_domain_error("effect_type", effect_handle);
 	}

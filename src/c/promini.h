@@ -67,7 +67,8 @@ typedef enum {
 	EFFECT_BPF,
 	EFFECT_DELAY,
 	EFFECT_PING_PONG_DELAY,
-	EFFECT_PAN
+	EFFECT_PAN,
+	EFFECT_MOOG
 } effect_type_t;
 
 /* Effect chain node */
@@ -285,6 +286,22 @@ typedef struct {
 	float current_pan;
 	float target_pan;
 } pan_node_t;
+
+/* Moog ladder filter node */
+typedef struct {
+	ma_node_base base;
+	
+	double v[4][2];
+	double dv[4][2];
+	double tv[4][2];
+	float prev_input[2]; /* previous input sample per channel for interpolation */
+
+	float current_cutoff;
+	float target_cutoff;
+	float current_resonance;
+	float target_resonance;
+	float drive;
+} moog_node_t;
 
 /*
  * Modulation system
