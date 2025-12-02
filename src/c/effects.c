@@ -2266,9 +2266,9 @@ static void moog_process_one_sample(
 	double in_sample;
 	double dv0, dv1, dv2, dv3;
 
-	in_sample = input_sample + ((double)moog->current_resonance * moog->v[3][channel]);
+	in_sample = input_sample - ((double)moog->current_resonance * moog->tv[3][channel]);
 
-	dv0 = -g * (tanh(in_sample / vt2) + moog->tv[0][channel]);
+	dv0 = g * (tanh(in_sample / vt2) - moog->tv[0][channel]);
 	moog->v[0][channel] += (dv0 + moog->dv[0][channel]) / (2.0 * sample_rate_2x);
 	moog->dv[0][channel] = dv0;
 	moog->tv[0][channel] = tanh(moog->v[0][channel] / vt2);
@@ -2350,8 +2350,10 @@ static void moog_process_pcm_frames(
 
 			/* store for next frame's interpolation */
 			moog->prev_input[channel] = (float)current_sample;
-			
-			output[frame * channels + channel] = (float)(moog->v[3][channel] / MOOG_INPUT_SCALE);	
+
+			/* resonance compensation: boost output to offset volume loss at high resonance */
+			output[frame * channels + channel] = (float)(moog->v[3][channel] / MOOG_INPUT_SCALE)
+				* (1.0f + 0.5f * moog->current_resonance);
 		}
 	}
 
