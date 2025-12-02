@@ -5,31 +5,31 @@ Still in very early development.
 The intention is to make it easy to reason about patches and sounds. 
 
 Existing or planned features (all in stereo):
-- real-time or sample granulation
-  - live audio capture
-  - sound/sample playback
-- additive synthesis (including noise oscillators)
+- real-time or sample granulation *(planned)*
+  - live audio capture ✓
+  - sound/sample playback ✓
+- additive synthesis (including noise oscillators) ✓
 - essential audio processors:
-  - bitcrush
-  - ping-pong delay
-  - reverb (Dattorro)
-  - panning
-  - crossfading
-  - 4-pole ladder filter (D'Angelo & Välimäki)
+  - bitcrush ✓
+  - ping-pong delay ✓
+  - reverb (Dattorro) ✓
+  - panning ✓
+  - crossfading *(planned)*
+  - 4-pole ladder filter (D'Angelo & Välimäki) ✓
   - plus miniaudio's effects:
-    - delay
-    - various filter types
-- image-to-audio additive synthesis
-- comprehensive modulation system
+    - delay ✓
+    - various filter types ✓
+- image-to-audio additive synthesis *(planned)*
+- comprehensive modulation system *(in progress)*
   - sources:
-    - LFO
-    - looping envelope
-    - noise
-    - audio buffers
-    - images
-  - targets: many parameters across the system, with S&H
-- control interface using gamepad, keyboard, trackpad
-- patches, presets, and setups saved as transparent prolog clauses
-- MCP integration for AI-assisted patch design and composition
+    - LFO ✓
+    - looping envelope ✓
+    - noise *(planned)*
+    - audio buffers *(planned)*
+    - images *(planned)*
+  - targets: many parameters across the system, with S&H *(in progress)*
+- control interface using gamepad, keyboard, trackpad *(planned)*
+- patches, presets, and setups saved as transparent prolog clauses ✓
+- MCP integration for AI-assisted patch design and composition *(planned)*
 
 MIT License
