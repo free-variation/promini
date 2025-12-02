@@ -29,7 +29,7 @@ Existing or planned features (all in stereo):
     - images
   - targets: many parameters across the system, with S&H
 - control interface using gamepad, keyboard, trackpad
-- patches, presets, and setups saved as transparent prolog queries
+- patches, presets, and setups saved as transparent prolog clauses
 - MCP integration for AI-assisted patch design and composition
 
 MIT License
