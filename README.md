@@ -17,6 +17,8 @@ Existing or planned features (all in stereo):
   - VCA ✓
   - summing node ✓
   - crossfading *(planned)*
+  - compressor *(planned)*
+  - limiter *(planned)*
   - 4-pole ladder filter (D'Angelo & Välimäki) ✓
   - plus miniaudio's effects:
     - delay ✓

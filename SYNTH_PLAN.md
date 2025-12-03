@@ -22,6 +22,8 @@ Live granular sampler + additive synth + effects + modulation, controlled from P
 | VCA as modulation target | ✓ Complete |
 | Summing node | ✓ Complete |
 | Crossfader | Planned |
+| Compressor | Planned |
+| Limiter | Planned |
 | Modulation (remaining targets) | In progress |
 | Granular engine | Planned (Prolog layer) |
 
@@ -29,17 +31,19 @@ Live granular sampler + additive synth + effects + modulation, controlled from P
 1. Remove per-source volume predicates (sound_set_volume, sound_get_volume, synth_voice_fade, set_voice_volume mod target, and related tests; keep oscillator volume)
 2. Crossfader node (C-level node with two input buses, position parameter)
 3. Add crossfader as modulation target
-4. Add route depth/center get/set predicates
-5. Add per-sample interpolation for route depth/center
-6. Add route as modulation target
-7. Prolog mixer module (composes VCA + pan + summing)
-8. Image-to-audio synthesis
-9. Sound pitch modulation target
-10. Delay time modulation target
-11. Reverb shimmer mix modulation targets
-12. Bitcrush bits and sample_rate modulation targets
-13. Noise modulation source
-14. Sampler modulation source
+4. Compressor effect
+5. Limiter effect
+6. Add route depth/center get/set predicates
+7. Add per-sample interpolation for route depth/center
+8. Add route as modulation target
+9. Prolog mixer module (composes VCA + pan + summing)
+10. Image-to-audio synthesis
+11. Sound pitch modulation target
+12. Delay time modulation target
+13. Reverb shimmer mix modulation targets
+14. Bitcrush bits and sample_rate modulation targets
+15. Noise modulation source
+16. Sampler modulation source
 
 ---
 
