@@ -14,6 +14,8 @@ Existing or planned features (all in stereo):
   - ping-pong delay ✓
   - reverb (Dattorro) ✓
   - panning ✓
+  - VCA ✓
+  - summing node ✓
   - crossfading *(planned)*
   - 4-pole ladder filter (D'Angelo & Välimäki) ✓
   - plus miniaudio's effects:

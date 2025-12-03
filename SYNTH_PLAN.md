@@ -26,7 +26,7 @@ Live granular sampler + additive synth + effects + modulation, controlled from P
 | Granular engine | Planned (Prolog layer) |
 
 ### Next Steps (in order)
-1. Remove per-source volume predicates (sound_set_volume, sound_get_volume, synth_oscillator_set_volume, synth_oscillator_get_volume, synth_voice_fade, set_voice_volume mod target, and related tests)
+1. Remove per-source volume predicates (sound_set_volume, sound_get_volume, synth_voice_fade, set_voice_volume mod target, and related tests; keep oscillator volume)
 2. Crossfader node (C-level node with two input buses, position parameter)
 3. Add crossfader as modulation target
 4. Add route depth/center get/set predicates
@@ -64,7 +64,7 @@ Live granular sampler + additive synth + effects + modulation, controlled from P
 
 ### Oscillator (`oscillator`)
 - [x] `frequency`
-- [x] ~~`volume`~~ (to be removed - use VCA effect instead)
+- [x] `volume`
 - [ ] `phase`
 
 ### Voice (`voice`)
@@ -180,11 +180,11 @@ crossfader_set_position(+Handle, +Position)
 **Remove:**
 - `sound_set_volume/2`, `sound_get_volume/2`
 - `synth_voice_fade/3`
-- `synth_oscillator_set_volume/2`, `synth_oscillator_get_volume/2`
 - `set_voice_volume` modulation target
 - Related tests
 
 **Keep:**
+- `synth_oscillator_set_volume/2`, `synth_oscillator_get_volume/2` (for mixing oscillators within a voice)
 - Pan effect (useful in effect chains)
 
 ---
