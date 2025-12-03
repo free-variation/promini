@@ -8,7 +8,7 @@ Live granular sampler + additive synth + effects + modulation, controlled from P
 - **C layer (miniaudio)**: Audio primitives - playback, effects, modulation sources, capture
 - **Prolog layer**: High-level control - grain scheduling, sequencing, patch management
 
-### Progress (~65% complete)
+### Progress (~70% complete)
 
 | Component | Status |
 |-----------|--------|
@@ -18,19 +18,28 @@ Live granular sampler + additive synth + effects + modulation, controlled from P
 | Live capture | ✓ Complete |
 | Modulation sources (LFO, envelope) | ✓ Complete |
 | Modulation routing (osc frequency) | ✓ Complete |
-| Modulation (remaining targets) | In progress |
+| VCA effect | ✓ Complete |
+| VCA as modulation target | ✓ Complete |
+| Summing node | ✓ Complete |
 | Crossfader | Planned |
+| Modulation (remaining targets) | In progress |
 | Granular engine | Planned (Prolog layer) |
 
 ### Next Steps (in order)
-1. Image-to-audio synthesis (pixel-to-sine additive approach)
-2. Sound pitch modulation target
-3. Delay time modulation target
-4. Reverb shimmer mix modulation targets
-5. Bitcrush bits and sample_rate modulation targets
-6. Crossfader node + position modulation target
-7. Noise modulation source
-8. Sampler modulation source
+1. Remove per-source volume predicates (sound_set_volume, sound_get_volume, synth_oscillator_set_volume, synth_oscillator_get_volume, synth_voice_fade, set_voice_volume mod target, and related tests)
+2. Crossfader node (C-level node with two input buses, position parameter)
+3. Add crossfader as modulation target
+4. Add route depth/center get/set predicates
+5. Add per-sample interpolation for route depth/center
+6. Add route as modulation target
+7. Prolog mixer module (composes VCA + pan + summing)
+8. Image-to-audio synthesis
+9. Sound pitch modulation target
+10. Delay time modulation target
+11. Reverb shimmer mix modulation targets
+12. Bitcrush bits and sample_rate modulation targets
+13. Noise modulation source
+14. Sampler modulation source
 
 ---
 
@@ -55,15 +64,15 @@ Live granular sampler + additive synth + effects + modulation, controlled from P
 
 ### Oscillator (`oscillator`)
 - [x] `frequency`
-- [x] `volume`
+- [x] ~~`volume`~~ (to be removed - use VCA effect instead)
 - [ ] `phase`
 
 ### Voice (`voice`)
-- [x] `volume`
+- [x] ~~`volume`~~ (to be removed - use VCA effect instead)
 - [x] `pan`
 
 ### Sound (`sound`)
-- [x] `volume`
+- [x] ~~`volume`~~ (to be removed - use VCA effect instead)
 - [ ] `pitch`
 - [x] `pan`
 
@@ -103,8 +112,11 @@ Live granular sampler + additive synth + effects + modulation, controlled from P
 - [ ] `offset`
 - [ ] `slew`
 
+### VCA Effect (`vca`)
+- [x] `gain`
+
 ### Crossfader (`crossfader`) - not yet implemented
-- [ ] `position`
+- [ ] `position` (0.0 = all input A, 1.0 = all input B)
 
 ---
 
@@ -115,9 +127,65 @@ Live granular sampler + additive synth + effects + modulation, controlled from P
 
 ---
 
-## Crossfader (Planned)
+## Mixing Architecture
 
-Audio mixer node blending two sources. Position (0.0-1.0) is a modulation target for automated crossfades.
+Simple primitives in C, composed into mixers in Prolog.
+
+### C Layer Primitives
+
+**VCA Effect:** ✓ Gain control with per-sample interpolation. Attached to effect chain like other effects. Modulation target via `mod_route_create(..., vca, VcaPtr, gain, ...)`.
+
+**Summing Node:** ✓ Passthrough node using `MA_NODE_FLAG_PASSTHROUGH`. Multiple sources connect to single input bus, miniaudio sums them automatically. Can have its own effect chain.
+
+**Crossfader:** C-level node with two input buses. Position parameter (0.0 = all A, 1.0 = all B) with per-sample interpolation. Single modulation target for sample-accurate crossfading.
+
+### Signal Flow
+
+```
+source → source's effect chain (VCA, pan, etc.) → summing node → summing node's effect chain → endpoint
+```
+
+### Prolog Mixer Module
+
+Composes primitives into higher-level mixer abstraction:
+
+```prolog
+mixer_create(-Mixer)
+mixer_add_input(+Mixer, +SourceType, +SourceHandle, -InputHandle)
+mixer_set_gain(+InputHandle, +Gain)
+mixer_set_pan(+InputHandle, +Pan)
+mixer_remove_input(+Mixer, +InputHandle)
+mixer_unload(+Mixer)
+```
+
+Each input gets VCA and pan effects attached, then connects to summing node.
+
+### Crossfader
+
+C-level processing node with two input buses:
+- Position 0.0: output = input A
+- Position 1.0: output = input B
+- Position 0.5: output = 0.5*A + 0.5*B
+
+```prolog
+crossfader_create(-Handle)
+crossfader_connect_a(+Handle, +Source)
+crossfader_connect_b(+Handle, +Source)
+crossfader_set_position(+Handle, +Position)
+% Then route LFO → crossfader position for modulation
+```
+
+### Changes from Current Design
+
+**Remove:**
+- `sound_set_volume/2`, `sound_get_volume/2`
+- `synth_voice_fade/3`
+- `synth_oscillator_set_volume/2`, `synth_oscillator_get_volume/2`
+- `set_voice_volume` modulation target
+- Related tests
+
+**Keep:**
+- Pan effect (useful in effect chains)
 
 ---
 

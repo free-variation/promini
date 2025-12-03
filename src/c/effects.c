@@ -105,6 +105,19 @@ static ma_result init_effect_node_base(ma_node_base* node, ma_node_vtable* vtabl
 }
 
 /*
+ * get_effect_chain_tail()
+ * Returns the last effect node in a chain, or NULL if chain is empty.
+ */
+ma_node* get_effect_chain_tail(effect_node_t* chain)
+{
+	if (chain == NULL) return NULL;
+	while (chain->next != NULL) {
+		chain = chain->next;
+	}
+	return (ma_node*)chain->effect_node;
+}
+
+/*
  * attach_effect_node()
  * Attach an effect node to a source node's processing chain.
  * Works with any ma_node (sounds, sound groups, voices, etc.)
@@ -206,6 +219,12 @@ static ma_bool32 get_effect_info_from_handle(term_t effect_handle, ma_sound** so
 		if (slot < 0 || slot >= MAX_VOICES || !g_voices[slot].in_use) return MA_FALSE;
 		*source_out = &g_voices[slot].group;
 		*chain_out = &g_voices[slot].effect_chain;
+		return MA_TRUE;
+	}
+	if (f == PL_new_functor(PL_new_atom("summing_node"), 1)) {
+		if (slot < 0 || slot >= MAX_SUMMING_NODES || !g_summing_nodes[slot].in_use) return MA_FALSE;
+		*source_out = (ma_sound*)&g_summing_nodes[slot].base;
+		*chain_out = &g_summing_nodes[slot].effect_chain;
 		return MA_TRUE;
 	}
 	return MA_FALSE;
@@ -2239,6 +2258,187 @@ static foreign_t set_pan_parameters(pan_node_t* node, term_t params_list)
 	return TRUE;
 }
 
+
+/******************************************************************************
+ * VCA EFFECT
+ *****************************************************************************/
+
+/*
+ * vca_process_pcm_frames()
+ * Applies gain with per-sample interpolation from current to target.
+ */
+static void vca_process_pcm_frames(
+		ma_node* node,
+		const float** frames_in,
+		ma_uint32* frame_count_in,
+		float** frames_out,
+		ma_uint32* frame_count_out)
+{
+	vca_node_t* vca;
+	ma_uint32 channels;
+	ma_uint32 frame_count;
+	ma_uint32 total_samples;
+	const float* input;
+	float* output;
+	ma_uint32 i;
+	float step, gain;
+
+	vca = (vca_node_t*)node;
+	channels = ma_node_get_output_channels(node, 0);
+	frame_count = *frame_count_out;
+	total_samples = frame_count * channels;
+	input = frames_in[0];
+	output = frames_out[0];
+
+	step = (vca->target_gain - vca->current_gain) / frame_count;
+	gain = vca->current_gain;
+
+	for (i = 0; i < total_samples; i++) {
+		if (i % channels == 0 && i > 0) {
+			gain += step;
+		}
+		output[i] = input[i] * gain;
+	}
+
+	vca->current_gain = vca->target_gain;
+
+	*frame_count_in = frame_count;
+	*frame_count_out = frame_count;
+}
+
+static ma_node_vtable vca_vtable = {
+	vca_process_pcm_frames,
+	NULL,
+	1,  /* 1 input bus */
+	1,  /* 1 output bus */
+	0
+};
+
+/*
+ * init_vca_node()
+ * Initialize a VCA effect node.
+ */
+static ma_result init_vca_node(vca_node_t* node, float initial_gain)
+{
+	ma_result result;
+
+	result = init_effect_node_base(&node->base, &vca_vtable);
+	if (result != MA_SUCCESS) {
+		return result;
+	}
+
+	node->current_gain = initial_gain;
+	node->target_gain = initial_gain;
+
+	return MA_SUCCESS;
+}
+
+/*
+ * attach_vca_effect()
+ * Create and attach a VCA effect to the given source node.
+ */
+static ma_result attach_vca_effect(term_t params, ma_node* source_node, effect_node_t** effect_chain, ma_node_base** out_effect_node)
+{
+	float gain;
+	vca_node_t* vca;
+	ma_result result;
+
+	if (!get_param_float(params, "gain", &gain)) {
+		gain = 1.0f;
+	}
+
+	vca = (vca_node_t*)malloc(sizeof(vca_node_t));
+	if (!vca) {
+		return MA_OUT_OF_MEMORY;
+	}
+
+	result = init_vca_node(vca, gain);
+	if (result != MA_SUCCESS) {
+		free(vca);
+		return result;
+	}
+
+	result = attach_effect_node(source_node, effect_chain, &vca->base, EFFECT_VCA);
+	if (result != MA_SUCCESS) {
+		ma_node_uninit(&vca->base, NULL);
+		free(vca);
+		return result;
+	}
+
+	*out_effect_node = &vca->base;
+	return MA_SUCCESS;
+}
+
+/*
+ * query_vca_params()
+ * Build parameter list for VCA effect.
+ */
+static int query_vca_params(vca_node_t* vca, term_t params_list)
+{
+	term_t param_args = PL_new_term_refs(2);
+	functor_t eq_functor = PL_new_functor(PL_new_atom("="), 2);
+	term_t param_term = PL_new_term_ref();
+
+	PL_put_atom_chars(param_args+0, "gain");
+	if (!PL_put_float(param_args+1, vca->target_gain)) {
+		return FALSE;
+	}
+	if (!PL_cons_functor_v(param_term, eq_functor, param_args)) {
+		return FALSE;
+	}
+	if (!PL_cons_list(params_list, param_term, params_list)) {
+		return FALSE;
+	}
+
+	return TRUE;
+}
+
+/*
+ * set_vca_parameters()
+ * Set parameters for VCA effect from Prolog term list.
+ */
+static foreign_t set_vca_parameters(vca_node_t* vca, term_t params_list)
+{
+	term_t list = PL_copy_term_ref(params_list);
+	term_t head = PL_new_term_ref();
+	functor_t eq_functor = PL_new_functor(PL_new_atom("="), 2);
+
+	while (PL_get_list(list, head, list)) {
+		term_t key_term = PL_new_term_ref();
+		term_t value_term = PL_new_term_ref();
+		char* param_name;
+
+		if (!PL_is_functor(head, eq_functor)) {
+			return PL_type_error("key_value_pair", head);
+		}
+		if (!PL_get_arg(1, head, key_term)) {
+			return FALSE;
+		}
+		if (!PL_get_arg(2, head, value_term)) {
+			return FALSE;
+		}
+		if (!PL_get_atom_chars(key_term, &param_name)) {
+			return PL_type_error("atom", key_term);
+		}
+
+		if (strcmp(param_name, "gain") == 0) {
+			double gain;
+			if (!PL_get_float(value_term, &gain)) {
+				return PL_type_error("float", value_term);
+			}
+			vca->target_gain = (float)gain;
+		} else {
+			return PL_domain_error("vca_parameter", key_term);
+		}
+	}
+
+	if (!PL_get_nil(list)) {
+		return PL_type_error("list", params_list);
+	}
+
+	return TRUE;
+}
+
 /******************************************************************************
  * MOOG LADDER FILTER
  *****************************************************************************/
@@ -2598,6 +2798,8 @@ static foreign_t attach_effect_to_node(ma_sound* sound, effect_node_t** effect_c
 		result = attach_pan_effect(params, (ma_node*)sound, effect_chain, &effect_node);
 	} else if (strcmp(type_str, "moog") == 0) {
 		result = attach_moog_effect(params, (ma_node*)sound, effect_chain, &effect_node);
+	} else if (strcmp(type_str, "vca") == 0) {
+		result = attach_vca_effect(params, (ma_node*)sound, effect_chain, &effect_node);
 	} else {
 		return PL_domain_error("effect_type", effect_type);
 	}
@@ -2637,6 +2839,14 @@ static foreign_t pl_voice_attach_effect(term_t handle, term_t effect_type, term_
 	return attach_effect_to_node(&g_voices[slot].group, &g_voices[slot].effect_chain, "voice", slot, effect_type, params, effect_handle);
 }
 
+static foreign_t pl_summing_node_attach_effect(term_t handle, term_t effect_type, term_t params, term_t effect_handle)
+{
+	int slot;
+	if (!PL_get_integer(handle, &slot) || slot < 0 || slot >= MAX_SUMMING_NODES || !g_summing_nodes[slot].in_use)
+		return PL_existence_error("summing_node", handle);
+	return attach_effect_to_node((ma_sound*)&g_summing_nodes[slot].base, &g_summing_nodes[slot].effect_chain, "summing_node", slot, effect_type, params, effect_handle);
+}
+
 /*
  * pl_effects()
  * Query all effects attached to a sound or voice.
@@ -2674,8 +2884,14 @@ static foreign_t pl_effects(term_t source_handle, term_t effects_list)
 		}
 		effect_chain = g_voices[slot].effect_chain;
 		source_type = "voice";
+	} else if (f == PL_new_functor(PL_new_atom("summing_node"), 1)) {
+		if (slot < 0 || slot >= MAX_SUMMING_NODES || !g_summing_nodes[slot].in_use) {
+			return PL_existence_error("summing_node", source_handle);
+		}
+		effect_chain = g_summing_nodes[slot].effect_chain;
+		source_type = "summing_node";
 	} else {
-		return PL_type_error("sound_or_voice", source_handle);
+		return PL_type_error("sound_or_voice_or_summing_node", source_handle);
 	}
 
 	for (effect = effect_chain; effect != NULL; effect = effect->next) {
@@ -2741,6 +2957,10 @@ static foreign_t pl_effects(term_t source_handle, term_t effects_list)
 				case EFFECT_MOOG:
 					type_str = "moog";
 					query_result = query_moog_params((moog_node_t*)effect->effect_node, params_list);
+					break;
+				case EFFECT_VCA:
+					type_str = "vca";
+					query_result = query_vca_params((vca_node_t*)effect->effect_node, params_list);
 					break;
 				default:
 					type_str = "unknown";
@@ -2843,6 +3063,8 @@ static foreign_t pl_effect_set_parameters(term_t effect_handle, term_t params_li
 			return set_pan_parameters((pan_node_t*)node->effect_node, params_list);
 		case EFFECT_MOOG:
 			return set_moog_parameters((moog_node_t*)node->effect_node, params_list);
+		case EFFECT_VCA:
+			return set_vca_parameters((vca_node_t*)node->effect_node, params_list);
 		default:
 			return PL_domain_error("effect_type", effect_handle);
 	}
@@ -2920,6 +3142,7 @@ install_t effects_register_predicates(void)
 {
 	PL_register_foreign("sound_attach_effect", 4, pl_sound_attach_effect, 0);
 	PL_register_foreign("voice_attach_effect", 4, pl_voice_attach_effect, 0);
+	PL_register_foreign("summing_node_attach_effect", 4, pl_summing_node_attach_effect, 0);
 	PL_register_foreign("effects", 2, pl_effects, 0);
 	PL_register_foreign("effect_set_parameters", 2, pl_effect_set_parameters, 0);
 	PL_register_foreign("effect_detach", 1, pl_effect_detach, 0);

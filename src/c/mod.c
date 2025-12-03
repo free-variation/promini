@@ -343,6 +343,24 @@ static void set_moog_cutoff(void* target, float value, ma_uint32 frame_count)
 	moog->target_cutoff = value;
 }
 
+/*
+ * set_vca_gain()
+ * Setter for VCA gain. Target is vca_node_t*
+ * Uses per-sample interpolation so just sets target
+ */
+static void set_vca_gain(void* target, float value, ma_uint32 frame_count)
+{
+	vca_node_t* vca = (vca_node_t*)target;
+
+	(void)frame_count;
+
+	if (value < 0.0f) {
+		value = 0.0f;
+	}
+
+	vca->target_gain = value;
+}
+
 /******************************************************************************
  * SOURCE AND ROUTE MANAGEMENT
  *****************************************************************************/
@@ -483,6 +501,17 @@ static foreign_t pl_mod_route_create(
 			setter = set_moog_cutoff;
 		} else {
 			return PL_domain_error("moog_param", param_term);
+		}
+	} else if (strcmp(target_type, "vca") == 0) {
+		void* ptr;
+		if (!PL_get_pointer(target_term, &ptr)) {
+			return PL_type_error("pointer", target_term);
+		}
+		target = ptr;
+		if (strcmp(param, "gain") == 0) {
+			setter = set_vca_gain;
+		} else {
+			return PL_domain_error("vca_param", param_term);
 		}
 	} else {
 		return PL_domain_error("target_type", type_term);

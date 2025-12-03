@@ -234,4 +234,44 @@ test(effects_query_moog, [nondet]) :-
     abs(Drive - 1.2) < 0.001,
     sound_unload(Sound).
 
+% VCA effect tests
+
+test(sound_attach_vca, [nondet]) :-
+    sound_load('audio/counting.wav', Sound),
+    sound_attach_effect(Sound, vca, [gain=0.5], Effect),
+    Effect = effect(sound(Sound), _),
+    sound_unload(Sound).
+
+test(sound_attach_vca_default_gain, [nondet]) :-
+    sound_load('audio/counting.wav', Sound),
+    sound_attach_effect(Sound, vca, [], Effect),
+    Effect = effect(sound(Sound), _),
+    effects(sound(Sound), [effect(sound(Sound), vca, _, Params)]),
+    memberchk(gain=Gain, Params),
+    abs(Gain - 1.0) < 0.001,
+    sound_unload(Sound).
+
+test(voice_attach_vca, [nondet, cleanup(synth_voice_unload(Voice))]) :-
+    synth_voice_create(Voice),
+    synth_oscillator_add(Voice, 440.0, 0.0, _),
+    voice_attach_effect(Voice, vca, [gain=0.8], Effect),
+    Effect = effect(voice(Voice), _).
+
+test(vca_set_parameters, [nondet]) :-
+    sound_load('audio/counting.wav', Sound),
+    sound_attach_effect(Sound, vca, [gain=1.0], Effect),
+    effect_set_parameters(Effect, [gain=0.25]),
+    effects(sound(Sound), [effect(sound(Sound), vca, _, Params)]),
+    memberchk(gain=Gain, Params),
+    abs(Gain - 0.25) < 0.001,
+    sound_unload(Sound).
+
+test(effects_query_vca, [nondet]) :-
+    sound_load('audio/counting.wav', Sound),
+    sound_attach_effect(Sound, vca, [gain=0.75], _),
+    effects(sound(Sound), [effect(sound(Sound), vca, _, Params)]),
+    memberchk(gain=Gain, Params),
+    abs(Gain - 0.75) < 0.001,
+    sound_unload(Sound).
+
 :- end_tests(effects).

@@ -18,6 +18,7 @@ install_t install(void)
     synth_register_predicates();
     effects_register_predicates();
     mod_register_predicates();
+    mixer_register_predicates();
 }
 
 /*
@@ -27,6 +28,7 @@ install_t install(void)
  */
 install_t uninstall(void)
 {
+	uninstall_mixer();
 	uninstall_mod();
 	uninstall_synth();
 	uninstall_effects();

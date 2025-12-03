@@ -234,4 +234,43 @@ test(route_voice_moog_cutoff, [nondet, cleanup((
     integer(R),
     R >= 0.
 
+% VCA gain routing tests
+
+test(route_sound_vca_gain, [nondet, cleanup((
+    mod_route_unload(R),
+    mod_source_unload(L),
+    sound_unload(S)
+))]) :-
+    sound_load('audio/guitar.wav', S),
+    sound_attach_effect(S, vca, [gain=1.0], effect(_Source, VcaPtr)),
+    mod_lfo_create(sine, 4.0, L),
+    mod_route_create(L, vca, VcaPtr, gain, 0.4, 0.6, 0.0, R),
+    integer(R),
+    R >= 0.
+
+test(route_voice_vca_gain, [nondet, cleanup((
+    mod_route_unload(R),
+    mod_source_unload(L),
+    synth_voice_unload(V)
+))]) :-
+    synth_voice_create(V),
+    synth_oscillator_add(V, 440.0, 0.5, _O),
+    voice_attach_effect(V, vca, [gain=1.0], effect(_Source, VcaPtr)),
+    mod_lfo_create(sine, 4.0, L),
+    mod_route_create(L, vca, VcaPtr, gain, 0.5, 0.5, 0.0, R),
+    integer(R),
+    R >= 0.
+
+test(envelope_route_vca_gain, [nondet, cleanup((
+    mod_route_unload(R),
+    mod_source_unload(E),
+    sound_unload(S)
+))]) :-
+    sound_load('audio/guitar.wav', S),
+    sound_attach_effect(S, vca, [gain=0.0], effect(_Source, VcaPtr)),
+    mod_envelope_create(0.1, 0.2, 0.5, 0.7, 0.2, 100.0, false, E),
+    mod_route_create(E, vca, VcaPtr, gain, 1.0, 0.0, 0.0, R),
+    integer(R),
+    R >= 0.
+
 :- end_tests(mod).

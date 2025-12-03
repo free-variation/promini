@@ -68,6 +68,7 @@ typedef enum {
 	EFFECT_DELAY,
 	EFFECT_PING_PONG_DELAY,
 	EFFECT_PAN,
+	EFFECT_VCA,
 	EFFECT_MOOG
 } effect_type_t;
 
@@ -287,6 +288,25 @@ typedef struct {
 	float target_pan;
 } pan_node_t;
 
+/* VCA effect node */
+typedef struct {
+	ma_node_base base;
+	float current_gain;
+	float target_gain;
+} vca_node_t;
+
+/* Summing node */
+#define MAX_SUMMING_NODES 64
+
+typedef struct {
+	ma_node_base base;
+	effect_node_t* effect_chain;
+	ma_bool32 in_use;
+} summing_node_t;
+
+extern summing_node_t g_summing_nodes[MAX_SUMMING_NODES];
+extern pthread_mutex_t g_summing_mutex;
+
 /* Moog ladder filter node */
 typedef struct {
 	ma_node_base base;
@@ -384,8 +404,10 @@ extern synth_oscillator_t g_oscillators[MAX_OSCILLATORS];
 extern void get_engine_format_info(ma_format* format, ma_uint32* channels, ma_uint32* sampleRate);
 extern void free_effect_chain(effect_node_t* effect);
 extern data_slot_t* get_data_slot(int index);
+extern ma_bool32 get_source_from_term(term_t source_term, ma_node** source_node, effect_node_t** chain);
 
 /* Effect functions (implemented in effects.c) */
+extern ma_node* get_effect_chain_tail(effect_node_t* chain);
 extern ma_result attach_effect_node(ma_node* source_node, effect_node_t** effect_chain, ma_node_base* effect_node, effect_type_t type);
 
 /* Reverb functions (implemented in reverb.c) */
@@ -397,10 +419,12 @@ extern void free_reverb_node(reverb_node_t* reverb);
 extern install_t promini_register_predicates(void);
 extern install_t synth_register_predicates(void);
 extern install_t effects_register_predicates(void);
+extern install_t mixer_register_predicates(void);
 
 /* Module cleanup functions */
 extern install_t uninstall_promini(void);
 extern install_t uninstall_synth(void);
 extern install_t uninstall_effects(void);
+extern install_t uninstall_mixer(void);
 
 #endif /* PROMINI_H */

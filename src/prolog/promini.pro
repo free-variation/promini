@@ -77,7 +77,12 @@
     mod_envelope_trigger/1,
     mod_source_unload/1,
     mod_route_create/8,
-    mod_route_unload/1
+    mod_route_unload/1,
+    summing_node_create/1,
+    summing_node_unload/1,
+    summing_node_connect/2,
+    summing_node_disconnect/1,
+    summing_node_attach_effect/4
   ]).
 
 :- use_foreign_library('../../lib/promini').
