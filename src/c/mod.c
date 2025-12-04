@@ -292,28 +292,6 @@ static void set_oscillator_volume(void* target, float value, ma_uint32 frame_cou
 }
 
 /*
- * set_voice_volume()
- * Setter for voice volume. Target is synth_voice_t*.
- * Uses fade matching frame_count to avoid clicks.
- */
-static void set_voice_volume(void* target, float value, ma_uint32 frame_count)
-{
-	synth_voice_t* voice = (synth_voice_t*)target;
-	ma_sound_group_set_fade_in_pcm_frames(&voice->group, -1, value, frame_count);
-}
-
-/*
- * set_sound_volume()
- * Setter for sound volume. Target is sound_slot_t*.
- * Uses fade matching frame_count to avoid clicks.
- */
-static void set_sound_volume(void* target, float value, ma_uint32 frame_count)
-{
-	sound_slot_t* slot = (sound_slot_t*)target;
-	ma_sound_set_fade_in_pcm_frames(slot->sound, -1, value, frame_count);
-}
-
-/*
  * set_effect_pan()
  * Setter for pan effect. Target is pan_node_t*.
  * Sets target_pan which is interpolated at sample rate in the effect callback.
@@ -457,28 +435,6 @@ static foreign_t pl_mod_route_create(
 			setter = set_oscillator_volume;
 		} else {
 			return PL_domain_error("oscillator_param", param_term);
-		}
-	} else if (strcmp(target_type, "voice") == 0) {
-		if (!PL_get_integer(target_term, &target_handle)) return FALSE;
-		if (target_handle < 0 || target_handle >= MAX_VOICES || !g_voices[target_handle].in_use) {
-			return PL_existence_error("voice", target_term);
-		}
-		target = &g_voices[target_handle];
-		if (strcmp(param, "volume") == 0) {
-			setter = set_voice_volume;
-		} else {
-			return PL_domain_error("voice_param", param_term);
-		}
-	} else if (strcmp(target_type, "sound") == 0) {
-		if (!PL_get_integer(target_term, &target_handle)) return FALSE;
-		if (target_handle < 0 || target_handle >= MAX_SOUNDS || !g_sounds[target_handle].in_use) {
-			return PL_existence_error("sound", target_term);
-		}
-		target = &g_sounds[target_handle];
-		if (strcmp(param, "volume") == 0) {
-			setter = set_sound_volume;
-		} else {
-			return PL_domain_error("sound_param", param_term);
 		}
 	} else if (strcmp(target_type, "pan") == 0) {
 		void* ptr;

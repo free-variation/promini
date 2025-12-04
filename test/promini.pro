@@ -128,27 +128,6 @@ test(sound_pitch, [nondet]) :-
     Pitch =:= 12.0,
     sound_unload(Sound).
 
-test(sound_pan, [nondet]) :-
-    sound_load('audio/counting.wav', Sound),
-    sound_set_pan(Sound, -0.5),
-    sound_get_pan(Sound, Pan),
-    Pan =:= -0.5,
-    sound_unload(Sound).
-
-test(sound_pan_mode, [nondet]) :-
-    sound_load('audio/counting.wav', Sound),
-    sound_get_pan_mode(Sound, balance),
-    sound_set_pan_mode(Sound, pan),
-    sound_get_pan_mode(Sound, pan),
-    sound_unload(Sound).
-
-test(sound_volume, [nondet]) :-
-    sound_load('audio/counting.wav', Sound),
-    sound_set_volume(Sound, 0.5),
-    sound_get_volume(Sound, Volume),
-    Volume =:= 0.5,
-    sound_unload(Sound).
-
 :- end_tests(promini_parameters).
 
 :- begin_tests(promini_range).

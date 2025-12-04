@@ -15,19 +15,30 @@ add_harmonic(Voice, Fundamental, N, Osc) :-
     Freq is Fundamental * N,
     synth_oscillator_add(Voice, Freq, 0.0, Osc).
 
-% Helper to set pan on a voice
-set_voice_pan(Pan, Voice) :-
-    synth_voice_set_pan(Voice, Pan).
+% Helper to update pan on a pan effect handle
+update_voice_pan(Pan, PanEffect) :-
+    effect_set_parameters(PanEffect, [pan=Pan]).
 
 % Helper to set oscillator frequency
 set_osc_freq(Freq, Osc) :-
     synth_oscillator_set_frequency(Osc, Freq).
 
-% Helper to fade out and stop a voice (click-free)
+% Helper to fade out and stop a voice (click-free via VCA)
 voice_fade_stop(Voice) :-
-    synth_voice_fade(Voice, 0.0, 15),
-    sleep(0.02),
+    voice_attach_effect(Voice, vca, [gain=1.0], VcaEffect),
+    fade_gain(VcaEffect, 1.0, 0.0, 15),
     synth_voice_stop(Voice).
+
+% Helper to fade VCA gain over steps
+fade_gain(_, _, _, 0) :- !.
+fade_gain(VcaEffect, Current, Target, Steps) :-
+    Steps > 0,
+    Step is (Target - Current) / Steps,
+    Next is Current + Step,
+    effect_set_parameters(VcaEffect, [gain=Next]),
+    sleep(0.02),
+    RemainingSteps is Steps - 1,
+    fade_gain(VcaEffect, Next, Target, RemainingSteps).
 
 % Helper to fade out and remove an oscillator (click-free)
 osc_fade_remove(Osc) :-
@@ -252,7 +263,7 @@ demo_stereo_harmonics :-
 
     Fundamental = 55.0,
 
-    % Create 8 voices, each with one harmonic
+    % Create 8 voices, each with one harmonic and a pan effect
     synth_voice_create(V1),
     synth_voice_create(V2),
     synth_voice_create(V3),
@@ -272,6 +283,16 @@ demo_stereo_harmonics :-
     F7 is Fundamental * 7, synth_oscillator_add(V7, F7, 0.0, _),
     F8 is Fundamental * 8, synth_oscillator_add(V8, F8, 0.0, _),
 
+    % Attach pan effects to each voice
+    voice_attach_effect(V1, pan, [pan=0.0], P1),
+    voice_attach_effect(V2, pan, [pan=0.0], P2),
+    voice_attach_effect(V3, pan, [pan=0.0], P3),
+    voice_attach_effect(V4, pan, [pan=0.0], P4),
+    voice_attach_effect(V5, pan, [pan=0.0], P5),
+    voice_attach_effect(V6, pan, [pan=0.0], P6),
+    voice_attach_effect(V7, pan, [pan=0.0], P7),
+    voice_attach_effect(V8, pan, [pan=0.0], P8),
+
     % Start all voices
     synth_voice_start(V1),
     synth_voice_start(V2),
@@ -283,7 +304,7 @@ demo_stereo_harmonics :-
     synth_voice_start(V8),
 
     format('Animating pan positions (lower harmonics left, higher right)...~n'),
-    animate_pan([V1,V2,V3,V4], [V5,V6,V7,V8], 0.0, 500),
+    animate_pan([P1,P2,P3,P4], [P5,P6,P7,P8], 0.0, 500),
 
     % Stop and cleanup
     synth_voice_stop(V1),
@@ -311,8 +332,8 @@ animate_pan(GroupA, GroupB, Time, Steps) :-
     Steps > 0,
     Pan is sin(Time) * 0.8,
     PanOpp is -Pan,
-    maplist(set_voice_pan(Pan), GroupA),
-    maplist(set_voice_pan(PanOpp), GroupB),
+    maplist(update_voice_pan(Pan), GroupA),
+    maplist(update_voice_pan(PanOpp), GroupB),
     sleep(0.01),
     NextTime is Time + 0.02,
     NextSteps is Steps - 1,

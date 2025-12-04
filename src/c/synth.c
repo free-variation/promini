@@ -261,79 +261,6 @@ static foreign_t pl_synth_voice_stop(term_t handle)
 
 
 /*
- * pl_synth_voice_fade()
- * synth_voice_fade(+Handle, +TargetVolume, +Ms)
- * Fades a voice to target volume over specified milliseconds.
- * Use -1.0 for TargetVolume to fade from current volume.
- */
-static foreign_t pl_synth_voice_fade(term_t handle, term_t volume_term, term_t ms_term)
-{
-	int slot;
-	synth_voice_t* voice;
-	double volume;
-	int ms;
-
-	GET_VOICE_FROM_HANDLE(handle, voice, slot);
-
-	if (!PL_get_float(volume_term, &volume)) {
-		return PL_type_error("float", volume_term);
-	}
-
-	if (!PL_get_integer(ms_term, &ms)) {
-		return PL_type_error("integer", ms_term);
-	}
-
-	if (ms < 0) {
-		return PL_domain_error("non_negative_integer", ms_term);
-	}
-
-	ma_sound_group_set_fade_in_milliseconds(&voice->group, -1, (float)volume, (ma_uint64)ms);
-
-	return TRUE;
-}
-
-/*
- * pl_synth_voice_set_pan()
- * synth_voice_set_pan(+Handle, +Pan)
- * Sets the pan position of a voice (-1.0 left, 0.0 center, 1.0 right).
- */
-static foreign_t pl_synth_voice_set_pan(term_t handle, term_t pan_term)
-{
-	int slot;
-	synth_voice_t* voice;
-	double pan;
-
-	GET_VOICE_FROM_HANDLE(handle, voice, slot);
-
-	if (!PL_get_float(pan_term, &pan)) {
-		return PL_type_error("float", pan_term);
-	}
-
-	if (pan < -1.0 || pan > 1.0) {
-		return PL_domain_error("pan_range", pan_term);
-	}
-
-	ma_sound_group_set_pan(&voice->group, (float)pan);
-
-	return TRUE;
-}
-
-/*
- * pl_synth_voice_get_pan()
- * synth_voice_get_pan(+Handle, -Pan)
- * Gets the pan position of a voice.
- */
-static foreign_t pl_synth_voice_get_pan(term_t handle, term_t pan_term)
-{
-	int slot;
-	synth_voice_t* voice;
-
-	GET_VOICE_FROM_HANDLE(handle, voice, slot);
-
-	return PL_unify_float(pan_term, ma_sound_group_get_pan(&voice->group));
-}
-
-/*
  * pl_synth_voice_unload()
  * synth_voice_unload(+Handle)
  * Unloads a voice and frees its resources.
@@ -727,9 +654,6 @@ install_t synth_register_predicates(void)
 	PL_register_foreign("synth_voice_create", 1, pl_synth_voice_create, 0);
 	PL_register_foreign("synth_voice_start", 1, pl_synth_voice_start, 0);
 	PL_register_foreign("synth_voice_stop", 1, pl_synth_voice_stop, 0);
-	PL_register_foreign("synth_voice_fade", 3, pl_synth_voice_fade, 0);
-	PL_register_foreign("synth_voice_set_pan", 2, pl_synth_voice_set_pan, 0);
-	PL_register_foreign("synth_voice_get_pan", 2, pl_synth_voice_get_pan, 0);
 	PL_register_foreign("synth_voice_unload", 1, pl_synth_voice_unload, 0);
 	PL_register_foreign("synth_oscillator_add", 4, pl_synth_oscillator_add, 0);
 	PL_register_foreign("synth_oscillator_remove", 1, pl_synth_oscillator_remove, 0);

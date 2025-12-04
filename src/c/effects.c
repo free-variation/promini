@@ -2440,6 +2440,258 @@ static foreign_t set_vca_parameters(vca_node_t* vca, term_t params_list)
 }
 
 /******************************************************************************
+ * LIMITER
+ *****************************************************************************/
+
+/* 
+ * limiter_process_pcm_frames()
+ * Soft limiter with envelope follower for smooth gain reduction.
+ */
+static void limiter_process_pcm_frames(
+		ma_node* node,
+		const float** frames_in,
+		ma_uint32* frame_count_in,
+		float** frames_out,
+		ma_uint32* frame_count_out)
+{
+	limiter_node_t* limiter;
+  	ma_uint32 channels;
+  	ma_uint32 frame_count;
+  	const float* input;
+  	float* output;
+  	ma_uint32 i, c;
+  	float envelope;
+	float peak, gain, abs_sample;
+
+	limiter = (limiter_node_t*)node;
+	channels = ma_node_get_output_channels(node, 0);
+	frame_count = *frame_count_out;
+	input = frames_in[0];
+	output = frames_out[0];
+
+	envelope = limiter->envelope;
+	for (i = 0; i < frame_count; i++) {
+		/* find peak across all channels for this frame */
+		peak = 0.0f;
+		for (c = 0; c < channels; c++) {
+			abs_sample = fabsf(input[i * channels + c]);
+			if (abs_sample > peak) {
+				peak = abs_sample;
+			}
+		}
+
+		/* envelope follower: fast attack, slow release */
+		if (peak > envelope) {
+			envelope += limiter->attack_coeff * (peak - envelope);
+		} else {
+			envelope += limiter->release_coeff * (peak - envelope);
+		}
+
+		/* compute gain reduction */
+		if (envelope > limiter->threshold) {
+			gain = limiter->threshold / envelope;
+		} else {
+			gain = 1.0f;
+		}
+
+		/* apply gain to all channels */
+		for (c = 0; c < channels; c++) {
+			output[i * channels + c] = input[i * channels + c] * gain;
+		}
+	}
+
+	limiter->envelope = envelope;
+
+	*frame_count_in = frame_count;
+	*frame_count_out = frame_count;
+}
+
+static ma_node_vtable limiter_vtable = {
+	limiter_process_pcm_frames,
+	NULL,
+	1,  /* 1 input bus */
+	1,  /* 1 output bus */
+	0
+};
+
+/*
+ * init_limiter_node()
+ * Initialize a limiter effect node.
+ */
+static ma_result init_limiter_node(limiter_node_t* node, float threshold, float attack_ms, float release_ms)
+{
+	ma_result result;
+	ma_uint32 sample_rate;
+
+	result = init_effect_node_base(&node->base, &limiter_vtable);
+	if (result != MA_SUCCESS) {
+		return result;
+	}
+
+	sample_rate = ma_engine_get_sample_rate(g_engine);
+
+	node->threshold = threshold;
+	node->attack_coeff = 1.0f - expf(-1.0f / (attack_ms * sample_rate / 1000.0f));
+	node->release_coeff = 1.0f - expf(-1.0f / (release_ms * sample_rate / 1000.0f));
+	node->envelope = 0.0f;
+
+	return MA_SUCCESS;
+}
+
+/*
+ * attach_limiter_effect()
+ * Create and attach a limiter effect to the given source node.
+ */
+static ma_result attach_limiter_effect(term_t params, ma_node* source_node, effect_node_t** effect_chain, ma_node_base** out_effect_node)
+{
+	float threshold;
+	float attack_ms;
+	float release_ms;
+	limiter_node_t* limiter;
+	ma_result result;
+
+	if (!get_param_float(params, "threshold", &threshold)) {
+		threshold = 1.0f;
+	}
+	if (!get_param_float(params, "attack_ms", &attack_ms)) {
+		attack_ms = 0.1f;
+	}
+	if (!get_param_float(params, "release_ms", &release_ms)) {
+		release_ms = 100.0f;
+	}
+
+	limiter = (limiter_node_t*)malloc(sizeof(limiter_node_t));
+	if (!limiter) {
+		return MA_OUT_OF_MEMORY;
+	}
+
+	result = init_limiter_node(limiter, threshold, attack_ms, release_ms);
+	if (result != MA_SUCCESS) {
+		free(limiter);
+		return result;
+	}
+
+	result = attach_effect_node(source_node, effect_chain, &limiter->base, EFFECT_LIMITER);
+	if (result != MA_SUCCESS) {
+		ma_node_uninit(&limiter->base, NULL);
+		free(limiter);
+		return result;
+	}
+
+	*out_effect_node = &limiter->base;
+	return MA_SUCCESS;
+}
+
+/*
+ * query_limiter_params()
+ * Build parameter list for limiter effect.
+ */
+static int query_limiter_params(limiter_node_t* limiter, term_t params_list)
+{
+	term_t param_args = PL_new_term_refs(2);
+	functor_t eq_functor = PL_new_functor(PL_new_atom("="), 2);
+	term_t param_term = PL_new_term_ref();
+	ma_uint32 sample_rate = ma_engine_get_sample_rate(g_engine);
+	float attack_ms, release_ms;
+
+	attack_ms = -1000.0f / (sample_rate * logf(1.0f - limiter->attack_coeff));
+	release_ms = -1000.0f / (sample_rate * logf(1.0f - limiter->release_coeff));
+
+	PL_put_atom_chars(param_args+0, "threshold");
+	if (!PL_put_float(param_args+1, limiter->threshold)) {
+		return FALSE;
+	}
+	if (!PL_cons_functor_v(param_term, eq_functor, param_args)) {
+		return FALSE;
+	}
+	if (!PL_cons_list(params_list, param_term, params_list)) {
+		return FALSE;
+	}
+
+	PL_put_atom_chars(param_args+0, "attack_ms");
+	if (!PL_put_float(param_args+1, attack_ms)) {
+		return FALSE;
+	}
+	if (!PL_cons_functor_v(param_term, eq_functor, param_args)) {
+		return FALSE;
+	}
+	if (!PL_cons_list(params_list, param_term, params_list)) {
+		return FALSE;
+	}
+
+	PL_put_atom_chars(param_args+0, "release_ms");
+	if (!PL_put_float(param_args+1, release_ms)) {
+		return FALSE;
+	}
+	if (!PL_cons_functor_v(param_term, eq_functor, param_args)) {
+		return FALSE;
+	}
+	if (!PL_cons_list(params_list, param_term, params_list)) {
+		return FALSE;
+	}
+
+	return TRUE;
+}
+
+/*
+ * set_limiter_parameters()
+ * Set parameters for limiter effect from Prolog term list.
+ */
+static foreign_t set_limiter_parameters(limiter_node_t* limiter, term_t params_list)
+{
+	term_t list = PL_copy_term_ref(params_list);
+	term_t head = PL_new_term_ref();
+	functor_t eq_functor = PL_new_functor(PL_new_atom("="), 2);
+	ma_uint32 sample_rate = ma_engine_get_sample_rate(g_engine);
+	term_t key_term, value_term;
+	char* param_name;
+	double val;
+
+	while (PL_get_list(list, head, list)) {
+		key_term = PL_new_term_ref();
+		value_term = PL_new_term_ref();
+
+		if (!PL_is_functor(head, eq_functor)) {
+			return PL_type_error("key_value_pair", head);
+		}
+		if (!PL_get_arg(1, head, key_term)) {
+			return FALSE;
+		}
+		if (!PL_get_arg(2, head, value_term)) {
+			return FALSE;
+		}
+		if (!PL_get_atom_chars(key_term, &param_name)) {
+			return PL_type_error("atom", key_term);
+		}
+
+		if (strcmp(param_name, "threshold") == 0) {
+			if (!PL_get_float(value_term, &val)) {
+				return PL_type_error("float", value_term);
+			}
+			limiter->threshold = (float)val;
+		} else if (strcmp(param_name, "attack_ms") == 0) {
+			if (!PL_get_float(value_term, &val)) {
+				return PL_type_error("float", value_term);
+			}
+			limiter->attack_coeff = 1.0f - expf(-1.0f / ((float)val * sample_rate / 1000.0f));
+		} else if (strcmp(param_name, "release_ms") == 0) {
+			if (!PL_get_float(value_term, &val)) {
+				return PL_type_error("float", value_term);
+			}
+			limiter->release_coeff = 1.0f - expf(-1.0f / ((float)val * sample_rate / 1000.0f));
+		} else {
+			return PL_domain_error("limiter_parameter", key_term);
+		}
+	}
+
+	if (!PL_get_nil(list)) {
+		return PL_type_error("list", params_list);
+	}
+
+	return TRUE;
+}
+
+/******************************************************************************
  * MOOG LADDER FILTER
  *****************************************************************************/
 
@@ -2800,6 +3052,8 @@ static foreign_t attach_effect_to_node(ma_sound* sound, effect_node_t** effect_c
 		result = attach_moog_effect(params, (ma_node*)sound, effect_chain, &effect_node);
 	} else if (strcmp(type_str, "vca") == 0) {
 		result = attach_vca_effect(params, (ma_node*)sound, effect_chain, &effect_node);
+	} else if (strcmp(type_str, "limiter") == 0) {
+		result = attach_limiter_effect(params, (ma_node*)sound, effect_chain, &effect_node);
 	} else {
 		return PL_domain_error("effect_type", effect_type);
 	}
@@ -2962,6 +3216,10 @@ static foreign_t pl_effects(term_t source_handle, term_t effects_list)
 					type_str = "vca";
 					query_result = query_vca_params((vca_node_t*)effect->effect_node, params_list);
 					break;
+				case EFFECT_LIMITER:
+					type_str = "limiter";
+					query_result = query_limiter_params((limiter_node_t*)effect->effect_node, params_list);
+					break;
 				default:
 					type_str = "unknown";
 					break;
@@ -3065,6 +3323,8 @@ static foreign_t pl_effect_set_parameters(term_t effect_handle, term_t params_li
 			return set_moog_parameters((moog_node_t*)node->effect_node, params_list);
 		case EFFECT_VCA:
 			return set_vca_parameters((vca_node_t*)node->effect_node, params_list);
+		case EFFECT_LIMITER:
+			return set_limiter_parameters((limiter_node_t*)node->effect_node, params_list);
 		default:
 			return PL_domain_error("effect_type", effect_handle);
 	}

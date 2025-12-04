@@ -274,4 +274,54 @@ test(effects_query_vca, [nondet]) :-
     abs(Gain - 0.75) < 0.001,
     sound_unload(Sound).
 
+% Limiter effect tests
+
+test(sound_attach_limiter, [nondet]) :-
+    sound_load('audio/counting.wav', Sound),
+    sound_attach_effect(Sound, limiter, [threshold=0.8], Effect),
+    Effect = effect(sound(Sound), _),
+    sound_unload(Sound).
+
+test(sound_attach_limiter_defaults, [nondet]) :-
+    sound_load('audio/counting.wav', Sound),
+    sound_attach_effect(Sound, limiter, [], Effect),
+    Effect = effect(sound(Sound), _),
+    effects(sound(Sound), [effect(sound(Sound), limiter, _, Params)]),
+    memberchk(threshold=Threshold, Params),
+    abs(Threshold - 1.0) < 0.001,
+    memberchk(attack_ms=Attack, Params),
+    abs(Attack - 0.1) < 0.01,
+    memberchk(release_ms=Release, Params),
+    abs(Release - 100.0) < 1.0,
+    sound_unload(Sound).
+
+test(voice_attach_limiter, [nondet, cleanup(synth_voice_unload(Voice))]) :-
+    synth_voice_create(Voice),
+    synth_oscillator_add(Voice, 440.0, 0.0, _),
+    voice_attach_effect(Voice, limiter, [threshold=0.5, attack_ms=0.5, release_ms=50.0], Effect),
+    Effect = effect(voice(Voice), _).
+
+test(limiter_set_parameters, [nondet]) :-
+    sound_load('audio/counting.wav', Sound),
+    sound_attach_effect(Sound, limiter, [threshold=1.0], Effect),
+    effect_set_parameters(Effect, [threshold=0.5, release_ms=200.0]),
+    effects(sound(Sound), [effect(sound(Sound), limiter, _, Params)]),
+    memberchk(threshold=Threshold, Params),
+    abs(Threshold - 0.5) < 0.001,
+    memberchk(release_ms=Release, Params),
+    abs(Release - 200.0) < 1.0,
+    sound_unload(Sound).
+
+test(effects_query_limiter, [nondet]) :-
+    sound_load('audio/counting.wav', Sound),
+    sound_attach_effect(Sound, limiter, [threshold=0.75, attack_ms=0.2, release_ms=150.0], _),
+    effects(sound(Sound), [effect(sound(Sound), limiter, _, Params)]),
+    memberchk(threshold=Threshold, Params),
+    memberchk(attack_ms=Attack, Params),
+    memberchk(release_ms=Release, Params),
+    abs(Threshold - 0.75) < 0.001,
+    abs(Attack - 0.2) < 0.01,
+    abs(Release - 150.0) < 1.0,
+    sound_unload(Sound).
+
 :- end_tests(effects).

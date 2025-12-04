@@ -127,3 +127,71 @@ demo_summing_node :-
     sound_unload(Counting),
     summing_node_unload(Bus),
     format('Demo complete!~n~n').
+
+/*
+ * Limiter demo - prevents clipping on loud signals
+ */
+demo_limiter :-
+    format('~n=== Limiter Demo ===~n~n'),
+
+    % Create a loud synth voice (multiple oscillators summed)
+    synth_voice_create(Voice),
+    synth_oscillator_add(Voice, 110.0, 0.0, O1),
+    synth_oscillator_add(Voice, 220.0, 0.0, O2),
+    synth_oscillator_add(Voice, 330.0, 0.0, O3),
+    synth_oscillator_add(Voice, 440.0, 0.0, O4),
+    synth_oscillator_add(Voice, 550.0, 0.0, O5),
+    synth_oscillator_add(Voice, 660.0, 0.0, O6),
+
+    % Each oscillator at full volume - will clip without limiter
+    synth_oscillator_set_volume(O1, 1.0),
+    synth_oscillator_set_volume(O2, 1.0),
+    synth_oscillator_set_volume(O3, 1.0),
+    synth_oscillator_set_volume(O4, 1.0),
+    synth_oscillator_set_volume(O5, 1.0),
+    synth_oscillator_set_volume(O6, 1.0),
+
+    format('Playing 6 oscillators at full volume WITHOUT limiter (will clip)...~n'),
+    synth_voice_start(Voice),
+    sleep(3),
+    synth_voice_stop(Voice),
+
+    format('~nAttaching limiter (threshold=0.9)...~n'),
+    voice_attach_effect(Voice, limiter, [threshold=0.9], _),
+
+    format('Playing same signal WITH limiter (no clipping)...~n'),
+    synth_voice_start(Voice),
+    sleep(3),
+    synth_voice_stop(Voice),
+
+    synth_voice_unload(Voice),
+    format('~nLimiter demo complete.~n~n').
+
+/*
+ * Limiter with adjustable threshold demo
+ */
+demo_limiter_threshold :-
+    format('~n=== Limiter Threshold Demo ===~n~n'),
+
+    sound_load('audio/counting.wav', Sound),
+    sound_loop(Sound),
+
+    % Boost the signal with a VCA to make it loud
+    sound_attach_effect(Sound, vca, [gain=3.0], _),
+    sound_attach_effect(Sound, limiter, [threshold=1.0], Limiter),
+
+    format('Playing boosted signal (3x gain) with limiter at threshold=1.0...~n'),
+    sound_start(Sound),
+    sleep(3),
+
+    format('Lowering threshold to 0.5 (more limiting)...~n'),
+    effect_set_parameters(Limiter, [threshold=0.5]),
+    sleep(3),
+
+    format('Lowering threshold to 0.2 (heavy limiting)...~n'),
+    effect_set_parameters(Limiter, [threshold=0.2]),
+    sleep(3),
+
+    sound_stop(Sound),
+    sound_unload(Sound),
+    format('~nThreshold demo complete.~n~n').

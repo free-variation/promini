@@ -141,15 +141,15 @@ spawn_grains(Capture, SampleRate, GrainLength, N, Acc, Sounds) :-
     PitchFloat is Pitch * 1.0,
     sound_set_pitch(Sound, PitchFloat),
 
-    % Random pan
+    % Random pan via pan effect
     random_between(-10, 10, PanInt),
     Pan is PanInt / 10.0,
-    sound_set_pan(Sound, Pan),
+    sound_attach_effect(Sound, pan, [pan=Pan], _),
 
-    % Random volume
+    % Random volume via VCA
     random_between(3, 10, VolInt),
     Vol is VolInt / 10.0,
-    sound_set_volume(Sound, Vol),
+    sound_attach_effect(Sound, vca, [gain=Vol], _),
 
     % Start with slight delay
     random_between(0, 100, DelayMs),

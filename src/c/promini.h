@@ -69,7 +69,8 @@ typedef enum {
 	EFFECT_PING_PONG_DELAY,
 	EFFECT_PAN,
 	EFFECT_VCA,
-	EFFECT_MOOG
+	EFFECT_MOOG,
+	EFFECT_LIMITER
 } effect_type_t;
 
 /* Effect chain node */
@@ -322,6 +323,15 @@ typedef struct {
 	float target_resonance;
 	float drive;
 } moog_node_t;
+
+/* Limiter effect node */
+typedef struct {
+	ma_node_base base;
+	float threshold; 		/* ceiling level (0.0 - 1.0, default 1.0) */
+	float attack_coeff; 	/* envelope follower attack coefficient */
+	float release_coeff; 	/* envelope follower release coefficient */
+	float envelope;			/* current envelope level */
+} limiter_node_t;
 
 /*
  * Modulation system

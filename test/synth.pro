@@ -21,17 +21,6 @@ test(voices_in_use_after_create, [nondet, cleanup(synth_voice_unload(Handle))]) 
     synth_voices_in_use(After),
     After =:= Before + 1.
 
-test(default_pan_is_center, [nondet, cleanup(synth_voice_unload(Handle))]) :-
-    synth_voice_create(Handle),
-    synth_voice_get_pan(Handle, Pan),
-    Pan =:= 0.0.
-
-test(set_and_get_pan, [nondet, cleanup(synth_voice_unload(Handle))]) :-
-    synth_voice_create(Handle),
-    synth_voice_set_pan(Handle, -0.5),
-    synth_voice_get_pan(Handle, Pan),
-    Pan =:= -0.5.
-
 % Oscillator tests
 
 test(add_oscillator, [nondet, cleanup(synth_voice_unload(V))]) :-
