@@ -26,7 +26,7 @@ else
 endif
 
 # Source and output
-SRC := src/c/promini.c src/c/synth.c src/c/effects.c src/c/init.c src/c/reverb.c src/c/mod.c src/c/mixer.c
+SRC := src/c/promini.c src/c/synth.c src/c/effects.c src/c/init.c src/c/reverb.c src/c/mod.c src/c/mixer.c src/c/image.c
 HEADERS := src/c/promini.h
 LIBDIR := lib
 TARGET := $(LIBDIR)/promini.$(SOEXT)

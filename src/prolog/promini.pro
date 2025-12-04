@@ -73,7 +73,14 @@
     summing_node_unload/1,
     summing_node_connect/2,
     summing_node_disconnect/1,
-    summing_node_attach_effect/4
+    summing_node_attach_effect/4,
+    image_load/2,
+    image_properties/4,
+    image_unload/1,
+    image_write_png/2,
+    image_to_grayscale/1,
+    image_downsample/3,
+    image_quantize/2
   ]).
 
 :- use_foreign_library('../../lib/promini').

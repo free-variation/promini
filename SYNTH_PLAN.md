@@ -8,92 +8,73 @@ Live granular sampler + additive synth + effects + modulation, controlled from P
 - **C layer (miniaudio)**: Audio primitives - playback, effects, modulation sources, capture
 - **Prolog layer**: High-level control - grain scheduling, sequencing, patch management, mixing
 
-### Progress
+---
 
-| Component | Status |
-|-----------|--------|
-| Audio playback (sounds, buffers, regions) | ✓ Complete |
-| Additive synth (voices, oscillators, noise) | ✓ Complete |
-| Effects (filters, reverb, delay, bitcrush, pan, moog) | ✓ Complete |
-| VCA effect | ✓ Complete |
-| Limiter effect | ✓ Complete |
-| Live capture | ✓ Complete |
-| Modulation sources (LFO, envelope) | ✓ Complete |
-| Modulation routing | ✓ Complete (osc freq/vol, moog cutoff, VCA gain) |
-| Summing node | ✓ Complete |
-| Output device selection | Planned |
-| Prolog mixer module | Planned |
-| Image-to-audio synthesis | Planned |
-| Granular engine | Planned (Prolog layer) |
+## C Layer (Audio Primitives)
 
-### Next Steps (in order)
-1. Output device selection (`promini_init/1` with device name for routing to BlackHole, etc.)
-2. Prolog mixer module (composes VCA + pan + summing + limiter + crossfader)
-3. Route depth/center get/set predicates and interpolation
-4. Image-to-audio synthesis
-5. Additional modulation targets (sound pitch, delay time, reverb params, bitcrush)
-6. Additional modulation sources (noise, sampler)
+### Complete
+
+| Component | Notes |
+|-----------|-------|
+| Audio playback | sounds, buffers, regions |
+| Additive synth | voices, oscillators, noise |
+| Effects | filters, reverb, delay, bitcrush, pan, moog, VCA, limiter |
+| Live capture | |
+| Modulation sources | LFO, envelope |
+| Modulation routing | osc freq/vol, moog cutoff, VCA gain |
+| Summing node | multiple sources to single output with effect chain |
+
+### Next Steps
+
+1. **Output device selection** - `promini_init/1` with device name for routing to BlackHole, etc.
+2. **Route depth/center get/set predicates** - with per-sample interpolation
+3. **Route as modulation target** - modulate depth/center from LFO/envelope
+4. **Additional modulation targets** - sound pitch, delay params, reverb params, bitcrush
+5. **Additional modulation sources** - noise, sampler (audio buffer as control signal)
+6. **Image-to-audio synthesis** - pixel brightness → oscillator amplitude
+7. **Control interface** - gamepad/keyboard input via SDL2, event queue for Prolog to drain
+
+### Known Issues
+
+- [ ] **Ping pong delay volume increase** - wet+dry output louder than input, needs gain compensation
 
 ---
 
-## Mixing Architecture
+## Prolog Layer (Full System)
 
-Simple primitives in C, composed into mixers in Prolog.
+### Complete
 
-### C Layer Primitives (all complete)
+| Component | Notes |
+|-----------|-------|
+| Patch management | patches, presets saved as prolog clauses |
 
-- **VCA Effect**: Gain control with per-sample interpolation
-- **Pan Effect**: Stereo panning with per-sample interpolation
-- **Limiter Effect**: Soft limiter with envelope follower
-- **Summing Node**: Multiple sources mix to single output, can have effect chain
+### Next Steps
 
-### Signal Flow
+1. **Mixer module** - composes VCA + pan + summing + limiter
+   - `mixer_create/1`, `mixer_add_input/3`, `mixer_set_gain/2`, `mixer_set_pan/2`
+   - Each input gets VCA and pan effects, connects to summing node
+   - Summing node has master VCA and limiter in effect chain
 
-```
-source → source's effect chain → summing node → summing node's effect chain → endpoint
-```
+2. **Crossfader** - composed from existing primitives (no C code needed)
+   - Two VCAs on two sources, both to same summing node
+   - Two mod routes from same LFO with inverse depths
+   - Position controlled by LFO or envelope
 
-### Prolog Mixer Module (planned)
+3. **Granular engine** - grain scheduling using `sound_create`, `sound_set_pitch`, etc.
 
-Composes C primitives into higher-level abstractions:
+4. **Control interface** - drain SDL event queue, map inputs to parameters/actions
 
-```prolog
-% Create mixer with master limiter
-mixer_create(-Mixer)
-
-% Add source with individual gain/pan control
-mixer_add_input(+Mixer, +Source, -InputHandle)
-mixer_set_gain(+InputHandle, +Gain)
-mixer_set_pan(+InputHandle, +Pan)
-mixer_remove_input(+InputHandle)
-
-% Master controls
-mixer_set_master_gain(+Mixer, +Gain)
-mixer_set_limiter_threshold(+Mixer, +Threshold)
-
-mixer_unload(+Mixer)
-```
-
-Implementation: Each input gets VCA and pan effects attached, connects to summing node. Summing node has master VCA and limiter in its effect chain.
-
-### Crossfader (Prolog pattern)
-
-Composed from existing primitives - no C-level node needed:
-- Two VCAs (one on each source)
-- Both sources connected to same summing node
-- Two mod routes from same LFO, with inverse depths (one positive, one negative)
-
-Position controlled by LFO or envelope. Both VCAs interpolate per-sample, so crossfade is smooth.
+5. **MCP integration** - expose predicates as MCP tools for AI-assisted patch design
 
 ---
 
-## Modulation System
+## Modulation System Details
 
 ### Source Types
-- [x] **LFO**: sine, square, triangle, sawtooth
-- [x] **ADBR Envelope**: attack-decay-break-release, loopable
-- [ ] **Noise**: white, pink, brownian
-- [ ] **Sampler**: audio buffer as control signal
+- [x] LFO (sine, square, triangle, sawtooth)
+- [x] ADBR Envelope (attack-decay-break-release, loopable)
+- [ ] Noise (white, pink, brownian)
+- [ ] Sampler (audio buffer as control signal)
 
 ### Targets Implemented
 - Oscillator: frequency, volume
@@ -112,61 +93,26 @@ Position controlled by LFO or envelope. Both VCAs interpolate per-sample, so cro
 
 ---
 
-## Known Issues
-
-- [ ] **Ping pong delay volume increase** - wet+dry output louder than input, needs gain compensation
-
----
-
 ## Image-to-Audio Synthesis
 
-Convert grayscale images to audio using pixel-to-sine additive synthesis. Each pixel brightness controls the amplitude of an oscillator at a corresponding frequency.
+### Image Buffer Model
 
-### Architecture
+Images have original (`pixels`) and working buffer (`buffer`). Buffer may be smaller after downsampling:
+- `buf_width` = time steps
+- `buf_height` = oscillators per voice
+- Downsampling averages blocks, shrinks buffer (2D run-length encoding)
+- Quantizing reduces bit depth (posterization)
 
-**C module**: `image_synth.c`
-- Self-contained audio node using miniaudio
-- Internal bank of sine oscillators
-- Pixel data stored as float array
+### Channel Mapping (Stereo)
 
-**Data flow**:
-1. Prolog passes pixel data (list of lists, 0.0-1.0 values) at creation
-2. C copies to internal buffer, precomputes log-spaced frequency table
-3. Audio callback scans through image, updating oscillator amplitudes
-4. Oscillators summed to output
+| Channels | Voices | Panning |
+|----------|--------|---------|
+| 1 (grayscale) | 1 voice | center |
+| 3 (RGB) | 3 voices | R=left, G=center, B=right |
+| 4 (RGBA) | 3 voices | R=left, G=center, B=right, A=ignored |
 
-### Scan Modes
+Grayscale conversion is a creative choice: mono vs stereo RGB synth.
 
-| Mode | Frequency axis | Time axis | Oscillator count |
-|------|---------------|-----------|------------------|
-| horizontal | rows (Y) | columns (X), left→right | Height |
-| vertical | columns (X) | rows (Y), top→down | Width |
+### Scan
 
-### Prolog Predicates
-
-```prolog
-image_synth_create(PixelData, Width, Height, FreqLow, FreqHigh, ScanMode, Handle)
-image_synth_start(Handle)
-image_synth_stop(Handle)
-image_synth_loop(Handle, Bool)
-image_synth_set_speed(Handle, SlicesPerSecond)
-image_synth_set_position(Handle, SliceIndex)
-image_synth_get_position(Handle, SliceIndex)
-image_synth_unload(Handle)
-```
-
----
-
-## Granular Engine (Future)
-
-Implemented in Prolog using existing C primitives (`audio_load`, `sound_create`, `sound_set_pitch`, etc.). Prolog handles grain scheduling, position selection, parameter variation.
-
----
-
-## Control Interface (Future)
-
-### Gamepad
-Xbox-style controller for real-time continuous control. SDL2 polls in C thread, Prolog drains event queue.
-
-### MCP + Claude
-Expose predicates as MCP tools. Good for patch changes and compositional decisions, not real-time control.
+Horizontal: columns = time, rows = frequency. Row 0 = lowest freq, row buf_height-1 = highest. Log-spaced frequencies.

@@ -405,10 +405,28 @@ extern void process_modulation(ma_uint32 frame_count, ma_uint32 sample_rate);
 extern install_t mod_register_predicates(void);
 extern install_t uninstall_mod(void);
 
+/* image slot type */
+
+# define MAX_IMAGES 64
+
+typedef struct {
+	unsigned char* pixels;	/* original image data */
+	unsigned char* buffer;	/* working buffer (may be smaller) */
+	int width;
+	int height;
+	int buf_width;			/* buffer dimensions (time steps) */
+	int buf_height;			/* buffer dimensions (oscillators) */
+	int channels;
+	ma_bool32 in_use;
+} image_slot_t;
+
+extern pthread_mutex_t g_images_mutex;
+
 /* Shared arrays */
 extern sound_slot_t g_sounds[MAX_SOUNDS];
 extern synth_voice_t g_voices[MAX_VOICES];
 extern synth_oscillator_t g_oscillators[MAX_OSCILLATORS];
+extern image_slot_t g_images[MAX_IMAGES];
 
 /* Helper functions (implemented in promini.c) */
 extern void get_engine_format_info(ma_format* format, ma_uint32* channels, ma_uint32* sampleRate);
@@ -430,11 +448,13 @@ extern install_t promini_register_predicates(void);
 extern install_t synth_register_predicates(void);
 extern install_t effects_register_predicates(void);
 extern install_t mixer_register_predicates(void);
+extern install_t image_register_predicates(void);
 
 /* Module cleanup functions */
 extern install_t uninstall_promini(void);
 extern install_t uninstall_synth(void);
 extern install_t uninstall_effects(void);
 extern install_t uninstall_mixer(void);
+extern install_t uninstall_image(void);
 
 #endif /* PROMINI_H */
