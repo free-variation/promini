@@ -246,7 +246,7 @@ void process_modulation(ma_uint32 frame_count, ma_uint32 sample_rate)
 
 		target_value = route->offset + (g_mod_sources[route->source_slot].current_value * route->depth);
 
-		/* apply slew limiting: cap rate of cghange to slew units/second.
+		/* apply slew limiting: cap rate of change to slew units/second.
 		 * e.g. if slew = 1000 on filter cutoff, max of 1000 Hz/sec change.
 		 * smooths sudden jumps in modulation
 		 */

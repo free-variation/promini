@@ -288,6 +288,34 @@ static int image_to_grayscale(int slot)
 }
 
 /*
+ * image_reset()
+ * Copies pixels back to buffer, restoring original dimensions.
+ * Returns 0 on success, -1 on failure.
+ */
+static int image_reset(int slot)
+{
+	image_slot_t* img;
+	int num_bytes;
+	unsigned char* new_buf;
+
+	GET_IMAGE_FROM_SLOT(slot, img);
+
+	num_bytes = img->width * img->height * img->channels;
+	new_buf = (unsigned char*)malloc(num_bytes);
+	if (new_buf == NULL) {
+		return -1;
+	}
+
+	memcpy(new_buf, img->pixels, num_bytes);
+	free(img->buffer);
+	img->buffer = new_buf;
+	img->buf_width = img->width;
+	img->buf_height = img->height;
+
+	return 0;
+}
+
+/*
  * image_quantize()
  * Reduces bit depth of buffer pixels.
  * Returns 0 on success, -1 on failure.
@@ -435,6 +463,30 @@ static foreign_t pl_image_properties(term_t image_term, term_t width_term,
 }
 
 /*
+ * pl_image_buffer_properties()
+ * image_buffer_properties(+Image, -BufWidth, -BufHeight)
+ * Gets the buffer dimensions of an image.
+ */
+static foreign_t pl_image_buffer_properties(term_t image_term, term_t buf_width_term,
+                                            term_t buf_height_term)
+{
+	term_t handle;
+	int slot;
+
+	handle = PL_new_term_ref();
+	if (!PL_get_arg(1, image_term, handle) || !PL_get_integer(handle, &slot)) {
+		return PL_type_error("image", image_term);
+	}
+
+	if (slot < 0 || slot >= MAX_IMAGES || !g_images[slot].in_use) {
+		return PL_existence_error("image", image_term);
+	}
+
+	return PL_unify_integer(buf_width_term, g_images[slot].buf_width) &&
+	       PL_unify_integer(buf_height_term, g_images[slot].buf_height);
+}
+
+/*
  * pl_image_unload()
  * image_unload(+Image)
  * Unloads an image and frees its memory.
@@ -504,6 +556,28 @@ static foreign_t pl_image_downsample(term_t image_term, term_t block_w_term, ter
 	}
 
 	if (image_downsample(slot, block_w, block_h) < 0) {
+		return FALSE;
+	}
+
+	return TRUE;
+}
+
+/*
+ * pl_image_reset()
+ * image_reset(+Image)
+ * Copies pixels back to buffer, restoring original dimensions.
+ */
+static foreign_t pl_image_reset(term_t image_term)
+{
+	term_t handle;
+	int slot;
+
+	handle = PL_new_term_ref();
+	if (!PL_get_arg(1, image_term, handle) || !PL_get_integer(handle, &slot)) {
+		return PL_type_error("image", image_term);
+	}
+
+	if (image_reset(slot) < 0) {
 		return FALSE;
 	}
 
@@ -581,4 +655,6 @@ install_t image_register_predicates(void)
 	PL_register_foreign("image_to_grayscale", 1, pl_image_to_grayscale, 0);
 	PL_register_foreign("image_downsample", 3, pl_image_downsample, 0);
 	PL_register_foreign("image_quantize", 2, pl_image_quantize, 0);
+	PL_register_foreign("image_reset", 1, pl_image_reset, 0);
+	PL_register_foreign("image_buffer_properties", 3, pl_image_buffer_properties, 0);
 }

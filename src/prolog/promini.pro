@@ -80,7 +80,9 @@
     image_write_png/2,
     image_to_grayscale/1,
     image_downsample/3,
-    image_quantize/2
+    image_quantize/2,
+    image_reset/1,
+    image_buffer_properties/3
   ]).
 
 :- use_foreign_library('../../lib/promini').

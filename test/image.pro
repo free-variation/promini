@@ -69,4 +69,16 @@ test(image_quantize_rgb, [nondet, setup(make_directory_path('tmp/images')),
     image_write_png(Img, test_quantized_rgb),
     exists_file('tmp/images/test_quantized_rgb.png').
 
+test(image_reset, [nondet, cleanup(image_unload(Img))]) :-
+    image_load('images/pascal.jpg', Img),
+    image_properties(Img, W, H, _),
+    image_downsample(Img, 10, 10),
+    image_buffer_properties(Img, BW1, BH1),
+    BW1 < W,
+    BH1 < H,
+    image_reset(Img),
+    image_buffer_properties(Img, BW2, BH2),
+    BW2 =:= W,
+    BH2 =:= H.
+
 :- end_tests(image).

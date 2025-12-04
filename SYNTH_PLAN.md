@@ -116,3 +116,7 @@ Grayscale conversion is a creative choice: mono vs stereo RGB synth.
 ### Scan
 
 Horizontal: columns = time, rows = frequency. Row 0 = lowest freq, row buf_height-1 = highest. Log-spaced frequencies.
+
+### Interpolation
+
+Cubic interpolation during audio generation to smooth transitions between buffer samples. Buffer stays small/blocky, interpolation happens per-sample during playback. Avoids clicks from sharp amplitude changes at block boundaries while preserving exact buffer values at grid points.
