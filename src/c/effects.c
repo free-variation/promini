@@ -13,78 +13,6 @@
 #include "promini.h"
 
 
-/******************************************************************************
- * SHARED UTILITIES
- *****************************************************************************/
-
-/* Macro to define parameter parsers with error checking */
-#define DEFINE_GET_PARAM(suffix, type, get_code) \
-	static ma_bool32 get_param_##suffix(term_t params, const char* key, type* value) \
-{ \
-	term_t head = PL_new_term_ref(); \
-	term_t tail = PL_new_term_ref(); \
-	term_t tmp = PL_new_term_ref(); \
-	functor_t equals_functor = PL_new_functor(PL_new_atom("="), 2); \
-	\
-	if (!PL_put_term(tmp, params)) \
-	return MA_FALSE; \
-	\
-	while (PL_get_list(tmp, head, tail)) { \
-		term_t arg1 = PL_new_term_ref(); \
-		term_t arg2 = PL_new_term_ref(); \
-		functor_t f; \
-		char* key_str; \
-		\
-		if (PL_get_functor(head, &f) && f == equals_functor) { \
-			if (!PL_get_arg(1, head, arg1) || !PL_get_arg(2, head, arg2)) \
-			return MA_FALSE; \
-			\
-			if (PL_get_atom_chars(arg1, &key_str) && strcmp(key_str, key) == 0) { \
-				get_code \
-			} \
-		} \
-		if (!PL_put_term(tmp, tail)) \
-		return MA_FALSE; \
-	} \
-	return MA_FALSE; \
-}
-
-DEFINE_GET_PARAM(int, int, {
-		if (!PL_get_integer(arg2, value)) {
-		PL_type_error("integer", arg2);
-		return MA_FALSE;
-		}
-		return MA_TRUE;
-		})
-
-DEFINE_GET_PARAM(float, float, {
-		double dval;
-		if (!PL_get_float(arg2, &dval)) {
-		PL_type_error("float", arg2);
-		return MA_FALSE;
-		}
-		*value = (float)dval;
-		return MA_TRUE;
-		})
-
-DEFINE_GET_PARAM(bool, ma_bool32, {
-		int bval;
-		if (!PL_get_bool(arg2, &bval)) {
-		PL_type_error("bool", arg2);
-		return MA_FALSE;
-		}
-		*value = bval ? MA_TRUE : MA_FALSE;
-		return MA_TRUE;
-		})
-
-DEFINE_GET_PARAM(double, double, {
-		if (!PL_get_float(arg2, value)) {
-		PL_type_error("float", arg2);
-		return MA_FALSE;
-		}
-		return MA_TRUE;
-		})
-
 /*
  * init_effect_node_base()
  * Initialize effect node base (common boilerplate)
@@ -3101,6 +3029,14 @@ static foreign_t pl_summing_node_attach_effect(term_t handle, term_t effect_type
 	return attach_effect_to_node((ma_sound*)&g_summing_nodes[slot].base, &g_summing_nodes[slot].effect_chain, "summing_node", slot, effect_type, params, effect_handle);
 }
 
+static foreign_t pl_image_synth_attach_effect(term_t handle, term_t effect_type, term_t params, term_t effect_handle)
+{
+	int slot;
+	if (!PL_get_integer(handle, &slot) || slot < 0 || slot >= MAX_IMAGE_SYNTHS || !g_image_synths[slot].in_use)
+		return PL_existence_error("image_synth", handle);
+	return attach_effect_to_node((ma_sound*)&g_image_synths[slot].base, &g_image_synths[slot].effect_chain, "image_synth", slot, effect_type, params, effect_handle);
+}
+
 /*
  * pl_effects()
  * Query all effects attached to a sound or voice.
@@ -3403,6 +3339,7 @@ install_t effects_register_predicates(void)
 	PL_register_foreign("sound_attach_effect", 4, pl_sound_attach_effect, 0);
 	PL_register_foreign("voice_attach_effect", 4, pl_voice_attach_effect, 0);
 	PL_register_foreign("summing_node_attach_effect", 4, pl_summing_node_attach_effect, 0);
+	PL_register_foreign("image_synth_attach_effect", 4, pl_image_synth_attach_effect, 0);
 	PL_register_foreign("effects", 2, pl_effects, 0);
 	PL_register_foreign("effect_set_parameters", 2, pl_effect_set_parameters, 0);
 	PL_register_foreign("effect_detach", 1, pl_effect_detach, 0);

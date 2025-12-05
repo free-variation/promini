@@ -22,7 +22,10 @@ Existing or planned features (all in stereo):
   - plus miniaudio's effects:
     - delay ✓
     - various filter types ✓
-- image-to-audio additive synthesis *(planned)*
+- image-to-audio synthesis ✓
+  - additive mode (rows as oscillators) ✓
+  - waveform mode (row as wavetable) ✓
+  - RGB stereo (R=left, G=center, B=right) ✓
 - comprehensive modulation system *(in progress)*
   - sources:
     - LFO ✓

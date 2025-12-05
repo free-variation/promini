@@ -82,7 +82,15 @@
     image_downsample/3,
     image_quantize/2,
     image_reset/1,
-    image_buffer_properties/3
+    image_buffer_properties/3,
+    image_transpose/2,
+    image_synth_create/4,
+    image_synth_unload/1,
+    image_synth_set_parameters/2,
+    image_synth_get_parameters/2,
+    image_synth_start/1,
+    image_synth_stop/1,
+    image_synth_attach_effect/4
   ]).
 
 :- use_foreign_library('../../lib/promini').

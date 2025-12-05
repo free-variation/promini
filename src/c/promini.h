@@ -409,6 +409,7 @@ extern install_t uninstall_mod(void);
 
 # define MAX_IMAGES 64
 
+
 typedef struct {
 	unsigned char* pixels;	/* original image data */
 	unsigned char* buffer;	/* working buffer (may be smaller) */
@@ -422,17 +423,64 @@ typedef struct {
 
 extern pthread_mutex_t g_images_mutex;
 
+/* Image synth node */
+# define MAX_IMAGE_SYNTHS 64
+# define MAX_IMAGE_SYNTH_ROWS 128
+
+typedef enum {
+	IMAGE_SYNTH_ADDITIVE,
+	IMAGE_SYNTH_WAVEFORM
+} image_synth_mode_t;
+
+typedef struct {
+	ma_node_base base;
+	ma_bool32 in_use;
+	effect_node_t* effect_chain;
+
+	int image_slot;
+	int channel;
+	ma_bool32 playing;
+	image_synth_mode_t mode;
+
+	union {
+		struct {
+			float bpm;
+			float beats_per_scan;
+			ma_bool32 looping;
+			float scan_position;
+			float phases[MAX_IMAGE_SYNTH_ROWS];
+			float frequencies[MAX_IMAGE_SYNTH_ROWS];
+			float amplitudes[MAX_IMAGE_SYNTH_ROWS];
+		} additive;
+		struct {
+			float frequency;
+			float amplitude;
+			float phase;
+			int row;
+		} waveform;
+	} params;
+} image_synth_node_t;
+
+extern pthread_mutex_t g_image_synths_mutex;
+
 /* Shared arrays */
 extern sound_slot_t g_sounds[MAX_SOUNDS];
 extern synth_voice_t g_voices[MAX_VOICES];
 extern synth_oscillator_t g_oscillators[MAX_OSCILLATORS];
 extern image_slot_t g_images[MAX_IMAGES];
+extern image_synth_node_t g_image_synths[MAX_IMAGE_SYNTHS];
 
 /* Helper functions (implemented in promini.c) */
 extern void get_engine_format_info(ma_format* format, ma_uint32* channels, ma_uint32* sampleRate);
 extern void free_effect_chain(effect_node_t* effect);
 extern data_slot_t* get_data_slot(int index);
 extern ma_bool32 get_source_from_term(term_t source_term, ma_node** source_node, effect_node_t** chain);
+
+/* Parameter parsing helpers for key=value lists (implemented in promini.c) */
+extern ma_bool32 get_param_int(term_t params, const char* key, int* value);
+extern ma_bool32 get_param_float(term_t params, const char* key, float* value);
+extern ma_bool32 get_param_bool(term_t params, const char* key, ma_bool32* value);
+extern ma_bool32 get_param_double(term_t params, const char* key, double* value);
 
 /* Effect functions (implemented in effects.c) */
 extern ma_node* get_effect_chain_tail(effect_node_t* chain);

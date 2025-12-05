@@ -29,6 +29,9 @@
 image_slot_t g_images[MAX_IMAGES] = {{0}};
 pthread_mutex_t g_images_mutex = PTHREAD_MUTEX_INITIALIZER;
 
+image_synth_node_t g_image_synths[MAX_IMAGE_SYNTHS] = {{0}};
+pthread_mutex_t g_image_synths_mutex = PTHREAD_MUTEX_INITIALIZER;
+
 /******************************************************************************
  * SLOT MANAGEMENT
  *****************************************************************************/
@@ -53,8 +56,51 @@ static int allocate_image_slot(void)
 			return i;
 		}
 	}
+	
 	pthread_mutex_unlock(&g_images_mutex);
 	return -1;
+}
+
+/*
+ * allocate_image_synth_slot()
+ * Find and allocate a free image synth slot.
+ */
+static int allocate_image_synth_slot(void)
+{
+	int i;
+
+	pthread_mutex_lock(&g_image_synths_mutex);
+	for (i = 0; i < MAX_IMAGE_SYNTHS; i++) {
+		if (!g_image_synths[i].in_use) {
+			g_image_synths[i].in_use = MA_TRUE;
+			pthread_mutex_unlock(&g_image_synths_mutex);
+			return i;
+		}
+	}
+
+	pthread_mutex_unlock(&g_image_synths_mutex);
+	return -1;
+}
+
+/*
+ * free_image_synth_slot()
+ * Uninitialize and free an image synth slot.
+ */
+static void free_image_synth_slot(int index)
+{
+	if (index >= 0 && index < MAX_IMAGE_SYNTHS) {
+		pthread_mutex_lock(&g_image_synths_mutex);
+
+		image_synth_node_t* synth = &g_image_synths[index];
+		if (synth->in_use) {
+			free_effect_chain(synth->effect_chain);
+			synth->effect_chain = NULL;
+			ma_node_uninit(&synth->base, NULL);
+			synth->in_use = MA_FALSE;
+		}
+
+		pthread_mutex_unlock(&g_image_synths_mutex);
+	}
 }
 
 /*
@@ -402,6 +448,55 @@ static int image_downsample(int slot, int block_w, int block_h)
 	return 0;
 }
 
+/*
+ * image_transpose()
+ * Rotates an image 90 dagrees. Direction: 1 = clockwise, -1 = counter-clockwise.
+ * Returns 0 on success, -1 on failure.
+ */
+static int image_transpose(int slot, int direction)
+{
+	image_slot_t* img;
+	unsigned char* new_buf;
+	int new_w, new_h;
+	int x, y, c;
+
+	GET_IMAGE_FROM_SLOT(slot, img);
+
+	new_w = img->buf_height;
+	new_h = img->buf_width;
+
+	new_buf = (unsigned char*)malloc(new_w * new_h * img->channels);
+	if (new_buf == NULL) {
+		return -1;
+	}
+
+	for (y = 0; y < new_h; y++) {
+  		for (x = 0; x < new_w; x++) {
+  			int src_x, src_y;
+  			if (direction > 0) {
+  				/* clockwise */
+  				src_x = y;
+  				src_y = img->buf_height - 1 - x;
+  			} else {
+  				/* counter-clockwise */
+  				src_x = img->buf_width - 1 - y;
+  				src_y = x;
+  			}
+  			for (c = 0; c < img->channels; c++) {
+  				new_buf[(y * new_w + x) * img->channels + c] =
+  					img->buffer[(src_y * img->buf_width + src_x) * img->channels + c];
+  			}
+  		}
+  	}
+
+	free(img->buffer);
+	img->buffer = new_buf;
+	img->buf_width = new_w;
+	img->buf_height = new_h;
+
+	return 0;
+}
+
 /******************************************************************************
  * PROLOG PREDICATES
  *****************************************************************************/
@@ -638,6 +733,782 @@ static foreign_t pl_image_write_png(term_t image_term, term_t name_term)
 	return TRUE;
 }
 
+/*
+ * pl_image_transpose()
+ * image_transpose(+Image, +Direction)
+ * Rotates the image buffer 90 degrees. Direction is cw or ccw.
+ */
+static foreign_t pl_image_transpose(term_t image_term, term_t dir_term)
+{
+	term_t handle;
+	int slot;
+	char* dir_str;
+	int direction;
+
+	handle = PL_new_term_ref();
+	if (!PL_get_arg(1, image_term, handle) || !PL_get_integer(handle, &slot)) {
+		return PL_type_error("image", image_term);
+	}
+
+	if (!PL_get_atom_chars(dir_term, &dir_str)) {
+		return PL_type_error("atom", dir_term);
+	}
+
+	if (strcmp(dir_str, "cw") == 0) {
+		direction = 1;
+	} else if (strcmp(dir_str, "ccw") == 0) {
+		direction = -1;
+	} else {
+		return PL_domain_error("cw_or_ccw", dir_term);
+	}
+
+	if (image_transpose(slot, direction) < 0) {
+		return FALSE;
+	}
+
+	return TRUE;
+}
+
+/******************************************************************************
+ * IMAGE SYNTH NODE
+ *****************************************************************************/
+
+#define CLAMP(val, min, max) ((val) < (min) ? (min) : ((val) > (max) ? (max) : (val)))
+
+/*
+ * cubic_interpolate_row()
+ * Get cubic-interpolated amplitude for a row at fractional column position
+ */
+static float cubic_interpolate_row(image_slot_t* img, int channel, int row, float x)
+{
+	int x0, x1, x2, x3;
+	float t;
+	float y0, y1, y2, y3;
+	float a, b, c, d;
+
+	x1 = (int)x;
+	x0 = x1 - 1;
+	x2 = x1 + 1;
+	x3 = x1 + 2;
+	t = x - x1;
+
+	x0 = CLAMP(x0, 0, img->buf_width - 1);
+	x1 = CLAMP(x1, 0, img->buf_width - 1);
+	x2 = CLAMP(x2, 0, img->buf_width - 1);
+	x3 = CLAMP(x3, 0, img->buf_width - 1);
+
+	y0 = img->buffer[(row * img->buf_width + x0) * img->channels + channel] / 255.0f;
+	y1 = img->buffer[(row * img->buf_width + x1) * img->channels + channel] / 255.0f;
+	y2 = img->buffer[(row * img->buf_width + x2) * img->channels + channel] / 255.0f;
+	y3 = img->buffer[(row * img->buf_width + x3) * img->channels + channel] / 255.0f;
+	
+	/* Catmull-Rom cubic interpolation */
+	a = -0.5f*y0 + 1.5f*y1 - 1.5f*y2 + 0.5f*y3;
+  	b = y0 - 2.5f*y1 + 2.0f*y2 - 0.5f*y3;
+  	c = -0.5f*y0 + 0.5f*y2;
+  	d = y1;
+
+	return a*t*t*t + b*t*t + c*t + d;
+}
+
+
+
+/*
+ * image_synth_process_pcm_frames()
+ * Generate audio by scanning image and modulating oscillator volumes.
+ */
+static void image_synth_process_pcm_frames(
+		ma_node* node,
+		const float** frames_in,
+		ma_uint32* frame_count_in,
+		float** frames_out,
+		ma_uint32* frame_count_out)
+{
+	image_synth_node_t* synth;
+	image_slot_t* img;
+	float* output;
+	ma_uint32 channels;
+	ma_uint32 frame_count;
+	ma_uint32 sample_rate;
+	float beats_per_sample;
+	float columns_per_sample;
+	ma_uint32 frame;
+	ma_uint32 ch;
+	int row;
+	float sample;
+	float amp;
+
+	(void)frames_in;
+	(void)frame_count_in;
+
+	synth = (image_synth_node_t*)node;
+	output = frames_out[0];
+	channels = ma_node_get_output_channels(node, 0);
+	frame_count = *frame_count_out;
+
+	/* output silence if not playing */
+	if (!synth->playing) {
+		memset(output, 0, frame_count * channels * sizeof(float));
+		return;
+	}
+
+	img = &g_images[synth->image_slot];
+	if (!img->in_use || img->buffer == NULL) {
+		memset(output, 0, frame_count * channels * sizeof(float));
+		return;
+	}
+
+	sample_rate = ma_engine_get_sample_rate(g_engine);
+
+	if (synth->mode == IMAGE_SYNTH_ADDITIVE) {
+		/* calculate scan rate:
+		 * - beats_per_sample: how many beats pass per audio sample
+		 * - columns_per_sample: how many image columns to advance per sample
+		 */
+		beats_per_sample = synth->params.additive.bpm / 60.0f / sample_rate;
+		columns_per_sample = (beats_per_sample / synth->params.additive.beats_per_scan) * img->buf_width;
+
+		for (frame = 0; frame < frame_count; frame++) {
+			sample = 0.0f;
+
+			/*
+			 * additive synthesis: sum sine waves for each row.
+			 * each row is one oscillator; amplitude comes from image pixel brightness.
+			 */
+			for (row = 0; row < img->buf_height; row++) {
+				amp = cubic_interpolate_row(img, synth->channel, row, synth->params.additive.scan_position);
+				sample += sinf(synth->params.additive.phases[row] * 2.0f * (float)M_PI) * amp * synth->params.additive.amplitudes[row];
+
+				/* advance oscillator phase, wrap to [0, 1]
+				 * frequency/sample_rate gives the fraction of a full cycle (0-1) to advance per sample. */
+				synth->params.additive.phases[row] += synth->params.additive.frequencies[row] / sample_rate;
+				if (synth->params.additive.phases[row] >= 1.0f) {
+					synth->params.additive.phases[row] -= 1.0f;
+				}
+			}
+
+			/* write mono sample to all output channels */
+			for (ch = 0; ch < channels; ch++) {
+				output[frame * channels + ch] = sample;
+			}
+
+			/* advance scan position, handle looping or stop at end */
+			synth->params.additive.scan_position += columns_per_sample;
+			if (synth->params.additive.scan_position >= img->buf_width) {
+				if (synth->params.additive.looping) {
+					synth->params.additive.scan_position -= img->buf_width;
+				} else {
+					synth->params.additive.scan_position = (float)(img->buf_width - 1);
+					synth->playing = MA_FALSE;
+				}
+			}
+		}
+	} else {
+		/* waveform mode: read row as wavetable */
+		float phase_inc = synth->params.waveform.frequency / sample_rate;
+
+		for (frame = 0; frame < frame_count; frame++) {
+			/* phase is 0-1, map to 0-buf_width for interpolation */
+			float x = synth->params.waveform.phase * img->buf_width;
+			sample = cubic_interpolate_row(img, synth->channel, synth->params.waveform.row, x);
+			/* convert from 0-1 brightness to -1 to 1 audio range */
+			sample = (sample * 2.0f - 1.0f) * synth->params.waveform.amplitude;
+
+			for (ch = 0; ch < channels; ch++) {
+				output[frame * channels + ch] = sample;
+			}
+
+			synth->params.waveform.phase += phase_inc;
+			if (synth->params.waveform.phase >= 1.0f) {
+				synth->params.waveform.phase -= 1.0f;
+			}
+		}
+	}
+}
+
+static ma_node_vtable image_synth_vtable = {
+	image_synth_process_pcm_frames,
+	NULL,
+	0,		/* 0 input buses (generator) */
+	1,		/* 1 output bus */
+	0
+};
+
+/******************************************************************************
+ * IMAGE SYNTH PROLOG PREDICATES
+ *****************************************************************************/
+
+/*
+ * pl_image_synth_create()
+ * Creates an image synth node for a given image, channel, and mode.
+ * image_synth_create(+Image, +Channel, +Mode, -SynthHandle)
+ * Mode is 'additive' or 'waveform'.
+ */
+static foreign_t pl_image_synth_create(term_t image_term, term_t channel_term, term_t mode_term, term_t synth_term)
+{
+	term_t image_handle;
+	int image_slot;
+	int channel;
+	int synth_slot;
+	image_synth_node_t* synth;
+	image_slot_t* img;
+	ma_node_config config;
+	ma_uint32 channels;
+	ma_result result;
+	char* mode_str;
+	image_synth_mode_t mode;
+	int i;
+
+	ENSURE_ENGINE_INITIALIZED();
+
+	/* Get image slot from image(Handle) term */
+	image_handle = PL_new_term_ref();
+	if (!PL_get_arg(1, image_term, image_handle) || !PL_get_integer(image_handle, &image_slot)) {
+		return PL_type_error("image", image_term);
+	}
+
+	if (image_slot < 0 || image_slot >= MAX_IMAGES || !g_images[image_slot].in_use) {
+		return PL_existence_error("image", image_term);
+	}
+	img = &g_images[image_slot];
+
+	if (!PL_get_integer(channel_term, &channel)) {
+		return PL_type_error("integer", channel_term);
+	}
+	if (channel < 0 || channel >= img->channels) {
+		return PL_domain_error("valid_channel", channel_term);
+	}
+
+	if (!PL_get_atom_chars(mode_term, &mode_str)) {
+		return PL_type_error("atom", mode_term);
+	}
+	if (strcmp(mode_str, "additive") == 0) {
+		mode = IMAGE_SYNTH_ADDITIVE;
+		if (img->buf_height > MAX_IMAGE_SYNTH_ROWS) {
+			return PL_domain_error("image_128_rows_or_fewer", image_term);
+		}
+	} else if (strcmp(mode_str, "waveform") == 0) {
+		mode = IMAGE_SYNTH_WAVEFORM;
+	} else {
+		return PL_domain_error("additive_or_waveform", mode_term);
+	}
+
+	synth_slot = allocate_image_synth_slot();
+	if (synth_slot < 0) {
+		return PL_resource_error("image_synth_slots");
+	}
+
+	synth = &g_image_synths[synth_slot];
+	channels = ma_engine_get_channels(g_engine);
+
+	config = ma_node_config_init();
+	config.vtable = &image_synth_vtable;
+	config.pInputChannels = NULL;
+	config.pOutputChannels = &channels;
+
+	result = ma_node_init(ma_engine_get_node_graph(g_engine), &config, NULL, &synth->base);
+	if (result != MA_SUCCESS) {
+		free_image_synth_slot(synth_slot);
+		return FALSE;
+	}
+
+	/* Connect to endpoint by default */
+	result = ma_node_attach_output_bus(&synth->base, 0,
+			ma_node_graph_get_endpoint(ma_engine_get_node_graph(g_engine)), 0);
+	if (result != MA_SUCCESS) {
+		ma_node_uninit(&synth->base, NULL);
+		free_image_synth_slot(synth_slot);
+		return FALSE;
+	}
+
+	/* Initialize synth fields */
+	synth->image_slot = image_slot;
+	synth->channel = channel;
+	synth->playing = MA_FALSE;
+	synth->mode = mode;
+	synth->effect_chain = NULL;
+
+	if (mode == IMAGE_SYNTH_ADDITIVE) {
+		synth->params.additive.bpm = 120.0f;
+		synth->params.additive.beats_per_scan = 4.0f;
+		synth->params.additive.looping = MA_TRUE;
+		synth->params.additive.scan_position = 0.0f;
+
+		for (i = 0; i < img->buf_height; i++) {
+			synth->params.additive.phases[i] = 0.0f;
+			synth->params.additive.frequencies[i] = 0.0f;
+			synth->params.additive.amplitudes[i] = 1.0f;
+		}
+	} else {
+		synth->params.waveform.frequency = 440.0f;
+		synth->params.waveform.amplitude = 1.0f;
+		synth->params.waveform.phase = 0.0f;
+		synth->params.waveform.row = 0;
+	}
+
+	return PL_unify_integer(synth_term, synth_slot);
+}
+
+/*
+ * pl_image_synth_unload()
+ * Destroys an image synth node.
+ * image_synth_unload(+SynthHandle)
+ */
+static foreign_t pl_image_synth_unload(term_t synth_term)
+{
+	int synth_slot;
+
+	if (!PL_get_integer(synth_term, &synth_slot)) {
+		return PL_type_error("integer", synth_term);
+	}
+
+	if (synth_slot < 0 || synth_slot >= MAX_IMAGE_SYNTHS) {
+		return PL_existence_error("image_synth", synth_term);
+	}
+
+	if (!g_image_synths[synth_slot].in_use) {
+		return PL_existence_error("image_synth", synth_term);
+	}
+
+	free_image_synth_slot(synth_slot);
+	return TRUE;
+}
+
+/*
+ * pl_image_synth_set_parameters()
+ * Set parameters on an image synth.
+ * image_synth_set_parameters(+SynthHandle, +ParamsList)
+ */
+static foreign_t pl_image_synth_set_parameters(term_t synth_term, term_t params_list)
+{
+	int synth_slot;
+	image_synth_node_t* synth;
+	image_slot_t* img;
+	term_t list;
+	term_t head;
+	functor_t eq_functor;
+
+	if (!PL_get_integer(synth_term, &synth_slot)) {
+		return PL_type_error("integer", synth_term);
+	}
+
+	if (synth_slot < 0 || synth_slot >= MAX_IMAGE_SYNTHS || !g_image_synths[synth_slot].in_use) {
+		return PL_existence_error("image_synth", synth_term);
+	}
+
+	synth = &g_image_synths[synth_slot];
+	img = &g_images[synth->image_slot];
+	list = PL_copy_term_ref(params_list);
+	head = PL_new_term_ref();
+	eq_functor = PL_new_functor(PL_new_atom("="), 2);
+
+	while (PL_get_list(list, head, list)) {
+		term_t key_term = PL_new_term_ref();
+		term_t value_term = PL_new_term_ref();
+		char* param_name;
+
+		if (!PL_is_functor(head, eq_functor)) {
+			return PL_type_error("key_value_pair", head);
+		}
+		if (!PL_get_arg(1, head, key_term)) {
+			return FALSE;
+		}
+		if (!PL_get_arg(2, head, value_term)) {
+			return FALSE;
+		}
+		if (!PL_get_atom_chars(key_term, &param_name)) {
+			return PL_type_error("atom", key_term);
+		}
+
+		if (synth->mode == IMAGE_SYNTH_ADDITIVE) {
+			/* additive mode parameters */
+			if (strcmp(param_name, "bpm") == 0) {
+				double val;
+				if (!PL_get_float(value_term, &val)) {
+					return PL_type_error("float", value_term);
+				}
+				if (val <= 0) {
+					return PL_domain_error("positive_number", value_term);
+				}
+				synth->params.additive.bpm = (float)val;
+			} else if (strcmp(param_name, "beats_per_scan") == 0) {
+				double val;
+				if (!PL_get_float(value_term, &val)) {
+					return PL_type_error("float", value_term);
+				}
+				if (val <= 0) {
+					return PL_domain_error("positive_number", value_term);
+				}
+				synth->params.additive.beats_per_scan = (float)val;
+			} else if (strcmp(param_name, "looping") == 0) {
+				int val;
+				if (!PL_get_bool(value_term, &val)) {
+					return PL_type_error("bool", value_term);
+				}
+				synth->params.additive.looping = val ? MA_TRUE : MA_FALSE;
+			} else if (strcmp(param_name, "scan_position") == 0) {
+				double val;
+				if (!PL_get_float(value_term, &val)) {
+					return PL_type_error("float", value_term);
+				}
+				if (val < 0 || val >= img->buf_width) {
+					return PL_domain_error("valid_scan_position", value_term);
+				}
+				synth->params.additive.scan_position = (float)val;
+			} else if (strcmp(param_name, "frequencies") == 0) {
+				term_t freq_list = PL_copy_term_ref(value_term);
+				term_t freq_head = PL_new_term_ref();
+				int i = 0;
+				while (PL_get_list(freq_list, freq_head, freq_list)) {
+					double freq;
+					if (i >= img->buf_height) {
+						return PL_domain_error("frequencies_length", value_term);
+					}
+					if (!PL_get_float(freq_head, &freq)) {
+						return PL_type_error("float", freq_head);
+					}
+					synth->params.additive.frequencies[i] = (float)freq;
+					i++;
+				}
+				if (i != img->buf_height) {
+					return PL_domain_error("frequencies_length", value_term);
+				}
+			} else if (strcmp(param_name, "phases") == 0) {
+				term_t phase_list = PL_copy_term_ref(value_term);
+				term_t phase_head = PL_new_term_ref();
+				int i = 0;
+				while (PL_get_list(phase_list, phase_head, phase_list)) {
+					double phase;
+					if (i >= img->buf_height) {
+						return PL_domain_error("phases_length", value_term);
+					}
+					if (!PL_get_float(phase_head, &phase)) {
+						return PL_type_error("float", phase_head);
+					}
+					synth->params.additive.phases[i] = (float)phase;
+					i++;
+				}
+				if (i != img->buf_height) {
+					return PL_domain_error("phases_length", value_term);
+				}
+			} else if (strcmp(param_name, "amplitudes") == 0) {
+				term_t amp_list = PL_copy_term_ref(value_term);
+				term_t amp_head = PL_new_term_ref();
+				int i = 0;
+				while (PL_get_list(amp_list, amp_head, amp_list)) {
+					double amp;
+					if (i >= img->buf_height) {
+						return PL_domain_error("amplitudes_length", value_term);
+					}
+					if (!PL_get_float(amp_head, &amp)) {
+						return PL_type_error("float", amp_head);
+					}
+					synth->params.additive.amplitudes[i] = (float)amp;
+					i++;
+				}
+				if (i != img->buf_height) {
+					return PL_domain_error("amplitudes_length", value_term);
+				}
+			} else {
+				return PL_domain_error("additive_synth_parameter", key_term);
+			}
+		} else {
+			/* waveform mode parameters */
+			if (strcmp(param_name, "frequency") == 0) {
+				double val;
+				if (!PL_get_float(value_term, &val)) {
+					return PL_type_error("float", value_term);
+				}
+				if (val <= 0) {
+					return PL_domain_error("positive_number", value_term);
+				}
+				synth->params.waveform.frequency = (float)val;
+			} else if (strcmp(param_name, "amplitude") == 0) {
+				double val;
+				if (!PL_get_float(value_term, &val)) {
+					return PL_type_error("float", value_term);
+				}
+				synth->params.waveform.amplitude = (float)val;
+			} else if (strcmp(param_name, "phase") == 0) {
+				double val;
+				if (!PL_get_float(value_term, &val)) {
+					return PL_type_error("float", value_term);
+				}
+				synth->params.waveform.phase = (float)val;
+			} else if (strcmp(param_name, "row") == 0) {
+				int val;
+				if (!PL_get_integer(value_term, &val)) {
+					return PL_type_error("integer", value_term);
+				}
+				if (val < 0 || val >= img->buf_height) {
+					return PL_domain_error("valid_row", value_term);
+				}
+				synth->params.waveform.row = val;
+			} else {
+				return PL_domain_error("waveform_synth_parameter", key_term);
+			}
+		}
+	}
+
+	if (!PL_get_nil(list)) {
+		return PL_type_error("list", params_list);
+	}
+
+	return TRUE;
+}
+
+/*
+ * pl_image_synth_get_parameters()
+ * Query all parameters of an image synth.
+ * image_synth_get_parameters(+SynthHandle, -ParamsList)
+ */
+static foreign_t pl_image_synth_get_parameters(term_t synth_term, term_t params_term)
+{
+	int synth_slot;
+	image_synth_node_t* synth;
+	image_slot_t* img;
+	term_t params_list;
+	term_t param_args;
+	functor_t eq_functor;
+	term_t param_term;
+	int i;
+
+	if (!PL_get_integer(synth_term, &synth_slot)) {
+		return PL_type_error("integer", synth_term);
+	}
+
+	if (synth_slot < 0 || synth_slot >= MAX_IMAGE_SYNTHS || !g_image_synths[synth_slot].in_use) {
+		return PL_existence_error("image_synth", synth_term);
+	}
+
+	synth = &g_image_synths[synth_slot];
+	img = &g_images[synth->image_slot];
+	params_list = PL_new_term_ref();
+	param_args = PL_new_term_refs(2);
+	eq_functor = PL_new_functor(PL_new_atom("="), 2);
+	param_term = PL_new_term_ref();
+
+	PL_put_nil(params_list);
+
+	if (synth->mode == IMAGE_SYNTH_ADDITIVE) {
+		/* phases */
+		{
+			term_t phases_list = PL_new_term_ref();
+			PL_put_nil(phases_list);
+			for (i = img->buf_height - 1; i >= 0; i--) {
+				term_t pt = PL_new_term_ref();
+				if (!PL_put_float(pt, synth->params.additive.phases[i])) {
+					return FALSE;
+				}
+				if (!PL_cons_list(phases_list, pt, phases_list)) {
+					return FALSE;
+				}
+			}
+			PL_put_atom_chars(param_args+0, "phases");
+			if (!PL_put_term(param_args+1, phases_list)) {
+				return FALSE;
+			}
+			if (!PL_cons_functor_v(param_term, eq_functor, param_args)) {
+				return FALSE;
+			}
+			if (!PL_cons_list(params_list, param_term, params_list)) {
+				return FALSE;
+			}
+		}
+
+		/* amplitudes */
+		{
+			term_t amps_list = PL_new_term_ref();
+			PL_put_nil(amps_list);
+			for (i = img->buf_height - 1; i >= 0; i--) {
+				term_t at = PL_new_term_ref();
+				if (!PL_put_float(at, synth->params.additive.amplitudes[i])) {
+					return FALSE;
+				}
+				if (!PL_cons_list(amps_list, at, amps_list)) {
+					return FALSE;
+				}
+			}
+			PL_put_atom_chars(param_args+0, "amplitudes");
+			if (!PL_put_term(param_args+1, amps_list)) {
+				return FALSE;
+			}
+			if (!PL_cons_functor_v(param_term, eq_functor, param_args)) {
+				return FALSE;
+			}
+			if (!PL_cons_list(params_list, param_term, params_list)) {
+				return FALSE;
+			}
+		}
+
+		/* frequencies */
+		{
+			term_t freqs_list = PL_new_term_ref();
+			PL_put_nil(freqs_list);
+			for (i = img->buf_height - 1; i >= 0; i--) {
+				term_t ft = PL_new_term_ref();
+				if (!PL_put_float(ft, synth->params.additive.frequencies[i])) {
+					return FALSE;
+				}
+				if (!PL_cons_list(freqs_list, ft, freqs_list)) {
+					return FALSE;
+				}
+			}
+			PL_put_atom_chars(param_args+0, "frequencies");
+			if (!PL_put_term(param_args+1, freqs_list)) {
+				return FALSE;
+			}
+			if (!PL_cons_functor_v(param_term, eq_functor, param_args)) {
+				return FALSE;
+			}
+			if (!PL_cons_list(params_list, param_term, params_list)) {
+				return FALSE;
+			}
+		}
+
+		/* scan_position */
+		PL_put_atom_chars(param_args+0, "scan_position");
+		if (!PL_put_float(param_args+1, synth->params.additive.scan_position)) {
+			return FALSE;
+		}
+		if (!PL_cons_functor_v(param_term, eq_functor, param_args)) {
+			return FALSE;
+		}
+		if (!PL_cons_list(params_list, param_term, params_list)) {
+			return FALSE;
+		}
+
+		/* looping */
+		PL_put_atom_chars(param_args+0, "looping");
+		if (!PL_put_atom_chars(param_args+1, synth->params.additive.looping ? "true" : "false")) {
+			return FALSE;
+		}
+		if (!PL_cons_functor_v(param_term, eq_functor, param_args)) {
+			return FALSE;
+		}
+		if (!PL_cons_list(params_list, param_term, params_list)) {
+			return FALSE;
+		}
+
+		/* beats_per_scan */
+		PL_put_atom_chars(param_args+0, "beats_per_scan");
+		if (!PL_put_float(param_args+1, synth->params.additive.beats_per_scan)) {
+			return FALSE;
+		}
+		if (!PL_cons_functor_v(param_term, eq_functor, param_args)) {
+			return FALSE;
+		}
+		if (!PL_cons_list(params_list, param_term, params_list)) {
+			return FALSE;
+		}
+
+		/* bpm */
+		PL_put_atom_chars(param_args+0, "bpm");
+		if (!PL_put_float(param_args+1, synth->params.additive.bpm)) {
+			return FALSE;
+		}
+		if (!PL_cons_functor_v(param_term, eq_functor, param_args)) {
+			return FALSE;
+		}
+		if (!PL_cons_list(params_list, param_term, params_list)) {
+			return FALSE;
+		}
+	} else {
+		/* waveform mode */
+		/* row */
+		PL_put_atom_chars(param_args+0, "row");
+		if (!PL_put_integer(param_args+1, synth->params.waveform.row)) {
+			return FALSE;
+		}
+		if (!PL_cons_functor_v(param_term, eq_functor, param_args)) {
+			return FALSE;
+		}
+		if (!PL_cons_list(params_list, param_term, params_list)) {
+			return FALSE;
+		}
+
+		/* phase */
+		PL_put_atom_chars(param_args+0, "phase");
+		if (!PL_put_float(param_args+1, synth->params.waveform.phase)) {
+			return FALSE;
+		}
+		if (!PL_cons_functor_v(param_term, eq_functor, param_args)) {
+			return FALSE;
+		}
+		if (!PL_cons_list(params_list, param_term, params_list)) {
+			return FALSE;
+		}
+
+		/* amplitude */
+		PL_put_atom_chars(param_args+0, "amplitude");
+		if (!PL_put_float(param_args+1, synth->params.waveform.amplitude)) {
+			return FALSE;
+		}
+		if (!PL_cons_functor_v(param_term, eq_functor, param_args)) {
+			return FALSE;
+		}
+		if (!PL_cons_list(params_list, param_term, params_list)) {
+			return FALSE;
+		}
+
+		/* frequency */
+		PL_put_atom_chars(param_args+0, "frequency");
+		if (!PL_put_float(param_args+1, synth->params.waveform.frequency)) {
+			return FALSE;
+		}
+		if (!PL_cons_functor_v(param_term, eq_functor, param_args)) {
+			return FALSE;
+		}
+		if (!PL_cons_list(params_list, param_term, params_list)) {
+			return FALSE;
+		}
+	}
+
+	return PL_unify(params_term, params_list);
+}
+
+/*
+ * pl_image_synth_start()
+ * Start playback of an image synth.
+ * image_synth_start(+SynthHandle)
+ */
+static foreign_t pl_image_synth_start(term_t synth_term)
+{
+	int synth_slot;
+
+	if (!PL_get_integer(synth_term, &synth_slot)) {
+		return PL_type_error("integer", synth_term);
+	}
+
+	if (synth_slot < 0 || synth_slot >= MAX_IMAGE_SYNTHS || !g_image_synths[synth_slot].in_use) {
+		return PL_existence_error("image_synth", synth_term);
+	}
+
+	g_image_synths[synth_slot].playing = MA_TRUE;
+	return TRUE;
+}
+
+/*
+ * pl_image_synth_stop()
+ * Stop playback of an image synth.
+ * image_synth_stop(+SynthHandle)
+ */
+static foreign_t pl_image_synth_stop(term_t synth_term)
+{
+	int synth_slot;
+
+	if (!PL_get_integer(synth_term, &synth_slot)) {
+		return PL_type_error("integer", synth_term);
+	}
+
+	if (synth_slot < 0 || synth_slot >= MAX_IMAGE_SYNTHS || !g_image_synths[synth_slot].in_use) {
+		return PL_existence_error("image_synth", synth_term);
+	}
+
+	g_image_synths[synth_slot].playing = MA_FALSE;
+	return TRUE;
+}
+
 /******************************************************************************
  * PROLOG INTERFACE
  *****************************************************************************/
@@ -657,4 +1528,13 @@ install_t image_register_predicates(void)
 	PL_register_foreign("image_quantize", 2, pl_image_quantize, 0);
 	PL_register_foreign("image_reset", 1, pl_image_reset, 0);
 	PL_register_foreign("image_buffer_properties", 3, pl_image_buffer_properties, 0);
+	PL_register_foreign("image_transpose", 2, pl_image_transpose, 0);
+
+	/* Image synth predicates */
+	PL_register_foreign("image_synth_create", 4, pl_image_synth_create, 0);
+	PL_register_foreign("image_synth_unload", 1, pl_image_synth_unload, 0);
+	PL_register_foreign("image_synth_set_parameters", 2, pl_image_synth_set_parameters, 0);
+	PL_register_foreign("image_synth_get_parameters", 2, pl_image_synth_get_parameters, 0);
+	PL_register_foreign("image_synth_start", 1, pl_image_synth_start, 0);
+	PL_register_foreign("image_synth_stop", 1, pl_image_synth_stop, 0);
 }

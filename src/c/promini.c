@@ -126,6 +126,77 @@ static capture_slot_t g_capture_devices[MAX_CAPTURE_DEVICES] = {{0}};
  *****************************************************************************/
 
 /*
+ * Parameter parsing helpers for key=value lists.
+ * Used by effects.c and image.c for set_parameters predicates.
+ */
+#define DEFINE_GET_PARAM(suffix, type, get_code) \
+	ma_bool32 get_param_##suffix(term_t params, const char* key, type* value) \
+{ \
+	term_t head = PL_new_term_ref(); \
+	term_t tail = PL_new_term_ref(); \
+	term_t tmp = PL_new_term_ref(); \
+	functor_t equals_functor = PL_new_functor(PL_new_atom("="), 2); \
+	\
+	if (!PL_put_term(tmp, params)) \
+	return MA_FALSE; \
+	\
+	while (PL_get_list(tmp, head, tail)) { \
+		term_t arg1 = PL_new_term_ref(); \
+		term_t arg2 = PL_new_term_ref(); \
+		functor_t f; \
+		char* key_str; \
+		\
+		if (PL_get_functor(head, &f) && f == equals_functor) { \
+			if (!PL_get_arg(1, head, arg1) || !PL_get_arg(2, head, arg2)) \
+			return MA_FALSE; \
+			\
+			if (PL_get_atom_chars(arg1, &key_str) && strcmp(key_str, key) == 0) { \
+				get_code \
+			} \
+		} \
+		if (!PL_put_term(tmp, tail)) \
+		return MA_FALSE; \
+	} \
+	return MA_FALSE; \
+}
+
+DEFINE_GET_PARAM(int, int, {
+		if (!PL_get_integer(arg2, value)) {
+		PL_type_error("integer", arg2);
+		return MA_FALSE;
+		}
+		return MA_TRUE;
+		})
+
+DEFINE_GET_PARAM(float, float, {
+		double dval;
+		if (!PL_get_float(arg2, &dval)) {
+		PL_type_error("float", arg2);
+		return MA_FALSE;
+		}
+		*value = (float)dval;
+		return MA_TRUE;
+		})
+
+DEFINE_GET_PARAM(bool, ma_bool32, {
+		int bval;
+		if (!PL_get_bool(arg2, &bval)) {
+		PL_type_error("bool", arg2);
+		return MA_FALSE;
+		}
+		*value = bval ? MA_TRUE : MA_FALSE;
+		return MA_TRUE;
+		})
+
+DEFINE_GET_PARAM(double, double, {
+		if (!PL_get_float(arg2, value)) {
+		PL_type_error("float", arg2);
+		return MA_FALSE;
+		}
+		return MA_TRUE;
+		})
+
+/*
  * allocate_data_slot()
  * Finds a free data slot and marks it as in use.
  * Returns slot index, or -1 if all slots are full.
@@ -315,6 +386,11 @@ ma_bool32 get_source_from_term(term_t source_term, ma_node** source_node, effect
 		if (slot < 0 || slot >= MAX_VOICES || !g_voices[slot].in_use) return MA_FALSE;
 		*source_node = (ma_node*)&g_voices[slot].group;
 		*chain = g_voices[slot].effect_chain;
+		return MA_TRUE;
+	} else if (f == PL_new_functor(PL_new_atom("image_synth"), 1)) {
+		if (slot < 0 || slot >= MAX_IMAGE_SYNTHS || !g_image_synths[slot].in_use) return MA_FALSE;
+		*source_node = (ma_node*)&g_image_synths[slot].base;
+		*chain = g_image_synths[slot].effect_chain;
 		return MA_TRUE;
 	}
 
