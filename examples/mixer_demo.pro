@@ -88,7 +88,7 @@ demo_lfo_vca :-
 
     format('Creating LFO at 4 Hz to modulate gain (0.2-1.0)...~n'),
     mod_lfo_create(sine, 4.0, Lfo),
-    mod_route_create(Lfo, vca, VcaPtr, gain, 0.4, 0.6, 0.0, Route),
+    mod_route_create(Lfo, vca, VcaPtr, gain, absolute, 0.4, 0.6, 0.0, Route),
 
     format('Playing guitar with tremolo for 8 seconds...~n'),
     sound_start(Sound),

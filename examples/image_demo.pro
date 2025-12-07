@@ -321,8 +321,8 @@ demo_image_synth_rgb_stereo :-
     format('Creating LFOs for auto-pan (R: 0.2 Hz, B: 0.15 Hz opposite phase)...~n'),
     mod_lfo_create(sine, 0.2, LfoPanR),
     mod_lfo_create(sine, 0.15, LfoPanB),
-    mod_route_create(LfoPanR, pan, PanPtrR, pan, 1.0, 0.0, 0.0, RoutePanR),
-    mod_route_create(LfoPanB, pan, PanPtrB, pan, -1.0, 0.0, 0.0, RoutePanB),
+    mod_route_create(LfoPanR, pan, PanPtrR, pan, absolute, 1.0, 0.0, 0.0, RoutePanR),
+    mod_route_create(LfoPanB, pan, PanPtrB, pan, absolute, -1.0, 0.0, 0.0, RoutePanB),
 
     format('Creating summing node with Moog filter and blackhole reverb...~n'),
     summing_node_create(Bus),
@@ -339,7 +339,7 @@ demo_image_synth_rgb_stereo :-
 
     format('Creating LFO for filter cutoff modulation (0.1 Hz)...~n'),
     mod_lfo_create(sine, 0.1, LfoMoog),
-    mod_route_create(LfoMoog, moog, MoogPtr, cutoff, 1500.0, 2000.0, 0.0, RouteMoog),
+    mod_route_create(LfoMoog, moog, MoogPtr, cutoff, absolute, 1500.0, 2000.0, 0.0, RouteMoog),
 
     format('Setting frequencies: R=220Hz, G=277Hz, B=330Hz (A minor triad)~n'),
     image_synth_set_parameters(SynthR, [frequency=220.0, amplitude=0.8]),
@@ -413,8 +413,8 @@ demo_image_synth_rgb_additive :-
     format('Creating LFOs for auto-pan (R: 0.2 Hz, B: 0.15 Hz opposite phase)...~n'),
     mod_lfo_create(sine, 0.2, LfoPanR),
     mod_lfo_create(sine, 0.15, LfoPanB),
-    mod_route_create(LfoPanR, pan, PanPtrR, pan, 1.0, 0.0, 0.0, RoutePanR),
-    mod_route_create(LfoPanB, pan, PanPtrB, pan, -1.0, 0.0, 0.0, RoutePanB),
+    mod_route_create(LfoPanR, pan, PanPtrR, pan, absolute, 1.0, 0.0, 0.0, RoutePanR),
+    mod_route_create(LfoPanB, pan, PanPtrB, pan, absolute, -1.0, 0.0, 0.0, RoutePanB),
 
     format('Creating summing node with Moog filter and reverb...~n'),
     summing_node_create(Bus),
@@ -431,7 +431,7 @@ demo_image_synth_rgb_additive :-
 
     format('Creating LFO for filter cutoff modulation (0.1 Hz)...~n'),
     mod_lfo_create(sine, 0.1, LfoMoog),
-    mod_route_create(LfoMoog, moog, MoogPtr, cutoff, 1500.0, 2000.0, 0.0, RouteMoog),
+    mod_route_create(LfoMoog, moog, MoogPtr, cutoff, absolute, 1500.0, 2000.0, 0.0, RouteMoog),
 
     format('Setting up separated harmonic frequencies (odd/even/thirds)...~n'),
     Fundamental = 110.0,

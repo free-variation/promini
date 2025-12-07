@@ -193,7 +193,23 @@ static float read_source_value(mod_source_t* src, ma_uint32 frame_count, ma_uint
 				}
 			}
 			break;
-
+		
+		case MOD_SOURCE_GAMEPAD:
+			if (src->source.gamepad.dpad_axis == 1) {
+				int left = SDL_GetGamepadButton(src->source.gamepad.gamepad, SDL_GAMEPAD_BUTTON_DPAD_LEFT);
+				int right = SDL_GetGamepadButton(src->source.gamepad.gamepad, SDL_GAMEPAD_BUTTON_DPAD_RIGHT);
+				value = (float)(right - left);
+			} else if (src->source.gamepad.dpad_axis == 2) {
+				int down = SDL_GetGamepadButton(src->source.gamepad.gamepad, SDL_GAMEPAD_BUTTON_DPAD_DOWN);
+				int up = SDL_GetGamepadButton(src->source.gamepad.gamepad, SDL_GAMEPAD_BUTTON_DPAD_UP);
+				value = (float)(down - up);
+			} else {
+				value = SDL_GetGamepadAxis(src->source.gamepad.gamepad, src->source.gamepad.axis) / 32767.0f;
+				if (fabs(value) < src->source.gamepad.dead_zone) {
+					value = 0.0f;
+				}
+			}
+			break;
 		default:
 			break;
 	}
@@ -244,23 +260,31 @@ void process_modulation(ma_uint32 frame_count, ma_uint32 sample_rate)
 		route = &g_mod_routes[i];
 		if (!route->in_use) continue;
 
-		target_value = route->offset + (g_mod_sources[route->source_slot].current_value * route->depth);
-
-		/* apply slew limiting: cap rate of change to slew units/second.
-		 * e.g. if slew = 1000 on filter cutoff, max of 1000 Hz/sec change.
-		 * smooths sudden jumps in modulation
-		 */
-		if (route-> slew > 0) {
-			max_change = route->slew * ((float)frame_count / sample_rate);
-			diff = target_value - route->current_value;
-			if (diff > max_change) diff = max_change;
-			if (diff < -max_change) diff = -max_change;
-			route->current_value += diff;
+		if (route->rate_mode) {
+			/* rate mode: pass delta to setter, which adds to current target value */
+			float dt = (float)frame_count / sample_rate;
+			float delta = g_mod_sources[route->source_slot].current_value * route->depth * dt;
+			route->setter(route->target, delta, frame_count, route);
 		} else {
-			route->current_value = target_value;
-		}
+			/* absolute mode: compute target value with slew limiting */
+			target_value = route->offset + (g_mod_sources[route->source_slot].current_value * route->depth);
 
-		route->setter(route->target, route->current_value, frame_count);
+			/* apply slew limiting: cap rate of change to slew units/second.
+			 * e.g. if slew = 1000 on filter cutoff, max of 1000 Hz/sec change.
+			 * smooths sudden jumps in modulation
+			 */
+			if (route->slew > 0) {
+				max_change = route->slew * ((float)frame_count / sample_rate);
+				diff = target_value - route->current_value;
+				if (diff > max_change) diff = max_change;
+				if (diff < -max_change) diff = -max_change;
+				route->current_value += diff;
+			} else {
+				route->current_value = target_value;
+			}
+
+			route->setter(route->target, route->current_value, frame_count, route);
+		}
 	}
 
 	pthread_mutex_unlock(&g_mod_mutex);
@@ -273,11 +297,22 @@ void process_modulation(ma_uint32 frame_count, ma_uint32 sample_rate)
  * set_oscillator_frequency()
  * Setter for oscillator frequency. Target is synth_oscillator_t*.
  */
-static void set_oscillator_frequency(void* target, float value, ma_uint32 frame_count)
+static void set_oscillator_frequency(void* target, float value, ma_uint32 frame_count, mod_route_t* route)
 {
 	synth_oscillator_t* osc = (synth_oscillator_t*)target;
+	float freq;
 	(void)frame_count;
-	ma_waveform_set_frequency(&osc->source.waveform, value);
+
+	if (route->rate_mode) {
+		freq = osc->source.waveform.config.frequency + value;
+	} else {
+		freq = value;
+	}
+
+	if (freq < 20.0f) freq = 20.0f;
+	if (freq > 20000.0f) freq = 20000.0f;
+
+	ma_waveform_set_frequency(&osc->source.waveform, freq);
 }
 
 /*
@@ -285,10 +320,21 @@ static void set_oscillator_frequency(void* target, float value, ma_uint32 frame_
  * Setter for oscillator volume. Target is synth_oscillator_t*.
  * Uses fade matching frame_count to avoid clicks.
  */
-static void set_oscillator_volume(void* target, float value, ma_uint32 frame_count)
+static void set_oscillator_volume(void* target, float value, ma_uint32 frame_count, mod_route_t* route)
 {
 	synth_oscillator_t* osc = (synth_oscillator_t*)target;
-	ma_sound_set_fade_in_pcm_frames(&osc->sound, -1, value, frame_count);
+	float vol;
+
+	if (route->rate_mode) {
+		vol = ma_sound_get_volume(&osc->sound) + value;
+	} else {
+		vol = value;
+	}
+
+	if (vol < 0.0f) vol = 0.0f;
+	if (vol > 1.0f) vol = 1.0f;
+
+	ma_sound_set_fade_in_pcm_frames(&osc->sound, -1, vol, frame_count);
 }
 
 /*
@@ -296,11 +342,22 @@ static void set_oscillator_volume(void* target, float value, ma_uint32 frame_cou
  * Setter for pan effect. Target is pan_node_t*.
  * Sets target_pan which is interpolated at sample rate in the effect callback.
  */
-static void set_effect_pan(void* target, float value, ma_uint32 frame_count)
+static void set_effect_pan(void* target, float value, ma_uint32 frame_count, mod_route_t* route)
 {
 	pan_node_t* node = (pan_node_t*)target;
+	float pan;
 	(void)frame_count;
-	node->target_pan = value;
+
+	if (route->rate_mode) {
+		pan = node->target_pan + value;
+	} else {
+		pan = value;
+	}
+
+	if (pan < -1.0f) pan = -1.0f;
+	if (pan > 1.0f) pan = 1.0f;
+
+	node->target_pan = pan;
 }
 
 /*
@@ -308,17 +365,45 @@ static void set_effect_pan(void* target, float value, ma_uint32 frame_count)
  * Setter for Moog cutoff.  Target is moog_node_t*
  * Uses per-sample interpolation so just sets target
  */
-static void set_moog_cutoff(void* target, float value, ma_uint32 frame_count)
+static void set_moog_cutoff(void* target, float value, ma_uint32 frame_count, mod_route_t* route)
 {
 	moog_node_t* moog = (moog_node_t*)target;
-
+	float cutoff;
 	(void)frame_count;
 
-	if (value < 20.0f) {
-		value = 20.0f;
+	if (route->rate_mode) {
+		cutoff = moog->target_cutoff + value;
+	} else {
+		cutoff = value;
 	}
 
-	moog->target_cutoff = value;
+	if (cutoff < 20.0f) cutoff = 20.0f;
+	if (cutoff > 20000.0f) cutoff = 20000.0f;
+
+	moog->target_cutoff = cutoff;
+}
+
+/*
+ * set_moog_resonance()
+ * Setter for Moog resonance. Target is moog_node_t*
+ * Uses per-sample interpolation so just sets target
+ */
+static void set_moog_resonance(void* target, float value, ma_uint32 frame_count, mod_route_t* route)
+{
+	moog_node_t* moog = (moog_node_t*)target;
+	float res;
+	(void)frame_count;
+
+	if (route->rate_mode) {
+		res = moog->target_resonance + value;
+	} else {
+		res = value;
+	}
+
+	if (res < 0.0f) res = 0.0f;
+	if (res > 4.0f) res = 4.0f;
+
+	moog->target_resonance = res;
 }
 
 /*
@@ -326,17 +411,45 @@ static void set_moog_cutoff(void* target, float value, ma_uint32 frame_count)
  * Setter for VCA gain. Target is vca_node_t*
  * Uses per-sample interpolation so just sets target
  */
-static void set_vca_gain(void* target, float value, ma_uint32 frame_count)
+static void set_vca_gain(void* target, float value, ma_uint32 frame_count, mod_route_t* route)
 {
 	vca_node_t* vca = (vca_node_t*)target;
-
+	float gain;
 	(void)frame_count;
 
-	if (value < 0.0f) {
-		value = 0.0f;
+	if (route->rate_mode) {
+		gain = vca->target_gain + value;
+	} else {
+		gain = value;
 	}
 
-	vca->target_gain = value;
+	if (gain < 0.0f) gain = 0.0f;
+	if (gain > 1.0f) gain = 1.0f;
+
+	vca->target_gain = gain;
+}
+
+/*
+ * set_ping_pong_delay()
+ * Setter for ping-pong delay time. Target is ping_pong_delay_node_t*
+ * Sets target_delay_in_frames for smooth transitions
+ */
+static void set_ping_pong_delay(void* target, float value, ma_uint32 frame_count, mod_route_t* route)
+{
+	ping_pong_delay_node_t* pp = (ping_pong_delay_node_t*)target;
+	float delay;
+	(void)frame_count;
+
+	if (route->rate_mode) {
+		delay = (float)pp->target_delay_in_frames + value;
+	} else {
+		delay = value;
+	}
+
+	if (delay < 1.0f) delay = 1.0f;
+	if (delay > (float)pp->buffer_size) delay = (float)pp->buffer_size;
+
+	pp->target_delay_in_frames = (ma_uint32)delay;
 }
 
 /******************************************************************************
@@ -384,16 +497,18 @@ static foreign_t pl_mod_source_unload(term_t handle_term)
 	return TRUE;
 }
 
-/* 
+/*
  * pl_mod_route_create()
  * Creates a modulation route from source to target parameter.
- * mod_route_create(+SourceHandle, +TargetType, +TargetHandle, +Param, +Depth, +Offset, +Slew, -RouteHandle)
+ * mod_route_create(+SourceHandle, +TargetType, +TargetHandle, +Param, +Mode, +Depth, +Offset, +Slew, -RouteHandle)
+ * Mode is 'absolute' or 'rate'.
  */
 static foreign_t pl_mod_route_create(
 		term_t source_term,
 		term_t type_term,
 		term_t target_term,
 		term_t param_term,
+		term_t mode_term,
 		term_t depth_term,
 		term_t offset_term,
 		term_t slew_term,
@@ -403,7 +518,9 @@ static foreign_t pl_mod_route_create(
 	int source_slot, target_handle, slot;
 	char* target_type;
 	char* param;
+	char* mode;
 	double depth, offset, slew;
+	ma_bool32 rate_mode;
 	mod_route_t* route;
 	void* target;
 	mod_setter_t setter;
@@ -411,9 +528,18 @@ static foreign_t pl_mod_route_create(
 	if (!PL_get_integer(source_term, &source_slot)) return FALSE;
 	if (!PL_get_atom_chars(type_term, &target_type)) return FALSE;
 	if (!PL_get_atom_chars(param_term, &param)) return FALSE;
+	if (!PL_get_atom_chars(mode_term, &mode)) return FALSE;
 	if (!PL_get_float(depth_term, &depth)) return FALSE;
 	if (!PL_get_float(offset_term, &offset)) return FALSE;
 	if (!PL_get_float(slew_term, &slew)) return FALSE;
+
+	if (strcmp(mode, "absolute") == 0) {
+		rate_mode = MA_FALSE;
+	} else if (strcmp(mode, "rate") == 0) {
+		rate_mode = MA_TRUE;
+	} else {
+		return PL_domain_error("mode", mode_term);
+	}
 
 	if (source_slot < 0 || source_slot >= MAX_MOD_SOURCES) {
 		return PL_existence_error("mod_source", source_term);
@@ -455,6 +581,8 @@ static foreign_t pl_mod_route_create(
 		target = ptr;
 		if (strcmp(param, "cutoff") == 0) {
 			setter = set_moog_cutoff;
+		} else if (strcmp(param, "resonance") == 0) {
+			setter = set_moog_resonance;
 		} else {
 			return PL_domain_error("moog_param", param_term);
 		}
@@ -468,6 +596,17 @@ static foreign_t pl_mod_route_create(
 			setter = set_vca_gain;
 		} else {
 			return PL_domain_error("vca_param", param_term);
+		}
+	} else if (strcmp(target_type, "ping_pong_delay") == 0) {
+		void* ptr;
+		if (!PL_get_pointer(target_term, &ptr)) {
+			return PL_type_error("pointer", target_term);
+		}
+		target = ptr;
+		if (strcmp(param, "delay") == 0) {
+			setter = set_ping_pong_delay;
+		} else {
+			return PL_domain_error("ping_pong_delay_param", param_term);
 		}
 	} else {
 		return PL_domain_error("target_type", type_term);
@@ -494,6 +633,7 @@ static foreign_t pl_mod_route_create(
 	route->offset = (float)offset;
 	route->slew = (float)slew;
 	route->current_value = (float)offset;
+	route->rate_mode = rate_mode;
 
 	pthread_mutex_unlock(&g_mod_mutex);
 	return PL_unify_integer(handle_term, slot);
@@ -740,6 +880,61 @@ static foreign_t pl_mod_envelope_trigger(term_t handle_term)
 }
 
 /******************************************************************************
+ * GAMEPAD CONTRL 
+ *****************************************************************************/
+
+/*
+ * pl_mod_gamepdad_create()
+ * mod_garempad_create(+Gamepad, +Axis, -Handle)
+ * Create a modulation source from a gamepad axis
+ */
+static foreign_t pl_mod_gamepad_create(term_t gamepad_term, term_t axis_term, term_t handle_term)
+{
+	SDL_Gamepad *gp;
+	atom_t axis_atom;
+	SDL_GamepadAxis axis;
+	int slot;
+	int dpad_axis;
+	mod_source_t *src;
+	const char *axis_name;
+
+	gp = get_gamepad_ptr(gamepad_term);
+	if (gp == NULL) return FALSE;
+
+	if (!PL_get_atom(axis_term, &axis_atom)) return FALSE;
+
+	axis_name = PL_atom_chars(axis_atom);
+	if (strcmp(axis_name, "dpad_x") == 0) {
+		dpad_axis = 1;
+		axis = 0;
+	} else if (strcmp(axis_name, "dpad_y") == 0) {
+		dpad_axis = 2;
+		axis = 0;
+	} else {
+		if (!get_axis_from_atom(axis_atom, &axis)) return FALSE;
+		dpad_axis = 0;
+	}
+
+	pthread_mutex_lock(&g_mod_mutex);
+
+	slot = allocate_source_slot();
+	if (slot < 0) {
+		pthread_mutex_unlock(&g_mod_mutex);
+		return PL_resource_error("mod_source_slots");
+	}
+
+	src = &g_mod_sources[slot];
+	src->type = MOD_SOURCE_GAMEPAD;
+	src->source.gamepad.gamepad = gp;
+	src->source.gamepad.axis = axis;
+	src->source.gamepad.dead_zone = 0.1f;
+	src->source.gamepad.dpad_axis = dpad_axis;
+
+	pthread_mutex_unlock(&g_mod_mutex);
+	return PL_unify_integer(handle_term, slot);
+}
+
+/******************************************************************************
  * REGISTRATION
  *****************************************************************************/
 
@@ -751,6 +946,7 @@ install_t mod_register_predicates(void)
 	PL_register_foreign("mod_envelope_create", 8, pl_mod_envelope_create, 0);
 	PL_register_foreign("mod_envelope_trigger", 1, pl_mod_envelope_trigger, 0);
 	PL_register_foreign("mod_source_unload", 1, pl_mod_source_unload, 0);
-	PL_register_foreign("mod_route_create", 8, pl_mod_route_create, 0);
+	PL_register_foreign("mod_route_create", 9, pl_mod_route_create, 0);
 	PL_register_foreign("mod_route_unload", 1, pl_mod_route_unload, 0);
+	PL_register_foreign("mod_gamepad_create", 3, pl_mod_gamepad_create, 0);
 }

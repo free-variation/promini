@@ -30,11 +30,12 @@ Existing or planned features (all in stereo):
   - sources:
     - LFO ✓
     - looping envelope ✓
+    - gamepad (axes, triggers, d-pad) ✓
     - noise *(planned)*
     - audio buffers *(planned)*
     - images *(planned)*
   - targets: many parameters across the system, with S&H *(in progress)*
-- control interface using gamepad, keyboard, trackpad *(planned)*
+- control interface using gamepad ✓, keyboard *(planned)*, trackpad *(planned)*
 - patches, presets, and setups saved as transparent prolog clauses ✓
 - MCP integration for AI-assisted patch design and composition *(planned)*
 

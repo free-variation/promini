@@ -14,7 +14,7 @@ patch_underwater :-
 
     % LFO for slow vibrato
     mod_lfo_create(sine, 0.3, LFO),
-    mod_route_create(LFO, oscillator, O1, frequency, 5.0, 220.0, 0.0, _),
+    mod_route_create(LFO, oscillator, O1, frequency, absolute, 5.0, 220.0, 0.0, _),
 
     % Filter
     voice_attach_effect(V, lpf, [cutoff=400, order=4], _),

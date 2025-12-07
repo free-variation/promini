@@ -67,8 +67,9 @@
     mod_envelope_create/8,
     mod_envelope_trigger/1,
     mod_source_unload/1,
-    mod_route_create/8,
+    mod_route_create/9,
     mod_route_unload/1,
+    mod_gamepad_create/3,
     summing_node_create/1,
     summing_node_unload/1,
     summing_node_connect/2,
@@ -90,7 +91,14 @@
     image_synth_get_parameters/2,
     image_synth_start/1,
     image_synth_stop/1,
-    image_synth_attach_effect/4
+    image_synth_attach_effect/4,
+    control_init/0,
+    control_shutdown/0,
+    control_gamepads/1,
+    control_open/2,
+    control_close/1,
+    control_pump/0,
+    control_axis/3
   ]).
 
 :- use_foreign_library('../../lib/promini').

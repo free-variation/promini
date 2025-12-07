@@ -79,8 +79,7 @@ test(start_stop_voice_with_oscillator, [nondet, cleanup(synth_voice_unload(V))])
     synth_voice_start(V),
     synth_voice_stop(V).
 
-test(start_empty_voice_fails, [fail, cleanup(synth_voice_unload(V))]) :-
-    synth_voice_create(V),
+test(start_empty_voice_fails, [fail, setup(synth_voice_create(V)), cleanup(synth_voice_unload(V))]) :-
     synth_voice_start(V).
 
 % Oscillator volume tests

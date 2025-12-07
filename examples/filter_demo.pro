@@ -238,7 +238,7 @@ demo_lfo_lpf :-
 
     format('Creating LFO at 0.5 Hz to modulate cutoff (500-2500 Hz)...~n'),
     mod_lfo_create(sine, 0.5, Lfo),
-    mod_route_create(Lfo, lpf, LpfPtr, cutoff, 1000.0, 1500.0, 0.0, Route),
+    mod_route_create(Lfo, lpf, LpfPtr, cutoff, absolute, 1000.0, 1500.0, 0.0, Route),
 
     format('Playing guitar with auto-wah for 8 seconds...~n'),
     sound_start(Sound),
@@ -267,7 +267,7 @@ demo_envelope_lpf :-
 
     format('Creating filter envelope (opens then closes)...~n'),
     mod_envelope_create(0.1, 0.3, 0.2, 0.5, 0.4, 200.0, false, Env),
-    mod_route_create(Env, lpf, LpfPtr, cutoff, 2000.0, 200.0, 0.0, Route),
+    mod_route_create(Env, lpf, LpfPtr, cutoff, absolute, 2000.0, 200.0, 0.0, Route),
 
     format('Playing triggered filter sweeps...~n'),
     synth_voice_start(Voice),
@@ -345,7 +345,7 @@ demo_lfo_moog :-
 
     format('Creating LFO at 4.0 Hz to modulate cutoff (500-2500 Hz)...~n'),
     mod_lfo_create(sine, 4.0, Lfo),
-    mod_route_create(Lfo, moog, MoogPtr, cutoff, 1000.0, 1500.0, 0.0, Route),
+    mod_route_create(Lfo, moog, MoogPtr, cutoff, absolute, 1000.0, 1500.0, 0.0, Route),
 
     format('Playing guitar with auto-wah for 8 seconds...~n'),
     sound_start(Sound),
@@ -372,7 +372,7 @@ demo_envelope_moog :-
 
     format('Creating filter envelope (fast attack, medium decay)...~n'),
     mod_envelope_create(0.01, 0.2, 0.3, 0.4, 0.3, 400.0, false, Env),
-    mod_route_create(Env, moog, MoogPtr, cutoff, 3000.0, 200.0, 0.0, Route),
+    mod_route_create(Env, moog, MoogPtr, cutoff, absolute, 3000.0, 200.0, 0.0, Route),
 
     format('Playing triggered filter sweeps...~n'),
     synth_voice_start(Voice),

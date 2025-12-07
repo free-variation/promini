@@ -747,6 +747,7 @@ foreign_t pl_promini_init(void)
 
     /* Initialize engine with default config */
 	engine_config = ma_engine_config_init();
+	engine_config.periodSizeInMilliseconds = 10;
 	engine_config.dataCallback = engine_audio_callback;
 
     result = ma_engine_init(&engine_config, g_engine);

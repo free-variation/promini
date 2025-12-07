@@ -20,6 +20,7 @@ install_t install(void)
     mod_register_predicates();
     mixer_register_predicates();
     image_register_predicates();
+    control_register_predicates();
 }
 
 /*
@@ -29,6 +30,7 @@ install_t install(void)
  */
 install_t uninstall(void)
 {
+	uninstall_control();
 	uninstall_image();
 	uninstall_mixer();
 	uninstall_mod();

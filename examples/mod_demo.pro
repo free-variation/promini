@@ -3,7 +3,7 @@
  * Demonstrates LFO modulating oscillator frequency (vibrato effect)
  */
 
-:- use_module('../src/prolog/promini.pro').
+:- use_module('src/prolog/promini.pro').
 
 demo :-
     writeln('Creating voice with oscillator at 440 Hz...'),
@@ -14,7 +14,7 @@ demo :-
     mod_lfo_create(sine, 5.0, L),
 
     writeln('Routing LFO to oscillator frequency (depth=50 Hz, offset=440 Hz)...'),
-    mod_route_create(L, oscillator, O, frequency, 50.0, 440.0, 0.0, R),
+    mod_route_create(L, oscillator, O, frequency, absolute, 50.0, 440.0, 0.0, R),
 
     writeln('Playing for 3 seconds with vibrato...'),
     synth_voice_start(V),
@@ -26,7 +26,7 @@ demo :-
 
     writeln('Increasing depth to 100 Hz...'),
     mod_route_unload(R),
-    mod_route_create(L, oscillator, O, frequency, 100.0, 440.0, 0.0, R2),
+    mod_route_create(L, oscillator, O, frequency, absolute, 100.0, 440.0, 0.0, R2),
     sleep(3),
 
     writeln('Stopping...'),

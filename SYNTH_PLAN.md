@@ -20,19 +20,24 @@ Live granular sampler + additive synth + effects + modulation, controlled from P
 | Additive synth | voices, oscillators, noise |
 | Effects | filters, reverb, delay, bitcrush, pan, moog, VCA, limiter |
 | Live capture | |
-| Modulation sources | LFO, envelope |
-| Modulation routing | osc freq/vol, moog cutoff, VCA gain |
+| Modulation sources | LFO, envelope, gamepad |
+| Modulation routing | osc freq/vol, moog cutoff, VCA gain, pan, ping-pong delay |
+| Control interface | SDL3 gamepad input with dispatch hook for REPL integration |
 | Summing node | multiple sources to single output with effect chain |
 
 ### Next Steps
 
-1. **Output device selection** - `promini_init/1` with device name for routing to BlackHole, etc.
-2. **Route depth/center get/set predicates** - with per-sample interpolation
-3. **Route as modulation target** - modulate depth/center from LFO/envelope
-4. **Additional modulation targets** - sound pitch, delay params, reverb params, bitcrush
-5. **Additional modulation sources** - noise, sampler (audio buffer as control signal)
-6. **Image-to-audio synthesis** - pixel brightness → oscillator amplitude
-7. **Control interface** - gamepad/keyboard input via SDL2, event queue for Prolog to drain
+1. **Additional modulation targets** - sound pitch, delay params, reverb params, bitcrush
+2. **Additional modulation sources** - noise, sampler (audio buffer as control signal)
+3. **Route depth/center get/set predicates** - with per-sample interpolation
+4. **Route as modulation target** - modulate depth/center from LFO/envelope
+5. **Output device selection** - `promini_init/1` with device name for routing to BlackHole, etc.
+6. **Tap node** - passthrough node that copies audio to ring buffer for live granulation
+   - Fixed size ring buffer (overwrites oldest)
+   - Exposes write position for grain scheduling
+   - Attaches to any source (synth, sound, summing node, image synth)
+   - Requires Prolog granulator first
+8. ~~**Image-to-audio synthesis**~~ ✓ complete (additive, waveform, RGB stereo)
 
 ### Known Issues
 
@@ -62,9 +67,7 @@ Live granular sampler + additive synth + effects + modulation, controlled from P
 
 3. **Granular engine** - grain scheduling using `sound_create`, `sound_set_pitch`, etc.
 
-4. **Control interface** - drain SDL event queue, map inputs to parameters/actions
-
-5. **MCP integration** - expose predicates as MCP tools for AI-assisted patch design
+4. **MCP integration** - expose predicates as MCP tools for AI-assisted patch design
 
 ---
 
@@ -73,6 +76,7 @@ Live granular sampler + additive synth + effects + modulation, controlled from P
 ### Source Types
 - [x] LFO (sine, square, triangle, sawtooth)
 - [x] ADBR Envelope (attack-decay-break-release, loopable)
+- [x] Gamepad (axes, triggers, d-pad as virtual axes)
 - [ ] Noise (white, pink, brownian)
 - [ ] Sampler (audio buffer as control signal)
 
@@ -80,11 +84,13 @@ Live granular sampler + additive synth + effects + modulation, controlled from P
 - Oscillator: frequency, volume
 - Moog filter: cutoff
 - VCA effect: gain
+- Pan effect: pan
+- Ping-pong delay: delay
 
 ### Targets Planned
 - Sound: pitch
 - Delay: wet, decay, delay_in_frames
-- Ping-pong delay: wet, feedback, delay_in_frames
+- Ping-pong delay: wet, feedback
 - Reverb: wet, decay, damping, shimmer mix
 - Bitcrush: bits, sample_rate
 - LFO: frequency

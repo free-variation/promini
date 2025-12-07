@@ -14,6 +14,7 @@
 #include <SWI-Prolog.h>
 #include <SWI-Stream.h>
 #include "../../include/miniaudio.h"
+#include <SDL3/SDL.h>
 
 /*
  * Shared global engine
@@ -346,7 +347,8 @@ typedef enum {
 	MOD_SOURCE_WAVEFORM,
 	MOD_SOURCE_NOISE,
 	MOD_SOURCE_SAMPLER,
-	MOD_SOURCE_ENVELOPE
+	MOD_SOURCE_ENVELOPE,
+	MOD_SOURCE_GAMEPAD
 } mod_source_type_t;
 
 /* modulation source */
@@ -372,6 +374,12 @@ typedef struct {
 			ma_uint32 stage;   /* 0=attack, 1=decay, 2=break, 3=release, 4=done */
 			float stage_progress; /* 0-1 within current stage */
 		} envelope;
+		struct {
+			SDL_Gamepad* gamepad;
+			SDL_GamepadAxis axis;
+			float dead_zone;
+			int dpad_axis;  /* 0=normal, 1=dpad_x, 2=dpad_y */
+		} gamepad;
 	} source;
 	ma_bool32 sh_enabled;
 	ma_uint32 sh_interval;
@@ -380,11 +388,14 @@ typedef struct {
 	float current_value;
 } mod_source_t;
 
+/* forward declare for setter */
+typedef struct mod_route mod_route_t;
+
 /* modulation setter function */
-typedef void (*mod_setter_t)(void* target, float value, ma_uint32 frame_count);
+typedef void (*mod_setter_t)(void* target, float value, ma_uint32 frame_count, mod_route_t* route);
 
 /* modulation route */
-typedef struct {
+struct mod_route {
 	ma_bool32 in_use;
 	int source_slot;
 	void* target;
@@ -393,7 +404,8 @@ typedef struct {
 	float offset;
 	float slew;
 	float current_value;
-} mod_route_t;
+	ma_bool32 rate_mode;
+};
 
 /* modulaation arrays and mutex */
 extern mod_source_t g_mod_sources[MAX_MOD_SOURCES];
@@ -491,12 +503,17 @@ extern ma_node_vtable reverb_vtable;
 extern ma_result init_reverb_node(reverb_node_t* reverb, ma_uint32 sample_rate);
 extern void free_reverb_node(reverb_node_t* reverb);
 
+/* Gamepad axis lookup (implemented in control.c) */
+extern int get_axis_from_atom(atom_t atom_term, SDL_GamepadAxis* axis);
+extern SDL_Gamepad *get_gamepad_ptr(term_t gamepad_term);
+
 /* Module registration functions */
 extern install_t promini_register_predicates(void);
 extern install_t synth_register_predicates(void);
 extern install_t effects_register_predicates(void);
 extern install_t mixer_register_predicates(void);
 extern install_t image_register_predicates(void);
+extern install_t control_register_predicates(void);
 
 /* Module cleanup functions */
 extern install_t uninstall_promini(void);
@@ -504,5 +521,6 @@ extern install_t uninstall_synth(void);
 extern install_t uninstall_effects(void);
 extern install_t uninstall_mixer(void);
 extern install_t uninstall_image(void);
+extern install_t uninstall_control(void);
 
 #endif /* PROMINI_H */
