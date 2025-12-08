@@ -2,7 +2,7 @@
 
 ## Overall Vision
 
-Live granular sampler + additive synth + effects + modulation, controlled from Prolog.
+Live granular sampler + concatenative synthesis + additive synth + effects + modulation, controlled from Prolog.
 
 ### Architecture Layers
 - **C layer (miniaudio)**: Audio primitives - playback, effects, modulation sources, capture
@@ -36,8 +36,26 @@ Live granular sampler + additive synth + effects + modulation, controlled from P
    - Fixed size ring buffer (overwrites oldest)
    - Exposes write position for grain scheduling
    - Attaches to any source (synth, sound, summing node, image synth)
-   - Requires Prolog granulator first
-8. ~~**Image-to-audio synthesis**~~ ✓ complete (additive, waveform, RGB stereo)
+
+7. **Grain engine (hybrid C/Prolog)**
+   - Voice pool (30-60 concurrent grains)
+   - Sample-accurate playback from ring buffer or loaded audio
+   - Per-grain: position, size, pitch, envelope shape, pan
+   - Trigger queue for Prolog → C scheduling
+
+8. **Corpus analyzer** - for concatenative synthesis
+   - Segmenter: fixed interval or onset detection (envelope follower)
+   - Analyzer: RMS (loudness), ZCR (brightness), optional pitch
+   - Metadata array parallel to ring buffer
+   - Query interface: expose grain features to Prolog
+
+9. **Clock system**
+   - Internal clock generator (BPM-based trigger stream)
+   - Clock as mod source for tempo-synced LFOs, delays
+   - Division/multiplication
+   - Tap tempo support
+
+10. ~~**Image-to-audio synthesis**~~ ✓ complete (additive, waveform, RGB stereo)
 
 ### Known Issues
 
@@ -65,9 +83,16 @@ Live granular sampler + additive synth + effects + modulation, controlled from P
    - Two mod routes from same LFO with inverse depths
    - Position controlled by LFO or envelope
 
-3. **Granular engine** - grain scheduling using `sound_create`, `sound_set_pitch`, etc.
+3. **Granular engine (Beads-style)** - blind position-based granulation
+   - Prolog schedules grains by position/size/pitch
+   - Modes: continuous density, gated bursts, clocked
 
-4. **MCP integration** - expose predicates as MCP tools for AI-assisted patch design
+4. **Concatenative queries** - semantic grain selection from corpus
+   - `find_grain(G, [high_loudness, low_zcr])` - query by features
+   - Define categories: `snare_sound(G)`, `kick_sound(G)`
+   - Pattern-based sequencing with logic
+
+5. **MCP integration** - expose predicates as MCP tools for AI-assisted patch design
 
 ---
 
@@ -126,3 +151,66 @@ Horizontal: columns = time, rows = frequency. Row 0 = lowest freq, row buf_heigh
 ### Interpolation
 
 Cubic interpolation during audio generation to smooth transitions between buffer samples. Buffer stays small/blocky, interpolation happens per-sample during playback. Avoids clicks from sharp amplitude changes at block boundaries while preserving exact buffer values at grid points.
+
+---
+
+## Granular & Concatenative Synthesis
+
+### Two Models
+
+**Beads-style (blind/positional):**
+- Position-based: "play grain at 500ms ago"
+- Good for textures, smearing, time-stretching
+- Parameters: position, size, density, pitch, feedback
+
+**Concatenative (corpus-based):**
+- Feature-based: "play a grain that sounds like X"
+- Good for reconstruction, remix, semantic control
+- Treats buffer as queryable database
+
+### Corpus Data Structure
+
+```c
+typedef struct {
+    size_t start_frame;
+    size_t length;
+    float rms;           /* loudness */
+    float zcr;           /* zero-crossing rate (brightness) */
+    float pitch;         /* 0 if unpitched/unknown */
+} grain_metadata_t;
+```
+
+### Segmentation Strategies
+
+1. **Fixed interval** - chop every N ms (simple, predictable)
+2. **Onset detection** - envelope follower triggers on transients (musical)
+
+### Prolog Query Interface
+
+```prolog
+% Get all grains from corpus
+corpus_grains(CorpusId, GrainList).
+
+% Get features for a grain
+grain_features(GrainId, [rms=R, zcr=Z, pitch=P]).
+
+% Find grains matching criteria
+find_grain(G, Criteria) :-
+    corpus_grains(corpus, Grains),
+    member(G, Grains),
+    matches_criteria(G, Criteria).
+
+% Semantic categories
+snare_sound(G) :- grain_features(G, F), member(rms=R, F), R > 0.7, member(zcr=Z, F), Z > 0.5.
+kick_sound(G) :- grain_features(G, F), member(rms=R, F), R > 0.7, member(zcr=Z, F), Z < 0.3.
+
+% Schedule grain playback
+grain_play(GrainId, [pitch=1.0, envelope=hann, pan=0.0]).
+```
+
+### Use Cases
+
+- **Live remix**: detect kicks/snares in drum loop, resequence
+- **Mosaicing**: reconstruct target sound from corpus
+- **Timbral search**: "find something bright and loud"
+- **Generative sequencing**: logic-driven grain selection

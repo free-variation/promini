@@ -108,16 +108,6 @@ static data_slot_t g_data_buffers[MAX_DATA_BUFFERS] = {{NULL, NULL, 0, MA_FALSE}
 sound_slot_t g_sounds[MAX_SOUNDS] = {{NULL, NULL, -1, MA_FALSE, NULL}};
 
 /* capture device management */
-#define MAX_CAPTURE_DEVICES 8
-
-typedef struct {
-	ma_device device;
-	void* buffer_data;
-	ma_uint64 capacity_frames;
-	ma_uint64 write_position; /* wraps at capacity */
-	ma_bool32 in_use;
-} capture_slot_t;
-
 static capture_slot_t g_capture_devices[MAX_CAPTURE_DEVICES] = {{0}};
 
 
@@ -291,8 +281,7 @@ static int allocate_capture_slot(void)
 	for (i = 0; i < MAX_CAPTURE_DEVICES; i++){
 		if (!g_capture_devices[i].in_use) {
 			g_capture_devices[i].in_use = MA_TRUE;
-			g_capture_devices[i].buffer_data = NULL;
-			g_capture_devices[i].capacity_frames = 0;
+			g_capture_devices[i].buffer.samples = NULL;
 			slot = i;
 			break;
 		}
@@ -314,10 +303,7 @@ static void free_capture_slot(int index)
 
 		if (g_capture_devices[index].in_use) {
 			ma_device_uninit(&g_capture_devices[index].device);
-			if (g_capture_devices[index].buffer_data != NULL) {
-				ma_free(g_capture_devices[index].buffer_data, NULL);
-				g_capture_devices[index].buffer_data = NULL;
-			}
+			ring_buffer_free(&g_capture_devices[index].buffer);
 			g_capture_devices[index].in_use = MA_FALSE;
 		}
 
@@ -437,6 +423,98 @@ static int create_data_buffer_from_pcm(void* pData, ma_format format, ma_uint32 
 	return slot;
 }
 
+
+/******************************************************************************
+ * RING BUFFER
+ *****************************************************************************/
+
+/*
+ * ring_buffer_init()
+ * Alocate ring buffer.  Returns MA_SUCCESS or MA_OUT_OF_MEMORY.
+ */
+ma_result ring_buffer_init(ring_buffer_t *rb, ma_uint64 capacity_frames, ma_uint32 channels, ma_format format)
+{
+	ma_uint32 bytes_per_frame;
+	ma_uint64 buffer_size_bytes;
+
+	bytes_per_frame = ma_get_bytes_per_frame(format, channels);
+	buffer_size_bytes = capacity_frames * bytes_per_frame;
+
+	rb->samples = (float *)ma_malloc(buffer_size_bytes, NULL);
+	if (rb->samples == NULL) return MA_OUT_OF_MEMORY;
+
+	memset(rb->samples, 0, buffer_size_bytes);
+	rb->capacity_frames = capacity_frames;
+	rb->channels = channels;
+	rb->format = format;
+	rb->write_pos = 0;
+
+	return MA_SUCCESS;
+}
+
+/*
+ * ring_buffer_free()
+ * Free ring buffer memory.
+ */
+void ring_buffer_free(ring_buffer_t *rb)
+{
+	if (rb->samples != NULL) {
+		ma_free(rb->samples, NULL);
+		rb->samples = NULL;
+	}
+}
+
+/*
+ * ring_buffer_write()
+ * Write frames to ring buffer, advancing write position with wrap.
+ */
+void ring_buffer_write(ring_buffer_t *rb, const void *input, ma_uint32 frame_count) 
+{
+	ma_uint64 write_pos;
+	ma_uint64 frames_to_end;
+	ma_uint32 bytes_per_frame;
+
+	bytes_per_frame = ma_get_bytes_per_frame(rb->format, rb->channels);
+	write_pos = rb->write_pos % rb->capacity_frames;
+	frames_to_end = rb->capacity_frames - write_pos;
+
+	if (frame_count <= frames_to_end) {
+		memcpy((char *)rb->samples + (write_pos * bytes_per_frame), input, frame_count * bytes_per_frame);
+	} else {
+		memcpy((char *)rb->samples + (write_pos * bytes_per_frame), input, frames_to_end * bytes_per_frame);
+		memcpy(rb->samples, 
+				(char *)input + (frames_to_end * bytes_per_frame), 
+				(frame_count - frames_to_end) *bytes_per_frame);
+	}
+
+	rb->write_pos += frame_count;
+}
+
+/*
+ * ring_buffer_read()
+ * Read frames from ring buffer at given delay (frames before write_pos).
+ */
+void ring_buffer_read(ring_buffer_t *rb, void *output, ma_uint64 delay_frames, ma_uint32 frame_count)
+{
+	ma_uint64 read_pos;
+	ma_uint64 frames_to_end;
+	ma_uint32 bytes_per_frame;
+
+	if (delay_frames >= rb->capacity_frames) {
+		delay_frames = rb->capacity_frames - 1;
+	}
+
+	bytes_per_frame = ma_get_bytes_per_frame(rb->format, rb->channels);
+	read_pos = (rb->write_pos + rb->capacity_frames - delay_frames) % rb->capacity_frames;
+	frames_to_end = rb->capacity_frames - read_pos;
+
+	if (frame_count <= frames_to_end) {
+		memcpy(output, (char *)rb->samples + (read_pos * bytes_per_frame), frame_count * bytes_per_frame);
+	} else {
+		memcpy(output, (char *)rb->samples + (read_pos * bytes_per_frame), frames_to_end * bytes_per_frame);
+		memcpy((char *)output + (frames_to_end * bytes_per_frame), rb->samples, (frame_count - frames_to_end) * bytes_per_frame);
+	}
+}
 
 /******************************************************************************
  * DATA BUFFER MANAGEMENT
@@ -1250,12 +1328,9 @@ static foreign_t pl_audio_reverse(term_t source_handle, term_t reversed_handle)
  * capture_data_callback()
  * Callback function for capture device data
  */
-static void capture_data_callback(ma_device* device, void* output, const void*input, ma_uint32 frame_count) {
+static void capture_data_callback(ma_device* device, void* output, const void* input, ma_uint32 frame_count)
+{
 	capture_slot_t* capture;
-	ma_uint64 write_pos;
-  	ma_uint64 frames_to_end;
-  	ma_uint32 bytes_per_frame;
-  	ma_uint32 channels;
 
 	(void)output; /* unused for capture */
 
@@ -1264,21 +1339,7 @@ static void capture_data_callback(ma_device* device, void* output, const void*in
 		return;
 	}
 
-	channels = device->capture.channels;
-	bytes_per_frame = ma_get_bytes_per_frame(device->capture.format, channels);
-	write_pos = capture->write_position % capture->capacity_frames;
-	frames_to_end = capture->capacity_frames - write_pos;
-
-	if (frame_count <= frames_to_end) {
-		/* no wrap */
-		memcpy((char *)capture->buffer_data + (write_pos * bytes_per_frame), input, frame_count * bytes_per_frame);
-	} else {
-		/* wrap around */
-		memcpy((char*)capture->buffer_data + (write_pos * bytes_per_frame), input, frames_to_end * bytes_per_frame);
-		memcpy(capture->buffer_data, (char*) input + (frames_to_end * bytes_per_frame), (frame_count - frames_to_end) * bytes_per_frame);
-	}
-
-	capture->write_position += frame_count;
+	ring_buffer_write(&capture->buffer, input, frame_count);
 }
 
 /*
@@ -1302,7 +1363,6 @@ static foreign_t pl_capture_start(term_t device_name, term_t period_term, term_t
   	ma_uint32 channels;
   	ma_uint32 sample_rate;
   	ma_uint64 buffer_frames;
-  	ma_uint32 buffer_size_bytes;
 
 	ENSURE_ENGINE_INITIALIZED();
 
@@ -1349,19 +1409,13 @@ static foreign_t pl_capture_start(term_t device_name, term_t period_term, term_t
 		return PL_resource_error("capture_slots");
 	}
 
-	buffer_size_bytes = buffer_frames * ma_get_bytes_per_frame(format, channels);
-
-	g_capture_devices[slot].buffer_data = ma_malloc(buffer_size_bytes, NULL);
-	if (g_capture_devices[slot].buffer_data == NULL) {
+	result = ring_buffer_init(&g_capture_devices[slot].buffer, buffer_frames, channels, format);
+	if (result != MA_SUCCESS) {
 		free_capture_slot(slot);
 		return PL_resource_error("memory");
 	}
 
-	g_capture_devices[slot].capacity_frames = buffer_frames;
-	g_capture_devices[slot].write_position = 0;
-
 	/* initialize capture device */
-	device_config = ma_device_config_init(ma_device_type_capture);
 	device_config = ma_device_config_init(ma_device_type_capture);
   	device_config.capture.pDeviceID = device_id;
   	device_config.capture.format = format;
@@ -1418,11 +1472,11 @@ static foreign_t pl_capture_get_info(term_t capture_handle, term_t info)
 
 	GET_CAPTURE_DEVICE_FROM_HANDLE(capture_handle, capture);
 
-	write_position = capture->write_position;
+	write_position = capture->buffer.write_pos;
 
 	args = PL_new_term_refs(3);
 	if (!PL_put_uint64(args + 0, write_position)) return FALSE;
-	if (!PL_put_uint64(args + 1, capture->capacity_frames)) return FALSE;
+	if (!PL_put_uint64(args + 1, capture->buffer.capacity_frames)) return FALSE;
 	if (!PL_put_integer(args + 2, capture->device.sampleRate)) return FALSE;
 
 	result = PL_new_term_ref();
@@ -1446,10 +1500,6 @@ static foreign_t pl_capture_extract(term_t capture_handle, term_t offset_term, t
   	int length_int;
   	ma_int64 offset;
   	ma_uint64 length;
-  	ma_uint64 write_pos;
-  	ma_uint64 read_pos;
-  	ma_uint64 read_pos_wrapped;
-  	ma_uint64 frames_to_end;
   	ma_format format;
   	ma_uint32 channels;
   	ma_uint32 sample_rate;
@@ -1478,14 +1528,9 @@ static foreign_t pl_capture_extract(term_t capture_handle, term_t offset_term, t
 	offset = (ma_int64)offset_int;
 	length = (ma_uint64)length_int;
 
-	if (length > capture->capacity_frames) {
+	if (length > capture->buffer.capacity_frames) {
   		return PL_domain_error("length_exceeds_capacity", length_term);
   	}
-
-	/* read position */
-	write_pos = capture->write_position;
-	read_pos = write_pos + offset; /* offset is -ve, so this substracts */
-	read_pos_wrapped = read_pos % capture->capacity_frames;
 
 	/* buffer format */
 	format = capture->device.capture.format;
@@ -1498,22 +1543,8 @@ static foreign_t pl_capture_extract(term_t capture_handle, term_t offset_term, t
 		return PL_resource_error("memory");
 	}
 
-	/* copy data, handling wraparound */
-	frames_to_end = capture->capacity_frames - read_pos_wrapped;
-	if (length <= frames_to_end) {
-		/* no wrap */
-		memcpy(extracted_data,
-				(char *)capture->buffer_data + (read_pos_wrapped * bytes_per_frame),
-				length * bytes_per_frame);
-	} else {
-		/* wrap around */
-		memcpy(extracted_data,
-				(char *)capture->buffer_data + (read_pos_wrapped * bytes_per_frame),
-				frames_to_end * bytes_per_frame);
-		memcpy((char *)extracted_data + (frames_to_end * bytes_per_frame),
-				capture->buffer_data,
-				(length - frames_to_end) * bytes_per_frame);
-	}
+	/* copy data */
+	ring_buffer_read(&capture->buffer, extracted_data, (ma_uint64)(-offset), length);
 
 	slot = create_data_buffer_from_pcm(extracted_data, format, channels, length, sample_rate);
 	if (slot < 0) {

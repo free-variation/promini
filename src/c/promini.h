@@ -90,6 +90,23 @@ typedef struct {
 	effect_node_t* effect_chain;
 } sound_slot_t;
 
+typedef struct {
+	float *samples;
+	ma_uint64 capacity_frames;
+	ma_uint64 write_pos;
+	ma_uint32 channels;
+	ma_format format;
+} ring_buffer_t;
+
+/* Capture device slot */
+#define MAX_CAPTURE_DEVICES 8
+
+typedef struct {
+	ma_device device;
+	ring_buffer_t buffer;
+	ma_bool32 in_use;
+} capture_slot_t;
+
 /*
  * Synth voice management
  */
@@ -493,6 +510,12 @@ extern ma_bool32 get_param_int(term_t params, const char* key, int* value);
 extern ma_bool32 get_param_float(term_t params, const char* key, float* value);
 extern ma_bool32 get_param_bool(term_t params, const char* key, ma_bool32* value);
 extern ma_bool32 get_param_double(term_t params, const char* key, double* value);
+
+/* Ring buffer */
+extern ma_result ring_buffer_init(ring_buffer_t *rb, ma_uint64 capacity_frames, ma_uint32 channels, ma_format format);
+extern void ring_buffer_free(ring_buffer_t *rb);
+extern void ring_buffer_write(ring_buffer_t *rb, const void *input, ma_uint32 frame_count);
+extern void ring_buffer_read(ring_buffer_t *rb, void *output, ma_uint64 delay_frames, ma_uint32 frame_count);
 
 /* Effect functions (implemented in effects.c) */
 extern ma_node* get_effect_chain_tail(effect_node_t* chain);
