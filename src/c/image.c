@@ -773,8 +773,6 @@ static foreign_t pl_image_transpose(term_t image_term, term_t dir_term)
  * IMAGE SYNTH NODE
  *****************************************************************************/
 
-#define CLAMP(val, min, max) ((val) < (min) ? (min) : ((val) > (max) ? (max) : (val)))
-
 /*
  * cubic_interpolate_row()
  * Get cubic-interpolated amplitude for a row at fractional column position

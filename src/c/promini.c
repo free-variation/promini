@@ -68,19 +68,6 @@
         } \
     } while(0)
 
-#define GET_CAPTURE_DEVICE_FROM_HANDLE(handle_term, capture_var) \
-  	do { \
-  		int _slot; \
-  		if (!PL_get_integer(handle_term, &_slot)) { \
-  			return PL_type_error("integer", handle_term); \
-  		} \
-  		capture_var = get_capture_device(_slot); \
-  		if (capture_var == NULL) { \
-  			return PL_existence_error("capture_device", handle_term); \
-  		} \
-  	} while(0)
-
-
 /******************************************************************************
  * GLOBAL VARIABLES
  *****************************************************************************/
@@ -95,7 +82,6 @@ ma_engine* g_engine = NULL;
  */
 pthread_mutex_t g_sounds_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t g_data_buffers_mutex = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t g_capture_devices_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 /*
  * Sound handle management
@@ -106,9 +92,6 @@ static data_slot_t g_data_buffers[MAX_DATA_BUFFERS] = {{NULL, NULL, 0, MA_FALSE}
 
 /* Shared sound slots array (declared in promini.h) */
 sound_slot_t g_sounds[MAX_SOUNDS] = {{NULL, NULL, -1, MA_FALSE, NULL}};
-
-/* capture device management */
-static capture_slot_t g_capture_devices[MAX_CAPTURE_DEVICES] = {{0}};
 
 
 /******************************************************************************
@@ -267,66 +250,6 @@ data_slot_t* get_data_slot(int index)
 }
 
 /*
- * allocate_capture_slot()
- * Finds a free capture slot and marks it as in use.
- * Returns slot index, or -1 if all slots are full.
- * Thread-safe: protected by g_capture_devices_mutex
- */
-static int allocate_capture_slot(void)
-{
-	int i;
-	int slot = -1;
-
-	pthread_mutex_lock(&g_capture_devices_mutex);
-	for (i = 0; i < MAX_CAPTURE_DEVICES; i++){
-		if (!g_capture_devices[i].in_use) {
-			g_capture_devices[i].in_use = MA_TRUE;
-			g_capture_devices[i].buffer.samples = NULL;
-			slot = i;
-			break;
-		}
-	}
-	pthread_mutex_unlock(&g_capture_devices_mutex);
-
-	return slot;
-}
-
-/*
- * free_capture_slot()
- * Frees a capture slot and its resources.
- * Thread-safe: protected by g_capture_devices_mutex
- */
-static void free_capture_slot(int index)
-{
-	if (index >= 0 && index < MAX_CAPTURE_DEVICES) {
-		pthread_mutex_lock(&g_capture_devices_mutex);
-
-		if (g_capture_devices[index].in_use) {
-			ma_device_uninit(&g_capture_devices[index].device);
-			ring_buffer_free(&g_capture_devices[index].buffer);
-			g_capture_devices[index].in_use = MA_FALSE;
-		}
-
-		pthread_mutex_unlock(&g_capture_devices_mutex);
-	}
-}
-
-/*
- * get_capture_device()
- * Validates handle and returns capture slot pointer.
- * Returns NULL if invalid handle.
- */
-static capture_slot_t* get_capture_device(int index)
-{
-	if (index < 0 || index >= MAX_CAPTURE_DEVICES) {
-		return NULL;
-	}
-	if (!g_capture_devices[index].in_use) {
-		return NULL;
-	}
-	return &g_capture_devices[index];
-}
-/*
  * get_buffer_info()
  * Retrieves audio buffer format parameters
  */
@@ -351,13 +274,15 @@ void get_engine_format_info(ma_format* format, ma_uint32* channels, ma_uint32* s
 
 /*
  * get_source_from_term()
- * Parse sound(N) or voice(N) term and return source node and effect chain.
+ * Parse sound(N), voice(N), image_synth(N), or capture(N) term.
+ * Returns source node and effect chain.
  */
-ma_bool32 get_source_from_term(term_t source_term, ma_node** source_node, effect_node_t** chain)
+ma_bool32 get_source_from_term(term_t source_term, ma_node **source_node, effect_node_t **chain)
 {
 	term_t slot_term = PL_new_term_ref();
 	functor_t f;
 	int slot;
+	capture_slot_t *capture;
 
 	if (!PL_get_functor(source_term, &f)) return MA_FALSE;
 	if (!PL_get_arg(1, source_term, slot_term)) return MA_FALSE;
@@ -365,18 +290,29 @@ ma_bool32 get_source_from_term(term_t source_term, ma_node** source_node, effect
 
 	if (f == PL_new_functor(PL_new_atom("sound"), 1)) {
 		if (slot < 0 || slot >= MAX_SOUNDS || !g_sounds[slot].in_use) return MA_FALSE;
-		*source_node = (ma_node*)g_sounds[slot].sound;
+		*source_node = (ma_node *)g_sounds[slot].sound;
 		*chain = g_sounds[slot].effect_chain;
 		return MA_TRUE;
 	} else if (f == PL_new_functor(PL_new_atom("voice"), 1)) {
 		if (slot < 0 || slot >= MAX_VOICES || !g_voices[slot].in_use) return MA_FALSE;
-		*source_node = (ma_node*)&g_voices[slot].group;
+		*source_node = (ma_node *)&g_voices[slot].group;
 		*chain = g_voices[slot].effect_chain;
 		return MA_TRUE;
 	} else if (f == PL_new_functor(PL_new_atom("image_synth"), 1)) {
 		if (slot < 0 || slot >= MAX_IMAGE_SYNTHS || !g_image_synths[slot].in_use) return MA_FALSE;
-		*source_node = (ma_node*)&g_image_synths[slot].base;
+		*source_node = (ma_node *)&g_image_synths[slot].base;
 		*chain = g_image_synths[slot].effect_chain;
+		return MA_TRUE;
+	} else if (f == PL_new_functor(PL_new_atom("capture"), 1)) {
+		capture = get_capture_device(slot);
+		if (capture == NULL) return MA_FALSE;
+		*source_node = (ma_node *)&capture->node;
+		*chain = NULL;
+		return MA_TRUE;
+	} else if (f == PL_new_functor(PL_new_atom("granular"), 1)) {
+		if (slot < 0 || slot >= MAX_GRANULAR_DELAYS || !g_granular_delays[slot].in_use) return MA_FALSE;
+		*source_node = (ma_node *)&g_granular_delays[slot].base;
+		*chain = g_granular_delays[slot].effect_chain;
 		return MA_TRUE;
 	}
 
@@ -388,8 +324,8 @@ ma_bool32 get_source_from_term(term_t source_term, ma_node** source_node, effect
  * Creates a data buffer from raw PCM data. Returns slot index or -1 on error.
  * Caller is responsible for freeing pData on error.
  */
-static int create_data_buffer_from_pcm(void* pData, ma_format format, ma_uint32 channels,
-                                       ma_uint64 frame_count, ma_uint32 sample_rate)
+int create_data_buffer_from_pcm(void *pData, ma_format format, ma_uint32 channels,
+                                ma_uint64 frame_count, ma_uint32 sample_rate)
 {
 	int slot;
 	ma_audio_buffer* buffer;
@@ -515,6 +451,44 @@ void ring_buffer_read(ring_buffer_t *rb, void *output, ma_uint64 delay_frames, m
 		memcpy((char *)output + (frames_to_end * bytes_per_frame), rb->samples, (frame_count - frames_to_end) * bytes_per_frame);
 	}
 }
+
+/*
+ * ring_buffer_read_interpolated()
+ * Read a single sample from the ring buffer at a fractional position.
+ * Uses Catmull-Rom cubic interpolation for smooth pitch shifting.
+ */
+float ring_buffer_read_interpolated(ring_buffer_t* rb, float position, ma_uint32 channel)
+{
+	ma_uint64 i0, i1, i2, i3;
+	float frac;
+	float y0, y1, y2, y3;
+	float c0, c1, c2, c3;
+
+	/* Fractional position between samples */
+	frac = position - floorf(position);
+
+	/* Four adjacent sample positions with wraparound */
+	i1 = (ma_uint64)position % rb->capacity_frames;
+	i0 = (i1 == 0) ? rb->capacity_frames - 1 : i1 - 1;
+	i2 = (i1 + 1) % rb->capacity_frames;
+	i3 = (i2 + 1) % rb->capacity_frames;
+
+	/* Get four adjacent samples */
+	y0 = rb->samples[i0 * rb->channels + channel];
+	y1 = rb->samples[i1 * rb->channels + channel];
+	y2 = rb->samples[i2 * rb->channels + channel];
+	y3 = rb->samples[i3 * rb->channels + channel];
+
+	/* Catmull-Rom spline coefficients */
+	c0 = y1;
+	c1 = 0.5f * (y2 - y0);
+	c2 = y0 - 2.5f * y1 + 2.0f * y2 - 0.5f * y3;
+	c3 = 0.5f * (y3 - y0) + 1.5f * (y1 - y2);
+
+	/* Evaluate cubic polynomial */
+	return ((c3 * frac + c2) * frac + c1) * frac + c0;
+}
+
 
 /******************************************************************************
  * DATA BUFFER MANAGEMENT
@@ -1320,244 +1294,6 @@ static foreign_t pl_audio_reverse(term_t source_handle, term_t reversed_handle)
 }
 
 
-/******************************************************************************
- * CAPTURE DEVICE MANAGEMENT
- *****************************************************************************/
-
-/*
- * capture_data_callback()
- * Callback function for capture device data
- */
-static void capture_data_callback(ma_device* device, void* output, const void* input, ma_uint32 frame_count)
-{
-	capture_slot_t* capture;
-
-	(void)output; /* unused for capture */
-
-	capture = (capture_slot_t*)device->pUserData;
-	if (capture == NULL || input == NULL) {
-		return;
-	}
-
-	ring_buffer_write(&capture->buffer, input, frame_count);
-}
-
-/*
- * capture_start(+DeviceName, +PeriodSeconds, -CaptureHandle, -BufferFrames)
- * starts capture from specified device into ring buffer.
- */
-static foreign_t pl_capture_start(term_t device_name, term_t period_term, term_t capture_handle, term_t buffer_frames_out)
-{
-	char* name;
-	double period_seconds;
-  	int buffer_frames_int;
-  	int slot;
-  	ma_context* context;
-  	ma_device_info* capture_infos;
-  	ma_uint32 capture_count;
-  	ma_result result;
-  	ma_uint32 i;
-  	ma_device_id* device_id;
-  	ma_device_config device_config;
-  	ma_format format;
-  	ma_uint32 channels;
-  	ma_uint32 sample_rate;
-  	ma_uint64 buffer_frames;
-
-	ENSURE_ENGINE_INITIALIZED();
-
-	if (!PL_get_chars(device_name, &name, CVT_ATOM | CVT_STRING | CVT_EXCEPTION)) {
-  		return FALSE;
-  	}
-
-  	if (!PL_get_float(period_term, &period_seconds)) {
-  		return PL_type_error("float", period_term);
-  	}
-
-  	if (period_seconds <= 0.0) {
-  		return PL_domain_error("positive_number", period_term);
-  	}
-
-	get_engine_format_info(&format, &channels, &sample_rate);
-  	buffer_frames = (ma_uint64)(period_seconds * sample_rate);
-
-	if (buffer_frames == 0) {
-		buffer_frames = 1;
-	}
-
-	/* find device by name */
-	context = ma_engine_get_device(g_engine)->pContext;
-	result = ma_context_get_devices(context, NULL, NULL, &capture_infos, &capture_count);
-	if (result != MA_SUCCESS) {
-		return FALSE;
-	}
-
-	device_id = NULL;
-	for (i = 0; i < capture_count; i++) {
-		if (strcmp(capture_infos[i].name, name) == 0) {
-			device_id = &capture_infos[i].id;
-			break;
-		}
-	}
-
-	if (device_id == NULL) {
-		return PL_existence_error("capture_device", device_name);
-	}
-
-	slot = allocate_capture_slot();
-	if (slot < 0) {
-		return PL_resource_error("capture_slots");
-	}
-
-	result = ring_buffer_init(&g_capture_devices[slot].buffer, buffer_frames, channels, format);
-	if (result != MA_SUCCESS) {
-		free_capture_slot(slot);
-		return PL_resource_error("memory");
-	}
-
-	/* initialize capture device */
-	device_config = ma_device_config_init(ma_device_type_capture);
-  	device_config.capture.pDeviceID = device_id;
-  	device_config.capture.format = format;
-  	device_config.capture.channels = channels;
-  	device_config.sampleRate = sample_rate;
-  	device_config.dataCallback = capture_data_callback;
-  	device_config.pUserData = &g_capture_devices[slot];
-
-	result = ma_device_init(context, &device_config, &g_capture_devices[slot].device);
-	if (result != MA_SUCCESS) {
-		free_capture_slot(slot);
-		return FALSE;
-	}
-
-	/* start capture */
-	result = ma_device_start(&g_capture_devices[slot].device);
-	if (result != MA_SUCCESS) {
-		free_capture_slot(slot);
-		return FALSE;
-	}
-
-	if (!PL_unify_integer(buffer_frames_out, buffer_frames)) {
-		return FALSE;
-	}
-
-	return PL_unify_integer(capture_handle, slot);
-}
-
-/*
- * capture_stop(+CaptureHandle)
- * Stops capture and frees resources.
- */
-static foreign_t pl_capture_stop(term_t capture_handle)
-{
-	capture_slot_t* capture;
-
-	GET_CAPTURE_DEVICE_FROM_HANDLE(capture_handle, capture);
-
-	free_capture_slot(capture - g_capture_devices);
-	return TRUE;
-}
-
-/*
- * capture_get_info(+CaptureHandle, -Info)
- * Returns capture_info(WritePosition, Capacity, SampleRate)
- */
-static foreign_t pl_capture_get_info(term_t capture_handle, term_t info)
-{
-	capture_slot_t* capture;
-  	ma_uint64 write_position;
-  	term_t args;
-  	functor_t info_functor;
-  	term_t result;
-
-	GET_CAPTURE_DEVICE_FROM_HANDLE(capture_handle, capture);
-
-	write_position = capture->buffer.write_pos;
-
-	args = PL_new_term_refs(3);
-	if (!PL_put_uint64(args + 0, write_position)) return FALSE;
-	if (!PL_put_uint64(args + 1, capture->buffer.capacity_frames)) return FALSE;
-	if (!PL_put_integer(args + 2, capture->device.sampleRate)) return FALSE;
-
-	result = PL_new_term_ref();
-	info_functor = PL_new_functor(PL_new_atom("capture_info"), 3);
-	if (!PL_cons_functor_v(result, info_functor, args)) {
-		return FALSE;
-	}
-
-	return PL_unify(info, result);
-}
-
-/*
- * capture_extract(+CaptureHandle, +RelativeOffset, +Length, -DataHandle)
- * Extracts frames from capture buffer to a new data buffer.
- * RelativeOffset is negative frames from current write position.
- */
-static foreign_t pl_capture_extract(term_t capture_handle, term_t offset_term, term_t length_term, term_t data_handle)
-{
-	capture_slot_t* capture;
-  	int offset_int;
-  	int length_int;
-  	ma_int64 offset;
-  	ma_uint64 length;
-  	ma_format format;
-  	ma_uint32 channels;
-  	ma_uint32 sample_rate;
-  	ma_uint32 bytes_per_frame;
-  	void* extracted_data;
-  	int slot;
-
-	GET_CAPTURE_DEVICE_FROM_HANDLE(capture_handle, capture);
-
-	if (!PL_get_integer(offset_term, &offset_int)) {
-  		return PL_type_error("integer", offset_term);
-  	}
-
-  	if (!PL_get_integer(length_term, &length_int)) {
-  		return PL_type_error("integer", length_term);
-  	}
-
-  	if (offset_int >= 0) {
-  		return PL_domain_error("negative_offset", offset_term);
-  	}
-
-  	if (length_int <= 0) {
-  		return PL_domain_error("positive_length", length_term);
-  	}
-
-	offset = (ma_int64)offset_int;
-	length = (ma_uint64)length_int;
-
-	if (length > capture->buffer.capacity_frames) {
-  		return PL_domain_error("length_exceeds_capacity", length_term);
-  	}
-
-	/* buffer format */
-	format = capture->device.capture.format;
-  	channels = capture->device.capture.channels;
-  	sample_rate = capture->device.sampleRate;
-  	bytes_per_frame = ma_get_bytes_per_frame(format, channels);
-
-	extracted_data = malloc(length * bytes_per_frame);
-	if (extracted_data == NULL) {
-		return PL_resource_error("memory");
-	}
-
-	/* copy data */
-	ring_buffer_read(&capture->buffer, extracted_data, (ma_uint64)(-offset), length);
-
-	slot = create_data_buffer_from_pcm(extracted_data, format, channels, length, sample_rate);
-	if (slot < 0) {
-		free(extracted_data);
-		return PL_resource_error("data_buffer_slots");
-	}
-
-	return PL_unify_integer(data_handle, slot);
-}
-
-
-
-
 /* helper: add effect node to chain and connect to node graph */
 
 
@@ -1592,10 +1328,6 @@ install_t promini_register_predicates(void)
 	PL_register_foreign("audio_reverse", 2, pl_audio_reverse, 0);
 	PL_register_foreign("sound_set_range", 3, pl_sound_set_range, 0);
 	PL_register_foreign("audio_extract", 4, pl_audio_extract, 0);
-	PL_register_foreign("capture_start", 4, pl_capture_start, 0);
-	PL_register_foreign("capture_stop", 1, pl_capture_stop, 0);
-	PL_register_foreign("capture_get_info", 2, pl_capture_get_info, 0);
-	PL_register_foreign("capture_extract", 4, pl_capture_extract, 0);
 }
 
 /*
@@ -1620,13 +1352,6 @@ install_t uninstall_promini(void)
             free_sound_slot(i);
         }
     }
-
-	/* Clean up all capture devices */
-	for (i = 0; i < MAX_CAPTURE_DEVICES; i++) {
-		if (g_capture_devices[i].in_use) {
-			free_capture_slot(i);
-		}
-	}
 
     /* Clean up engine */
     if (g_engine != NULL) {

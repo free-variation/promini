@@ -129,10 +129,11 @@ demo_summing_node :-
     format('Demo complete!~n~n').
 
 /*
- * Limiter demo - prevents clipping on loud signals
+ * Compressor demo - prevents clipping on loud signals
+ * Using high ratio for limiter-like behavior
  */
-demo_limiter :-
-    format('~n=== Limiter Demo ===~n~n'),
+demo_compressor :-
+    format('~n=== Compressor Demo ===~n~n'),
 
     % Create a loud synth voice (multiple oscillators summed)
     synth_voice_create(Voice),
@@ -143,7 +144,7 @@ demo_limiter :-
     synth_oscillator_add(Voice, 550.0, 0.0, O5),
     synth_oscillator_add(Voice, 660.0, 0.0, O6),
 
-    % Each oscillator at full volume - will clip without limiter
+    % Each oscillator at full volume - will clip without compressor
     synth_oscillator_set_volume(O1, 1.0),
     synth_oscillator_set_volume(O2, 1.0),
     synth_oscillator_set_volume(O3, 1.0),
@@ -151,47 +152,80 @@ demo_limiter :-
     synth_oscillator_set_volume(O5, 1.0),
     synth_oscillator_set_volume(O6, 1.0),
 
-    format('Playing 6 oscillators at full volume WITHOUT limiter (will clip)...~n'),
+    format('Playing 6 oscillators at full volume WITHOUT compressor (will clip)...~n'),
     synth_voice_start(Voice),
     sleep(3),
     synth_voice_stop(Voice),
 
-    format('~nAttaching limiter (threshold=0.9)...~n'),
-    voice_attach_effect(Voice, limiter, [threshold=0.9], _),
+    format('~nAttaching compressor (threshold=0.9, ratio=20:1 for limiting)...~n'),
+    voice_attach_effect(Voice, compressor, [threshold=0.9, ratio=20.0, knee=0.0], _),
 
-    format('Playing same signal WITH limiter (no clipping)...~n'),
+    format('Playing same signal WITH compressor (no clipping)...~n'),
     synth_voice_start(Voice),
     sleep(3),
     synth_voice_stop(Voice),
 
     synth_voice_unload(Voice),
-    format('~nLimiter demo complete.~n~n').
+    format('~nCompressor demo complete.~n~n').
 
 /*
- * Limiter with adjustable threshold demo
+ * Compressor with adjustable threshold demo
  */
-demo_limiter_threshold :-
-    format('~n=== Limiter Threshold Demo ===~n~n'),
+demo_compressor_threshold :-
+    format('~n=== Compressor Threshold Demo ===~n~n'),
 
     sound_load('audio/counting.wav', Sound),
     sound_loop(Sound),
 
     % Boost the signal with a VCA to make it loud
     sound_attach_effect(Sound, vca, [gain=3.0], _),
-    sound_attach_effect(Sound, limiter, [threshold=1.0], Limiter),
+    sound_attach_effect(Sound, compressor, [threshold=1.0, ratio=10.0], Comp),
 
-    format('Playing boosted signal (3x gain) with limiter at threshold=1.0...~n'),
+    format('Playing boosted signal (3x gain) with compressor at threshold=1.0...~n'),
     sound_start(Sound),
     sleep(3),
 
-    format('Lowering threshold to 0.5 (more limiting)...~n'),
-    effect_set_parameters(Limiter, [threshold=0.5]),
+    format('Lowering threshold to 0.5 (more compression)...~n'),
+    effect_set_parameters(Comp, [threshold=0.5]),
     sleep(3),
 
-    format('Lowering threshold to 0.2 (heavy limiting)...~n'),
-    effect_set_parameters(Limiter, [threshold=0.2]),
+    format('Lowering threshold to 0.2 (heavy compression)...~n'),
+    effect_set_parameters(Comp, [threshold=0.2]),
     sleep(3),
 
     sound_stop(Sound),
     sound_unload(Sound),
     format('~nThreshold demo complete.~n~n').
+
+/*
+ * Compressor ratio demo - shows different compression amounts
+ */
+demo_compressor_ratio :-
+    format('~n=== Compressor Ratio Demo ===~n~n'),
+
+    sound_load('audio/counting.wav', Sound),
+    sound_loop(Sound),
+
+    % Boost the signal
+    sound_attach_effect(Sound, vca, [gain=2.5], _),
+    sound_attach_effect(Sound, compressor, [threshold=0.5, ratio=2.0, knee=6.0], Comp),
+
+    format('Playing with gentle compression (2:1 ratio)...~n'),
+    sound_start(Sound),
+    sleep(3),
+
+    format('Medium compression (4:1 ratio)...~n'),
+    effect_set_parameters(Comp, [ratio=4.0]),
+    sleep(3),
+
+    format('Heavy compression (10:1 ratio)...~n'),
+    effect_set_parameters(Comp, [ratio=10.0]),
+    sleep(3),
+
+    format('Limiting (100:1 ratio)...~n'),
+    effect_set_parameters(Comp, [ratio=100.0]),
+    sleep(3),
+
+    sound_stop(Sound),
+    sound_unload(Sound),
+    format('~nRatio demo complete.~n~n').

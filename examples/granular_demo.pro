@@ -1,0 +1,362 @@
+:- use_module('src/prolog/promini.pro').
+
+/*
+ * Granular Delay Demos
+ *
+ * demo_granular_file    - Granulate guitar.wav with various settings
+ * demo_granular_live    - Granulate live microphone input
+ * demo_granular_texture - Create evolving granular textures
+ * demo_granular_freeze  - Freeze and granulate a moment in time
+ */
+
+demo_granular_file :-
+    format('~n=== Granular Delay Demo (File) ===~n~n'),
+
+    format('Loading guitar.wav...~n'),
+    sound_load('audio/guitar.wav', Sound),
+    sound_loop(Sound),
+
+    format('Creating granular delay (4 second buffer)...~n'),
+    granular_create(4.0, G),
+    granular_connect(G, sound(Sound)),
+    granular_set(G, [recording=true]),
+
+    format('Attaching compressor to tame overlapping grains...~n'),
+    granular_attach_effect(G, compressor, [threshold=0.5, ratio=8.0, knee=6.0], _),
+
+    format('Starting source playback...~n'),
+    sound_start(Sound),
+    sleep(1.0),  % let buffer fill
+
+    format('~n--- Sparse grains (2/sec, 200ms) ---~n'),
+    granular_set(G, [
+        density=2.0,
+        size=200.0,
+        position=0.5,
+        envelope=0.5
+    ]),
+    sleep(10.0),
+
+    format('~n--- Dense cloud (20/sec, 50ms) ---~n'),
+    granular_set(G, [
+        density=20.0,
+        size=50.0,
+        size_spray=20.0,
+        position_spray=0.3
+    ]),
+    sleep(10.0),
+
+    format('~n--- Pitch shifted up (+7 semitones) ---~n'),
+    granular_set(G, [
+        density=10.0,
+        size=100.0,
+        pitch=7.0
+    ]),
+    sleep(10.0),
+
+    format('~n--- Pitch shifted down (-12 semitones) ---~n'),
+    granular_set(G, [pitch=(-12.0)]),
+    sleep(10.0),
+
+    format('~n--- Wide stereo spread ---~n'),
+    granular_set(G, [
+        pitch=0.0,
+        pan_spray=1.0
+    ]),
+    sleep(10.0),
+
+    format('~n--- Reverse grains (50%% probability) ---~n'),
+    granular_set(G, [
+        reverse_probability=0.5,
+        density=8.0,
+        size=150.0
+    ]),
+    sleep(10.0),
+
+    format('~n--- Irregular timing (low regularity) ---~n'),
+    granular_set(G, [
+        regularity=0.2,
+        reverse_probability=0.3
+    ]),
+    sleep(10.0),
+
+    format('~nCleaning up...~n'),
+    sound_stop(Sound),
+    granular_destroy(G),
+    sound_unload(Sound),
+    format('Granular file demo complete.~n~n').
+
+
+demo_granular_live :-
+    format('~n=== Granular Delay Demo (Live Input) ===~n~n'),
+
+    % Find capture device
+    promini_devices(Devices),
+    (   member(device(DeviceName, capture, _), Devices)
+    ->  format('Using capture device: ~w~n', [DeviceName])
+    ;   format('ERROR: No capture device found~n'), fail
+    ),
+
+    format('Starting capture (4 second buffer)...~n'),
+    capture_start(DeviceName, 4.0, Capture, BufferFrames),
+    format('Buffer: ~w frames~n', [BufferFrames]),
+
+    format('Creating granular delay...~n'),
+    granular_create(4.0, G),
+    granular_connect(G, capture(Capture)),
+    granular_set(G, [recording=true]),
+
+    format('Attaching compressor to tame overlapping grains...~n'),
+    granular_attach_effect(G, compressor, [threshold=0.5, ratio=8.0, knee=6.0], _),
+
+    format('~n*** SPEAK OR MAKE SOUNDS INTO MICROPHONE ***~n~n'),
+    sleep(2.0),  % let buffer fill
+
+    format('--- Real-time granulation (low latency) ---~n'),
+    granular_set(G, [
+        density=15.0,
+        size=80.0,
+        position=0.05,  % read very recent audio
+        position_spray=0.02,
+        envelope=0.5,
+        pan_spray=0.5
+    ]),
+    sleep(5.0),
+
+    format('~n--- Delayed granulation (0.5s behind) ---~n'),
+    granular_set(G, [
+        position=0.125,  % ~0.5s into 4s buffer
+        position_spray=0.05
+    ]),
+    sleep(5.0),
+
+    format('~n--- Pitch cloud (+/- random via spray) ---~n'),
+    granular_set(G, [
+        density=12.0,
+        size=60.0,
+        position=0.2,
+        pan_spray=0.8
+    ]),
+    sleep(5.0),
+
+    format('~n--- Glitchy texture (small grains, irregular) ---~n'),
+    granular_set(G, [
+        density=30.0,
+        size=30.0,
+        size_spray=15.0,
+        regularity=0.1,
+        reverse_probability=0.4
+    ]),
+    sleep(5.0),
+
+    format('~nCleaning up...~n'),
+    granular_destroy(G),
+    capture_stop(Capture),
+    format('Granular live demo complete.~n~n').
+
+
+demo_granular_texture :-
+    format('~n=== Granular Texture Demo ===~n~n'),
+
+    format('Loading gong.wav for sustained texture...~n'),
+    sound_load('audio/gong.wav', Sound),
+
+    granular_create(6.0, G),
+    granular_connect(G, sound(Sound)),
+    granular_set(G, [recording=true]),
+    granular_attach_effect(G, compressor, [threshold=0.5, ratio=8.0, knee=6.0], _),
+
+    format('Playing source once to fill buffer...~n'),
+    sound_start(Sound),
+    sleep(3.0),
+    sound_stop(Sound),
+
+    format('Stopping source, granulating buffer only...~n'),
+    granular_set(G, [recording=false]),  % stop recording, freeze buffer
+
+    format('~n--- Shimmering pad texture ---~n'),
+    granular_set(G, [
+        density=25.0,
+        size=120.0,
+        size_spray=40.0,
+        position=0.3,
+        position_spray=0.4,
+        pitch=0.0,
+        envelope=0.5,
+        pan_spray=0.9,
+        regularity=0.6
+    ]),
+    sleep(6.0),
+
+    format('~n--- Slowly scanning through buffer ---~n'),
+    scan_position(G, 0.1, 0.9, 40),
+
+    format('~n--- Octave up texture ---~n'),
+    granular_set(G, [
+        pitch=12.0,
+        density=20.0,
+        size=80.0,
+        position=0.25,
+        position_spray=0.2
+    ]),
+    sleep(5.0),
+
+    format('~n--- Sub-bass drone ---~n'),
+    granular_set(G, [
+        pitch=(-24.0),
+        density=8.0,
+        size=300.0,
+        size_spray=50.0,
+        pan_spray=0.3
+    ]),
+    sleep(5.0),
+
+    format('~nCleaning up...~n'),
+    granular_destroy(G),
+    sound_unload(Sound),
+    format('Granular texture demo complete.~n~n').
+
+
+demo_granular_freeze :-
+    format('~n=== Granular Freeze Demo ===~n~n'),
+
+    format('Loading counting.wav...~n'),
+    sound_load('audio/counting.wav', Sound),
+
+    granular_create(2.0, G),
+    granular_connect(G, sound(Sound)),
+    granular_set(G, [recording=true, density=0.0]),  % recording but no grains yet
+    granular_attach_effect(G, compressor, [threshold=0.5, ratio=8.0, knee=6.0], _),
+
+    format('Playing source...~n'),
+    sound_start(Sound),
+    sleep(1.5),
+
+    format('~n*** FREEZING AUDIO ***~n'),
+    granular_set(G, [recording=false]),  % freeze buffer
+    sound_stop(Sound),
+
+    format('~n--- Granulating frozen moment ---~n'),
+    granular_set(G, [
+        density=15.0,
+        size=100.0,
+        position=0.5,
+        position_spray=0.1,
+        envelope=0.5
+    ]),
+    sleep(4.0),
+
+    format('~n--- Stretching time (long grains) ---~n'),
+    granular_set(G, [
+        density=6.0,
+        size=400.0,
+        size_spray=100.0,
+        position_spray=0.05
+    ]),
+    sleep(5.0),
+
+    format('~n--- Pitch cascade ---~n'),
+    pitch_cascade(G),
+
+    format('~nCleaning up...~n'),
+    granular_destroy(G),
+    sound_unload(Sound),
+    format('Granular freeze demo complete.~n~n').
+
+
+% Helper: gradually scan position through buffer
+scan_position(G, Start, End, Steps) :-
+    Step is (End - Start) / Steps,
+    scan_position_(G, Start, End, Step).
+
+scan_position_(_, Pos, End, Step) :-
+    Step > 0, Pos >= End, !.
+scan_position_(_, Pos, End, Step) :-
+    Step < 0, Pos =< End, !.
+scan_position_(G, Pos, End, Step) :-
+    granular_set(G, [position=Pos]),
+    sleep(0.15),
+    NextPos is Pos + Step,
+    scan_position_(G, NextPos, End, Step).
+
+
+% Helper: cascade through pitches
+pitch_cascade(G) :-
+    format('Pitch: 0 -> +12 -> -12 -> 0~n'),
+    sweep_pitch(G, 0.0, 12.0, 15),
+    sweep_pitch(G, 12.0, -12.0, 30),
+    sweep_pitch(G, -12.0, 0.0, 15).
+
+sweep_pitch(G, Start, End, Steps) :-
+    Step is (End - Start) / Steps,
+    sweep_pitch_(G, Start, End, Step).
+
+sweep_pitch_(_, Pitch, End, Step) :-
+    Step > 0, Pitch >= End, !.
+sweep_pitch_(_, Pitch, End, Step) :-
+    Step < 0, Pitch =< End, !.
+sweep_pitch_(G, Pitch, End, Step) :-
+    granular_set(G, [pitch=Pitch]),
+    sleep(0.12),
+    NextPitch is Pitch + Step,
+    sweep_pitch_(G, NextPitch, End, Step).
+
+
+% Manual trigger demo
+demo_granular_trigger :-
+    format('~n=== Manual Grain Trigger Demo ===~n~n'),
+
+    sound_load('audio/gong.wav', Sound),
+    granular_create(3.0, G),
+    granular_connect(G, sound(Sound)),
+    granular_set(G, [
+        recording=true,
+        density=0.0,  % no automatic triggering
+        size=200.0,
+        envelope=0.5,
+        pan_spray=0.8
+    ]),
+    granular_attach_effect(G, compressor, [threshold=0.5, ratio=8.0, knee=6.0], _),
+
+    format('Recording gong...~n'),
+    sound_start(Sound),
+    sleep(2.0),
+    sound_stop(Sound),
+    granular_set(G, [recording=false]),
+
+    format('~n--- Triggering grains manually ---~n'),
+    format('Single grains:~n'),
+    trigger_with_delay(G, 0.3, 5),
+
+    format('~nBurst of grains:~n'),
+    forall(between(1, 20, _), granular_trigger(G)),
+    sleep(1.0),
+
+    format('~nRhythmic pattern:~n'),
+    rhythmic_triggers(G, 16),
+
+    format('~nCleaning up...~n'),
+    granular_destroy(G),
+    sound_unload(Sound),
+    format('Manual trigger demo complete.~n~n').
+
+
+trigger_with_delay(_, _, 0) :- !.
+trigger_with_delay(G, Delay, N) :-
+    N > 0,
+    granular_trigger(G),
+    sleep(Delay),
+    N1 is N - 1,
+    trigger_with_delay(G, Delay, N1).
+
+
+rhythmic_triggers(_, 0) :- !.
+rhythmic_triggers(G, N) :-
+    N > 0,
+    granular_trigger(G),
+    (   0 is N mod 4
+    ->  sleep(0.3)  % longer pause every 4th
+    ;   sleep(0.15)
+    ),
+    N1 is N - 1,
+    rhythmic_triggers(G, N1).

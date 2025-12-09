@@ -21,6 +21,8 @@ install_t install(void)
     mixer_register_predicates();
     image_register_predicates();
     control_register_predicates();
+    capture_register_predicates();
+    granular_register_predicates();
 }
 
 /*
@@ -36,5 +38,7 @@ install_t uninstall(void)
 	uninstall_mod();
 	uninstall_synth();
 	uninstall_effects();
+	uninstall_granular();
+	uninstall_capture();
 	uninstall_promini();
 }

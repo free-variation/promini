@@ -274,54 +274,75 @@ test(effects_query_vca, [nondet]) :-
     abs(Gain - 0.75) < 0.001,
     sound_unload(Sound).
 
-% Limiter effect tests
+% Compressor effect tests
 
-test(sound_attach_limiter, [nondet]) :-
+test(sound_attach_compressor, [nondet]) :-
     sound_load('audio/counting.wav', Sound),
-    sound_attach_effect(Sound, limiter, [threshold=0.8], Effect),
+    sound_attach_effect(Sound, compressor, [threshold=0.8], Effect),
     Effect = effect(sound(Sound), _),
     sound_unload(Sound).
 
-test(sound_attach_limiter_defaults, [nondet]) :-
+test(sound_attach_compressor_defaults, [nondet]) :-
     sound_load('audio/counting.wav', Sound),
-    sound_attach_effect(Sound, limiter, [], Effect),
+    sound_attach_effect(Sound, compressor, [], Effect),
     Effect = effect(sound(Sound), _),
-    effects(sound(Sound), [effect(sound(Sound), limiter, _, Params)]),
-    memberchk(threshold=Threshold, Params),
-    abs(Threshold - 1.0) < 0.001,
-    memberchk(attack_ms=Attack, Params),
-    abs(Attack - 0.1) < 0.01,
-    memberchk(release_ms=Release, Params),
-    abs(Release - 100.0) < 1.0,
-    sound_unload(Sound).
-
-test(voice_attach_limiter, [nondet, cleanup(synth_voice_unload(Voice))]) :-
-    synth_voice_create(Voice),
-    synth_oscillator_add(Voice, 440.0, 0.0, _),
-    voice_attach_effect(Voice, limiter, [threshold=0.5, attack_ms=0.5, release_ms=50.0], Effect),
-    Effect = effect(voice(Voice), _).
-
-test(limiter_set_parameters, [nondet]) :-
-    sound_load('audio/counting.wav', Sound),
-    sound_attach_effect(Sound, limiter, [threshold=1.0], Effect),
-    effect_set_parameters(Effect, [threshold=0.5, release_ms=200.0]),
-    effects(sound(Sound), [effect(sound(Sound), limiter, _, Params)]),
+    effects(sound(Sound), [effect(sound(Sound), compressor, _, Params)]),
     memberchk(threshold=Threshold, Params),
     abs(Threshold - 0.5) < 0.001,
+    memberchk(ratio=Ratio, Params),
+    abs(Ratio - 4.0) < 0.01,
+    memberchk(knee=Knee, Params),
+    abs(Knee - 6.0) < 0.01,
+    memberchk(attack_ms=Attack, Params),
+    abs(Attack - 5.0) < 0.1,
+    memberchk(release_ms=Release, Params),
+    abs(Release - 100.0) < 1.0,
+    memberchk(makeup_gain=Makeup, Params),
+    abs(Makeup - 1.0) < 0.001,
+    sound_unload(Sound).
+
+test(voice_attach_compressor, [nondet, cleanup(synth_voice_unload(Voice))]) :-
+    synth_voice_create(Voice),
+    synth_oscillator_add(Voice, 440.0, 0.0, _),
+    voice_attach_effect(Voice, compressor, [threshold=0.5, ratio=8.0, attack_ms=0.5, release_ms=50.0], Effect),
+    Effect = effect(voice(Voice), _).
+
+test(compressor_set_parameters, [nondet]) :-
+    sound_load('audio/counting.wav', Sound),
+    sound_attach_effect(Sound, compressor, [threshold=1.0], Effect),
+    effect_set_parameters(Effect, [threshold=0.5, ratio=10.0, release_ms=200.0]),
+    effects(sound(Sound), [effect(sound(Sound), compressor, _, Params)]),
+    memberchk(threshold=Threshold, Params),
+    abs(Threshold - 0.5) < 0.001,
+    memberchk(ratio=Ratio, Params),
+    abs(Ratio - 10.0) < 0.01,
     memberchk(release_ms=Release, Params),
     abs(Release - 200.0) < 1.0,
     sound_unload(Sound).
 
-test(effects_query_limiter, [nondet]) :-
+test(effects_query_compressor, [nondet]) :-
     sound_load('audio/counting.wav', Sound),
-    sound_attach_effect(Sound, limiter, [threshold=0.75, attack_ms=0.2, release_ms=150.0], _),
-    effects(sound(Sound), [effect(sound(Sound), limiter, _, Params)]),
+    sound_attach_effect(Sound, compressor, [threshold=0.75, ratio=6.0, knee=3.0, attack_ms=0.2, release_ms=150.0, makeup_gain=1.5], _),
+    effects(sound(Sound), [effect(sound(Sound), compressor, _, Params)]),
     memberchk(threshold=Threshold, Params),
+    memberchk(ratio=Ratio, Params),
+    memberchk(knee=Knee, Params),
     memberchk(attack_ms=Attack, Params),
     memberchk(release_ms=Release, Params),
+    memberchk(makeup_gain=Makeup, Params),
     abs(Threshold - 0.75) < 0.001,
+    abs(Ratio - 6.0) < 0.01,
+    abs(Knee - 3.0) < 0.01,
     abs(Attack - 0.2) < 0.01,
     abs(Release - 150.0) < 1.0,
+    abs(Makeup - 1.5) < 0.001,
+    sound_unload(Sound).
+
+test(compressor_as_limiter, [nondet]) :-
+    % High ratio acts as limiter
+    sound_load('audio/counting.wav', Sound),
+    sound_attach_effect(Sound, compressor, [threshold=0.9, ratio=100.0, knee=0.0], Effect),
+    Effect = effect(sound(Sound), _),
     sound_unload(Sound).
 
 :- end_tests(effects).

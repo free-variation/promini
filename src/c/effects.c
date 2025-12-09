@@ -2368,74 +2368,117 @@ static foreign_t set_vca_parameters(vca_node_t* vca, term_t params_list)
 }
 
 /******************************************************************************
- * LIMITER
+ * COMPRESSOR (with look-ahead)
  *****************************************************************************/
 
-/* 
- * limiter_process_pcm_frames()
- * Soft limiter with envelope follower for smooth gain reduction.
+#define COMPRESSOR_DEFAULT_LOOKAHEAD_MS 5.0f
+
+/*
+ * compute_compressor_gain()
+ * Calculate the gain reduction for a given input level.
+ * Uses soft knee if knee > 0
  */
-static void limiter_process_pcm_frames(
+static float compute_compressor_gain(compressor_node_t* comp, float input_level)
+{
+	float input_db;
+	float threshold_db;
+	float output_db;
+	float knee_start;
+	float knee_end;
+	float slope;
+
+	input_db = AMP_TO_DB(input_level);
+	threshold_db = AMP_TO_DB(comp->threshold);
+	slope = 1.0f - 1.0f / comp->ratio;
+
+	if (comp->knee <= 0.0f) {
+		/* hard knee */
+		if (input_db <= threshold_db) {
+			return 1.0f;
+		}
+		output_db = threshold_db + (input_db - threshold_db) / comp->ratio;
+	} else {
+		/* soft knee */
+		knee_start = threshold_db - comp->knee / 2.0f;
+		knee_end = threshold_db + comp->knee / 2.0f;
+
+		if (input_db <= knee_start) {
+			return 1.0f;
+		} else if (input_db >= knee_end) {
+			output_db = threshold_db + (input_db - threshold_db) / comp->ratio;
+		} else {
+			/* quadratic interpolation in knee region */
+			output_db = input_db - slope * (input_db - knee_start) * (input_db - knee_start) / (2.0f * comp->knee);
+		}
+	}
+
+	return DB_TO_AMP(output_db - input_db);
+}
+
+/*
+ * compressor_process_pcm_frames()
+ * Look-ahead compressor with ratio control.
+ */
+static void compressor_process_pcm_frames(
 		ma_node* node,
 		const float** frames_in,
 		ma_uint32* frame_count_in,
 		float** frames_out,
 		ma_uint32* frame_count_out)
 {
-	limiter_node_t* limiter;
-  	ma_uint32 channels;
-  	ma_uint32 frame_count;
-  	const float* input;
-  	float* output;
-  	ma_uint32 i, c;
-  	float envelope;
-	float peak, gain, abs_sample;
 
-	limiter = (limiter_node_t*)node;
-	channels = ma_node_get_output_channels(node, 0);
-	frame_count = *frame_count_out;
-	input = frames_in[0];
-	output = frames_out[0];
+	compressor_node_t* comp = (compressor_node_t*)node;
+	const float* input = frames_in[0];
+	float* output = frames_out[0];
+	ma_uint32 frame_count = *frame_count_in;
+	ma_uint32 channels = ma_node_get_output_channels(node, 0);
+	ma_uint32 delay_size = comp->delay_frames * channels;
+	ma_uint32 i, j, c;
+	float peak, gain, sample;
+	ma_uint32 lookahead_pos;
 
-	envelope = limiter->envelope;
 	for (i = 0; i < frame_count; i++) {
-		/* find peak across all channels for this frame */
-		peak = 0.0f;
+		/* write input to delay buffer */
 		for (c = 0; c < channels; c++) {
-			abs_sample = fabsf(input[i * channels + c]);
-			if (abs_sample > peak) {
-				peak = abs_sample;
+			comp->delay_buffer[comp->delay_pos + c] = input[i * channels + c];
+		}
+
+		/* advance write position, now pointing to oldest sample (next output) */
+		comp->delay_pos = (comp->delay_pos + channels) % delay_size;
+
+
+		/* scan look-ahead window for peak */
+		peak = 0.0f;
+		for (j = 0; j < comp->delay_frames; j++) {
+			lookahead_pos = (comp->delay_pos + j * channels) % delay_size;
+			for (c = 0; c < channels; c++) {
+				sample = fabsf(comp->delay_buffer[lookahead_pos + c]);
+				if (sample > peak) peak = sample;
 			}
 		}
 
 		/* envelope follower: fast attack, slow release */
-		if (peak > envelope) {
-			envelope += limiter->attack_coeff * (peak - envelope);
+		if (peak > comp->envelope) {
+			comp->envelope += comp->attack_coeff * (peak - comp->envelope);
 		} else {
-			envelope += limiter->release_coeff * (peak - envelope);
+			comp->envelope += comp->release_coeff * (peak - comp->envelope);
 		}
 
-		/* compute gain reduction */
-		if (envelope > limiter->threshold) {
-			gain = limiter->threshold / envelope;
-		} else {
-			gain = 1.0f;
-		}
+		/* compute and apply gain */
+		gain = compute_compressor_gain(comp, comp->envelope);
+		gain *= comp->makeup_gain;
 
-		/* apply gain to all channels */
+		/* output the delayed frame with gain applied */
 		for (c = 0; c < channels; c++) {
-			output[i * channels + c] = input[i * channels + c] * gain;
+			output[i * channels + c] = comp->delay_buffer[comp->delay_pos + c] * gain;
 		}
 	}
 
-	limiter->envelope = envelope;
-
-	*frame_count_in = frame_count;
 	*frame_count_out = frame_count;
 }
 
-static ma_node_vtable limiter_vtable = {
-	limiter_process_pcm_frames,
+static ma_node_vtable compressor_vtable = {
+	compressor_process_pcm_frames,
 	NULL,
 	1,  /* 1 input bus */
 	1,  /* 1 output bus */
@@ -2443,78 +2486,108 @@ static ma_node_vtable limiter_vtable = {
 };
 
 /*
- * init_limiter_node()
- * Initialize a limiter effect node.
+ * init_compressor_node()
+ * Initialize a compressor effect node with look-ahead buffer.
  */
-static ma_result init_limiter_node(limiter_node_t* node, float threshold, float attack_ms, float release_ms)
+static ma_result init_compressor_node(
+		compressor_node_t* node, 
+		float threshold, float ratio, float knee, 
+		float attack_ms, float release_ms,
+		float makeup_gain,
+		float lookahead_ms)
 {
 	ma_result result;
 	ma_uint32 sample_rate;
+	ma_uint32 channels;
 
-	result = init_effect_node_base(&node->base, &limiter_vtable);
+	result = init_effect_node_base(&node->base, &compressor_vtable);
 	if (result != MA_SUCCESS) {
 		return result;
 	}
 
-	sample_rate = ma_engine_get_sample_rate(g_engine);
+	get_engine_format_info(NULL, &channels, &sample_rate);
 
 	node->threshold = threshold;
+	node->ratio = ratio;
+	node->knee = knee;
 	node->attack_coeff = 1.0f - expf(-1.0f / (attack_ms * sample_rate / 1000.0f));
 	node->release_coeff = 1.0f - expf(-1.0f / (release_ms * sample_rate / 1000.0f));
+	node->makeup_gain = makeup_gain;
 	node->envelope = 0.0f;
+	node->delay_frames = (ma_uint32)(lookahead_ms * sample_rate / 1000.0f);
+	node->delay_pos = 0;
+
+	node->delay_buffer = (float*)calloc(node->delay_frames * channels, sizeof(float));
+	if (!node->delay_buffer) {
+		ma_node_uninit(&node->base, NULL);
+		return MA_OUT_OF_MEMORY;
+	}
 
 	return MA_SUCCESS;
 }
 
+
 /*
- * attach_limiter_effect()
- * Create and attach a limiter effect to the given source node.
+ * attach_compressor_effect()
+ * Create and attach a compressor effect to the given source node.
  */
-static ma_result attach_limiter_effect(term_t params, ma_node* source_node, effect_node_t** effect_chain, ma_node_base** out_effect_node)
+static ma_result attach_compressor_effect(term_t params, ma_node* source_node, effect_node_t** effect_chain, ma_node_base** out_effect_node)
 {
-	float threshold;
-	float attack_ms;
-	float release_ms;
-	limiter_node_t* limiter;
+	float threshold, ratio, knee;
+	float attack_ms, release_ms;
+	float makeup_gain, lookahead_ms;
+	compressor_node_t* comp;
 	ma_result result;
 
 	if (!get_param_float(params, "threshold", &threshold)) {
-		threshold = 1.0f;
+		threshold = 0.5f;
+	}
+	if (!get_param_float(params, "ratio", &ratio)) {
+		ratio = 4.0f;
+	}
+	if (!get_param_float(params, "knee", &knee)) {
+		knee = 6.0f;
 	}
 	if (!get_param_float(params, "attack_ms", &attack_ms)) {
-		attack_ms = 0.1f;
+		attack_ms = 5.0f;
 	}
 	if (!get_param_float(params, "release_ms", &release_ms)) {
 		release_ms = 100.0f;
 	}
+	if (!get_param_float(params, "makeup_gain", &makeup_gain)) {
+		makeup_gain = 1.0f;
+	}
+	if (!get_param_float(params, "lookahead_ms", &lookahead_ms)) {
+		lookahead_ms = COMPRESSOR_DEFAULT_LOOKAHEAD_MS;
+	}
 
-	limiter = (limiter_node_t*)malloc(sizeof(limiter_node_t));
-	if (!limiter) {
+	comp = (compressor_node_t*)malloc(sizeof(compressor_node_t));
+	if (!comp) {
 		return MA_OUT_OF_MEMORY;
 	}
 
-	result = init_limiter_node(limiter, threshold, attack_ms, release_ms);
+	result = init_compressor_node(comp, threshold, ratio, knee, attack_ms, release_ms, makeup_gain, lookahead_ms);
 	if (result != MA_SUCCESS) {
-		free(limiter);
+		free(comp);
 		return result;
 	}
 
-	result = attach_effect_node(source_node, effect_chain, &limiter->base, EFFECT_LIMITER);
+	result = attach_effect_node(source_node, effect_chain, &comp->base, EFFECT_COMPRESSOR);
 	if (result != MA_SUCCESS) {
-		ma_node_uninit(&limiter->base, NULL);
-		free(limiter);
+		ma_node_uninit(&comp->base, NULL);
+		free(comp);
 		return result;
 	}
 
-	*out_effect_node = &limiter->base;
+	*out_effect_node = &comp->base;
 	return MA_SUCCESS;
 }
 
 /*
- * query_limiter_params()
- * Build parameter list for limiter effect.
+ * query_compressor_params()
+ * Build parameter list for compressor effect.
  */
-static int query_limiter_params(limiter_node_t* limiter, term_t params_list)
+static int query_compressor_params(compressor_node_t* comp, term_t params_list)
 {
 	term_t param_args = PL_new_term_refs(2);
 	functor_t eq_functor = PL_new_functor(PL_new_atom("="), 2);
@@ -2522,11 +2595,33 @@ static int query_limiter_params(limiter_node_t* limiter, term_t params_list)
 	ma_uint32 sample_rate = ma_engine_get_sample_rate(g_engine);
 	float attack_ms, release_ms;
 
-	attack_ms = -1000.0f / (sample_rate * logf(1.0f - limiter->attack_coeff));
-	release_ms = -1000.0f / (sample_rate * logf(1.0f - limiter->release_coeff));
+	attack_ms = -1000.0f / (sample_rate * logf(1.0f - comp->attack_coeff));
+	release_ms = -1000.0f / (sample_rate * logf(1.0f - comp->release_coeff));
 
 	PL_put_atom_chars(param_args+0, "threshold");
-	if (!PL_put_float(param_args+1, limiter->threshold)) {
+	if (!PL_put_float(param_args+1, comp->threshold)) {
+		return FALSE;
+	}
+	if (!PL_cons_functor_v(param_term, eq_functor, param_args)) {
+		return FALSE;
+	}
+	if (!PL_cons_list(params_list, param_term, params_list)) {
+		return FALSE;
+	}
+
+	PL_put_atom_chars(param_args+0, "ratio");
+	if (!PL_put_float(param_args+1, comp->ratio)) {
+		return FALSE;
+	}
+	if (!PL_cons_functor_v(param_term, eq_functor, param_args)) {
+		return FALSE;
+	}
+	if (!PL_cons_list(params_list, param_term, params_list)) {
+		return FALSE;
+	}
+
+	PL_put_atom_chars(param_args+0, "knee");
+	if (!PL_put_float(param_args+1, comp->knee)) {
 		return FALSE;
 	}
 	if (!PL_cons_functor_v(param_term, eq_functor, param_args)) {
@@ -2558,14 +2653,25 @@ static int query_limiter_params(limiter_node_t* limiter, term_t params_list)
 		return FALSE;
 	}
 
+	PL_put_atom_chars(param_args+0, "makeup_gain");
+	if (!PL_put_float(param_args+1, comp->makeup_gain)) {
+		return FALSE;
+	}
+	if (!PL_cons_functor_v(param_term, eq_functor, param_args)) {
+		return FALSE;
+	}
+	if (!PL_cons_list(params_list, param_term, params_list)) {
+		return FALSE;
+	}
+
 	return TRUE;
 }
 
 /*
- * set_limiter_parameters()
- * Set parameters for limiter effect from Prolog term list.
+ * set_compressor_parameters()
+ * Set parameters for compressor effect from Prolog term list.
  */
-static foreign_t set_limiter_parameters(limiter_node_t* limiter, term_t params_list)
+static foreign_t set_compressor_parameters(compressor_node_t* comp, term_t params_list)
 {
 	term_t list = PL_copy_term_ref(params_list);
 	term_t head = PL_new_term_ref();
@@ -2596,19 +2702,34 @@ static foreign_t set_limiter_parameters(limiter_node_t* limiter, term_t params_l
 			if (!PL_get_float(value_term, &val)) {
 				return PL_type_error("float", value_term);
 			}
-			limiter->threshold = (float)val;
+			comp->threshold = (float)val;
+		} else if (strcmp(param_name, "ratio") == 0) {
+			if (!PL_get_float(value_term, &val)) {
+				return PL_type_error("float", value_term);
+			}
+			comp->ratio = (float)val;
+		} else if (strcmp(param_name, "knee") == 0) {
+			if (!PL_get_float(value_term, &val)) {
+				return PL_type_error("float", value_term);
+			}
+			comp->knee = (float)val;
 		} else if (strcmp(param_name, "attack_ms") == 0) {
 			if (!PL_get_float(value_term, &val)) {
 				return PL_type_error("float", value_term);
 			}
-			limiter->attack_coeff = 1.0f - expf(-1.0f / ((float)val * sample_rate / 1000.0f));
+			comp->attack_coeff = 1.0f - expf(-1.0f / ((float)val * sample_rate / 1000.0f));
 		} else if (strcmp(param_name, "release_ms") == 0) {
 			if (!PL_get_float(value_term, &val)) {
 				return PL_type_error("float", value_term);
 			}
-			limiter->release_coeff = 1.0f - expf(-1.0f / ((float)val * sample_rate / 1000.0f));
+			comp->release_coeff = 1.0f - expf(-1.0f / ((float)val * sample_rate / 1000.0f));
+		} else if (strcmp(param_name, "makeup_gain") == 0) {
+			if (!PL_get_float(value_term, &val)) {
+				return PL_type_error("float", value_term);
+			}
+			comp->makeup_gain = (float)val;
 		} else {
-			return PL_domain_error("limiter_parameter", key_term);
+			return PL_domain_error("compressor_parameter", key_term);
 		}
 	}
 
@@ -2980,8 +3101,8 @@ static foreign_t attach_effect_to_node(ma_sound* sound, effect_node_t** effect_c
 		result = attach_moog_effect(params, (ma_node*)sound, effect_chain, &effect_node);
 	} else if (strcmp(type_str, "vca") == 0) {
 		result = attach_vca_effect(params, (ma_node*)sound, effect_chain, &effect_node);
-	} else if (strcmp(type_str, "limiter") == 0) {
-		result = attach_limiter_effect(params, (ma_node*)sound, effect_chain, &effect_node);
+	} else if (strcmp(type_str, "compressor") == 0) {
+		result = attach_compressor_effect(params, (ma_node*)sound, effect_chain, &effect_node);
 	} else {
 		return PL_domain_error("effect_type", effect_type);
 	}
@@ -3037,6 +3158,14 @@ static foreign_t pl_image_synth_attach_effect(term_t handle, term_t effect_type,
 	return attach_effect_to_node((ma_sound*)&g_image_synths[slot].base, &g_image_synths[slot].effect_chain, "image_synth", slot, effect_type, params, effect_handle);
 }
 
+static foreign_t pl_granular_attach_effect(term_t handle, term_t effect_type, term_t params, term_t effect_handle)
+{
+	int slot;
+	if (!PL_get_integer(handle, &slot) || slot < 0 || slot >= MAX_GRANULAR_DELAYS || !g_granular_delays[slot].in_use)
+		return PL_existence_error("granular", handle);
+	return attach_effect_to_node((ma_sound*)&g_granular_delays[slot].base, &g_granular_delays[slot].effect_chain, "granular", slot, effect_type, params, effect_handle);
+}
+
 /*
  * pl_effects()
  * Query all effects attached to a sound or voice.
@@ -3080,8 +3209,14 @@ static foreign_t pl_effects(term_t source_handle, term_t effects_list)
 		}
 		effect_chain = g_summing_nodes[slot].effect_chain;
 		source_type = "summing_node";
+	} else if (f == PL_new_functor(PL_new_atom("granular"), 1)) {
+		if (slot < 0 || slot >= MAX_GRANULAR_DELAYS || !g_granular_delays[slot].in_use) {
+			return PL_existence_error("granular", source_handle);
+		}
+		effect_chain = g_granular_delays[slot].effect_chain;
+		source_type = "granular";
 	} else {
-		return PL_type_error("sound_or_voice_or_summing_node", source_handle);
+		return PL_type_error("sound_or_voice_or_summing_node_or_granular", source_handle);
 	}
 
 	for (effect = effect_chain; effect != NULL; effect = effect->next) {
@@ -3152,9 +3287,9 @@ static foreign_t pl_effects(term_t source_handle, term_t effects_list)
 					type_str = "vca";
 					query_result = query_vca_params((vca_node_t*)effect->effect_node, params_list);
 					break;
-				case EFFECT_LIMITER:
-					type_str = "limiter";
-					query_result = query_limiter_params((limiter_node_t*)effect->effect_node, params_list);
+				case EFFECT_COMPRESSOR:
+					type_str = "compressor";
+					query_result = query_compressor_params((compressor_node_t*)effect->effect_node, params_list);
 					break;
 				default:
 					type_str = "unknown";
@@ -3259,8 +3394,8 @@ static foreign_t pl_effect_set_parameters(term_t effect_handle, term_t params_li
 			return set_moog_parameters((moog_node_t*)node->effect_node, params_list);
 		case EFFECT_VCA:
 			return set_vca_parameters((vca_node_t*)node->effect_node, params_list);
-		case EFFECT_LIMITER:
-			return set_limiter_parameters((limiter_node_t*)node->effect_node, params_list);
+		case EFFECT_COMPRESSOR:
+			return set_compressor_parameters((compressor_node_t*)node->effect_node, params_list);
 		default:
 			return PL_domain_error("effect_type", effect_handle);
 	}
@@ -3295,6 +3430,11 @@ static foreign_t pl_effect_detach(term_t effect_handle)
 				}
 			} else if (node->type == EFFECT_REVERB) {
 				free_reverb_node((reverb_node_t*)node->effect_node);
+			} else if (node->type == EFFECT_COMPRESSOR) {
+				compressor_node_t* comp = (compressor_node_t*)node->effect_node;
+				if (comp->delay_buffer) {
+					free(comp->delay_buffer);
+				}
 			}
 			ma_node_uninit(node->effect_node, NULL);
 			free(node->effect_node);
@@ -3340,6 +3480,7 @@ install_t effects_register_predicates(void)
 	PL_register_foreign("voice_attach_effect", 4, pl_voice_attach_effect, 0);
 	PL_register_foreign("summing_node_attach_effect", 4, pl_summing_node_attach_effect, 0);
 	PL_register_foreign("image_synth_attach_effect", 4, pl_image_synth_attach_effect, 0);
+	PL_register_foreign("granular_attach_effect", 4, pl_granular_attach_effect, 0);
 	PL_register_foreign("effects", 2, pl_effects, 0);
 	PL_register_foreign("effect_set_parameters", 2, pl_effect_set_parameters, 0);
 	PL_register_foreign("effect_detach", 1, pl_effect_detach, 0);

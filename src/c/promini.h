@@ -38,6 +38,11 @@ extern foreign_t pl_promini_init(void);
     } while(0)
 
 /*
+ * Utility macro to clamp a value to a range
+ */
+#define CLAMP(val, min, max) ((val) < (min) ? (min) : ((val) > (max) ? (max) : (val)))
+
+/*
  * Thread safety - mutexes for protecting global state
  */
 extern pthread_mutex_t g_sounds_mutex;
@@ -71,7 +76,7 @@ typedef enum {
 	EFFECT_PAN,
 	EFFECT_VCA,
 	EFFECT_MOOG,
-	EFFECT_LIMITER
+	EFFECT_COMPRESSOR
 } effect_type_t;
 
 /* Effect chain node */
@@ -102,10 +107,13 @@ typedef struct {
 #define MAX_CAPTURE_DEVICES 8
 
 typedef struct {
+	ma_node_base node;
 	ma_device device;
 	ring_buffer_t buffer;
 	ma_bool32 in_use;
 } capture_slot_t;
+
+extern capture_slot_t g_capture_devices[MAX_CAPTURE_DEVICES];
 
 /*
  * Synth voice management
@@ -342,14 +350,23 @@ typedef struct {
 	float drive;
 } moog_node_t;
 
-/* Limiter effect node */
+#define AMP_TO_DB(amp) (20.0f * log10f((amp) + 1e-10f))
+#define DB_TO_AMP(db)  (powf(10.0f, (db) / 20.0f))
+
+/* Compressor effect node (with look-ahead) */
 typedef struct {
 	ma_node_base base;
-	float threshold; 		/* ceiling level (0.0 - 1.0, default 1.0) */
-	float attack_coeff; 	/* envelope follower attack coefficient */
-	float release_coeff; 	/* envelope follower release coefficient */
+	float threshold;		/* level where compression starts (0.0 - 1.0) */
+	float ratio;			/* compression ratio (1.0 = none, INFINITY = limiter) */
+	float knee;				/* soft knee width in dB (0.0 = hard knee) */
+	float attack_coeff;		/* envelope follower attack coefficient */
+	float release_coeff;	/* envelope follower release coefficient */
+	float makeup_gain;		/* output gain compensation */
 	float envelope;			/* current envelope level */
-} limiter_node_t;
+	float* delay_buffer;	/* look-ahead delay buffer */
+	ma_uint32 delay_frames;	/* look-ahead delay in frames */
+	ma_uint32 delay_pos;	/* current write position in delay buffer */
+} compressor_node_t;
 
 /*
  * Modulation system
@@ -492,12 +509,72 @@ typedef struct {
 
 extern pthread_mutex_t g_image_synths_mutex;
 
+/*
+ * Granular delay
+ */
+#define MAX_GRANULAR_DELAYS 16
+#define MAX_GRAINS 128
+#define MAX_MODE_INTERVAL 24
+
+
+typedef enum {
+	GRAIN_SOURCE_RING_BUFFER,
+	GRAIN_SOURCE_DATA_BUFFER
+} grain_source_type_t;
+
+typedef struct {
+	grain_source_type_t source_type;
+	int source_index;
+	ma_uint64 position;
+	ma_uint64 size;
+	float cursor;
+	float pitch_ratio;
+	float envelope;
+	float pan;
+	float envelope_phase;
+	int direction;
+	ma_bool32 active;
+} grain_t;
+
+typedef struct {
+	ma_node_base base;
+	ma_bool32 in_use;
+	effect_node_t* effect_chain;
+
+	ring_buffer_t buffer;
+	ma_bool32 recording;
+
+	grain_t grains[MAX_GRAINS];
+
+	float density;
+	float regularity;
+	float position;
+	float position_spray;
+	float size_ms;
+	float size_spray;
+	float reverse_probability;
+	float pitch;
+	float envelope;
+	float pan;
+	float pan_spray;
+
+	float mode[MAX_MODE_INTERVAL];
+	int mode_length;
+	int deviation_up;
+	int deviation_down;
+
+	float density_accumulator;
+} granular_delay_t;
+
+
 /* Shared arrays */
 extern sound_slot_t g_sounds[MAX_SOUNDS];
 extern synth_voice_t g_voices[MAX_VOICES];
 extern synth_oscillator_t g_oscillators[MAX_OSCILLATORS];
 extern image_slot_t g_images[MAX_IMAGES];
 extern image_synth_node_t g_image_synths[MAX_IMAGE_SYNTHS];
+extern granular_delay_t g_granular_delays[MAX_GRANULAR_DELAYS];
+extern pthread_mutex_t g_granular_mutex;
 
 /* Helper functions (implemented in promini.c) */
 extern void get_engine_format_info(ma_format* format, ma_uint32* channels, ma_uint32* sampleRate);
@@ -516,7 +593,7 @@ extern ma_result ring_buffer_init(ring_buffer_t *rb, ma_uint64 capacity_frames, 
 extern void ring_buffer_free(ring_buffer_t *rb);
 extern void ring_buffer_write(ring_buffer_t *rb, const void *input, ma_uint32 frame_count);
 extern void ring_buffer_read(ring_buffer_t *rb, void *output, ma_uint64 delay_frames, ma_uint32 frame_count);
-
+extern float ring_buffer_read_interpolated(ring_buffer_t* rb, float position, ma_uint32 channel);
 /* Effect functions (implemented in effects.c) */
 extern ma_node* get_effect_chain_tail(effect_node_t* chain);
 extern ma_result attach_effect_node(ma_node* source_node, effect_node_t** effect_chain, ma_node_base* effect_node, effect_type_t type);
@@ -530,6 +607,13 @@ extern void free_reverb_node(reverb_node_t* reverb);
 extern int get_axis_from_atom(atom_t atom_term, SDL_GamepadAxis* axis);
 extern SDL_Gamepad *get_gamepad_ptr(term_t gamepad_term);
 
+/* Capture functions (implemented in capture.c) */
+extern capture_slot_t *get_capture_device(int index);
+
+/* Data buffer creation (implemented in promini.c) */
+extern int create_data_buffer_from_pcm(void *pData, ma_format format, ma_uint32 channels,
+                                       ma_uint64 frame_count, ma_uint32 sample_rate);
+
 /* Module registration functions */
 extern install_t promini_register_predicates(void);
 extern install_t synth_register_predicates(void);
@@ -537,6 +621,8 @@ extern install_t effects_register_predicates(void);
 extern install_t mixer_register_predicates(void);
 extern install_t image_register_predicates(void);
 extern install_t control_register_predicates(void);
+extern install_t granular_register_predicates(void);
+extern install_t capture_register_predicates(void);
 
 /* Module cleanup functions */
 extern install_t uninstall_promini(void);
@@ -545,5 +631,6 @@ extern install_t uninstall_effects(void);
 extern install_t uninstall_mixer(void);
 extern install_t uninstall_image(void);
 extern install_t uninstall_control(void);
-
+extern install_t uninstall_granular(void);
+extern install_t uninstall_capture(void);
 #endif /* PROMINI_H */
