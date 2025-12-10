@@ -21,7 +21,7 @@ test(devices, [nondet]) :-
 
 test(data_load, [nondet]) :-
     audio_load('audio/counting.wav', Handle),
-    integer(Handle),
+    Handle = audio(_),
     audio_unload(Handle).
 
 test(data_info, [nondet]) :-
@@ -40,19 +40,19 @@ test(data_info, [nondet]) :-
 test(data_reverse, [nondet]) :-
     audio_load('audio/counting.wav', Handle),
     audio_reverse(Handle, Reversed),
-    integer(Reversed),
+    Reversed = audio(_),
     audio_unload(Handle),
     audio_unload(Reversed).
 
 test(data_load_reversed, [nondet]) :-
     audio_load_reversed('audio/counting.wav', Handle),
-    integer(Handle),
+    Handle = audio(_),
     audio_unload(Handle).
 
 test(data_extract, [nondet]) :-
     audio_load('audio/counting.wav', Handle),
     audio_extract(Handle, 0, 1000, Extracted),
-    integer(Extracted),
+    Extracted = audio(_),
     audio_unload(Handle),
     audio_unload(Extracted).
 

@@ -1,4 +1,8 @@
 /*
+		output[i4dd * cannels] *= g->gain_normalization;
+		if (channels > 1) {
+			output[i * channels + 1] *= g->gain_normalization;
+		}		
  * promini.c - Prolog interface to miniaudio (engine API)
  * Copyright (c) 2025 John Stewart
  * Licensed under MIT License
@@ -40,12 +44,22 @@
 
 /*
  * Macro to validate handle and get data buffer pointer
+ * Accepts audio(Handle) term
  */
 #define GET_DATA_BUFFER_FROM_HANDLE(handle_term, buffer_var) \
     do { \
         int _slot; \
-        if (!PL_get_integer(handle_term, &_slot)) { \
-            return PL_type_error("integer", handle_term); \
+        atom_t _name; \
+        size_t _arity; \
+        term_t _arg; \
+        if (!PL_get_name_arity(handle_term, &_name, &_arity) || \
+            _arity != 1 || \
+            strcmp(PL_atom_chars(_name), "audio") != 0) { \
+            return PL_type_error("audio(Handle)", handle_term); \
+        } \
+        _arg = PL_new_term_ref(); \
+        if (!PL_get_arg(1, handle_term, _arg) || !PL_get_integer(_arg, &_slot)) { \
+            return PL_type_error("audio(Handle)", handle_term); \
         } \
         buffer_var = get_data_buffer(_slot); \
         if (buffer_var == NULL) { \
@@ -56,17 +70,40 @@
 /*
  * Macro to validate handle and get data buffer pointer with slot index
  * Use when you need access to both the buffer and the slot (e.g., for pData access)
+ * Accepts audio(Handle) term
  */
 #define GET_DATA_BUFFER_WITH_SLOT(handle_term, buffer_var, slot_var) \
     do { \
-        if (!PL_get_integer(handle_term, &slot_var)) { \
-            return PL_type_error("integer", handle_term); \
+        atom_t _name; \
+        size_t _arity; \
+        term_t _arg; \
+        if (!PL_get_name_arity(handle_term, &_name, &_arity) || \
+            _arity != 1 || \
+            strcmp(PL_atom_chars(_name), "audio") != 0) { \
+            return PL_type_error("audio(Handle)", handle_term); \
+        } \
+        _arg = PL_new_term_ref(); \
+        if (!PL_get_arg(1, handle_term, _arg) || !PL_get_integer(_arg, &slot_var)) { \
+            return PL_type_error("audio(Handle)", handle_term); \
         } \
         buffer_var = get_data_buffer(slot_var); \
         if (buffer_var == NULL) { \
             return PL_existence_error("data_buffer", handle_term); \
         } \
     } while(0)
+
+/*
+ * unify_audio_handle()
+ * Unifies term with audio(Handle).
+ */
+static int unify_audio_handle(term_t term, int slot)
+{
+	term_t arg = PL_new_term_ref();
+	functor_t f = PL_new_functor(PL_new_atom("audio"), 1);
+
+	if (!PL_put_integer(arg, slot)) return FALSE;
+	return PL_unify_term(term, PL_FUNCTOR, f, PL_TERM, arg);
+}
 
 /******************************************************************************
  * GLOBAL VARIABLES
@@ -532,71 +569,181 @@ static foreign_t pl_audio_load(term_t filepath, term_t handle)
 		return PL_resource_error("data_buffer_slots");
 	}
 
-	return PL_unify_integer(handle, slot);
+	return unify_audio_handle(handle, slot);
 }
 
 /*
- * audio_extract(+SourceHandle, +StartFrame, +Length, -ExtractedHandle)
- * Extracts a slice of frames into a new buffer.
+ * extract_from_ring_buffer()
+ * Extract audio data from a ring buffer into a new data buffer.
+ * Offset is relative to current write position (negative = past).
  */
-static foreign_t pl_audio_extract(term_t source_handle, term_t start_term, term_t length_term, term_t extracted_handle)
+static foreign_t extract_from_ring_buffer(
+    ring_buffer_t *rb,
+    ma_uint32 sample_rate,
+    ma_uint64 max_frames,
+    term_t offset_term,
+    term_t length_term,
+    term_t extracted_handle)
 {
-	ma_audio_buffer* source_buffer;
-  	int source_slot;
-  	int start_int, length_int;
-  	ma_uint64 start_frame, length_frames;
-  	ma_uint64 source_frame_count;
-  	ma_uint32 channels;
-  	ma_uint32 sample_rate;
-  	ma_format format;
-  	ma_uint32 bytes_per_frame;
-  	void* source_data;
-  	void* extracted_data;
-  	int slot;
+	int offset_int, length_int;
+	ma_uint64 offset_frames, length_frames;
+	void *extracted_data;
+	int slot;
 
-  	GET_DATA_BUFFER_WITH_SLOT(source_handle, source_buffer, source_slot);
+	if (!PL_get_integer(offset_term, &offset_int) ||
+	    !PL_get_integer(length_term, &length_int)) {
+		return PL_type_error("integer", offset_term);
+	}
 
-  	if (!PL_get_integer(start_term, &start_int)) {
-  		return PL_type_error("integer", start_term);
-  	}
+	offset_frames = (ma_uint64)(-offset_int);
+	length_frames = (ma_uint64)length_int;
 
-  	if (!PL_get_integer(length_term, &length_int)) {
-  		return PL_type_error("integer", length_term);
-  	}
+	if (offset_frames > max_frames) offset_frames = max_frames;
+	if (length_frames > max_frames) length_frames = max_frames;
+	if (offset_frames + length_frames > max_frames) {
+		length_frames = max_frames - offset_frames;
+	}
 
-  	if (start_int < 0 || length_int <= 0) {
-  		return PL_domain_error("valid_extraction_params", start_int < 0 ? start_term : length_term);
-  	}
-
-  	get_buffer_info(source_buffer, &source_frame_count, &channels, &sample_rate);
-  	format = source_buffer->ref.format;
-
-  	start_frame = (ma_uint64)start_int;
-  	length_frames = (ma_uint64)length_int;
-
-  	if (start_frame + length_frames > source_frame_count) {
-  		return PL_domain_error("extraction_bounds", length_term);
-  	}
-
-	bytes_per_frame = ma_get_bytes_per_frame(format, channels);
-
-	extracted_data = malloc(length_frames * bytes_per_frame);
+	extracted_data = malloc(length_frames * rb->channels * sizeof(float));
 	if (extracted_data == NULL) {
 		return PL_resource_error("memory");
 	}
 
-	source_data = g_data_buffers[source_slot].pData;
-	memcpy(extracted_data,
-			(char*)source_data + (start_frame * bytes_per_frame),
-			length_frames * bytes_per_frame);
+	ring_buffer_read(rb, extracted_data, offset_frames, (ma_uint32)length_frames);
 
-	slot = create_data_buffer_from_pcm(extracted_data, format, channels, length_frames, sample_rate);
+	slot = create_data_buffer_from_pcm(extracted_data, ma_format_f32, rb->channels,
+	                                   length_frames, sample_rate);
 	if (slot < 0) {
 		free(extracted_data);
 		return PL_resource_error("data_buffer_slots");
 	}
 
-	return PL_unify_integer(extracted_handle, slot);
+	return unify_audio_handle(extracted_handle, slot);
+}
+
+/*
+ * pl_audio_extract()
+ * audio_extract(+Source, +Offset, +Length, -ExtractedHandle)
+ * Extracts a slice of frames into a new buffer.
+ * Source can be:
+ * 	- audio(Handle) - data buffer (absolute offset)
+ * 	- capture(Handle) - capture ring buffer (negative offset from write head)
+ * 	- granular(Handle) - granular ring buffer (negative offset from write head)
+ */
+static foreign_t pl_audio_extract(
+		term_t source_handle,
+		term_t start_term,
+		term_t length_term,
+		term_t extracted_handle)
+{
+	atom_t name;
+	size_t arity;
+	term_t arg;
+	int slot;
+	const char *name_str;
+
+	if (!PL_get_name_arity(source_handle, &name, &arity) || arity != 1) {
+		return PL_type_error("audio|capture|granular", source_handle);
+	}
+
+	arg = PL_new_term_ref();
+	if (!PL_get_arg(1, source_handle, arg) || !PL_get_integer(arg, &slot)) {
+		return PL_type_error("handle", source_handle);
+	}
+
+	name_str = PL_atom_chars(name);
+
+	if (strcmp(name_str, "audio") == 0) {
+		ma_audio_buffer *source_buffer;
+		int start_int, length_int;
+		ma_uint64 start_frame, length_frames;
+		ma_uint64 source_frame_count;
+		ma_uint32 channels;
+		ma_uint32 sample_rate;
+		ma_format format;
+		ma_uint32 bytes_per_frame;
+		void *source_data;
+		void *extracted_data;
+		int extracted_slot;
+
+		source_buffer = get_data_buffer(slot);
+		if (source_buffer == NULL) {
+			return PL_existence_error("data_buffer", source_handle);
+		}
+
+		if (!PL_get_integer(start_term, &start_int)) {
+			return PL_type_error("integer", start_term);
+		}
+
+		if (!PL_get_integer(length_term, &length_int)) {
+			return PL_type_error("integer", length_term);
+		}
+
+		if (start_int < 0 || length_int <= 0) {
+			return PL_domain_error("valid_extraction_params",
+			                       start_int < 0 ? start_term : length_term);
+		}
+
+		get_buffer_info(source_buffer, &source_frame_count, &channels, &sample_rate);
+		format = source_buffer->ref.format;
+
+		start_frame = (ma_uint64)start_int;
+		length_frames = (ma_uint64)length_int;
+
+		if (start_frame + length_frames > source_frame_count) {
+			return PL_domain_error("extraction_bounds", length_term);
+		}
+
+		bytes_per_frame = ma_get_bytes_per_frame(format, channels);
+
+		extracted_data = malloc(length_frames * bytes_per_frame);
+		if (extracted_data == NULL) {
+			return PL_resource_error("memory");
+		}
+
+		source_data = g_data_buffers[slot].pData;
+		memcpy(extracted_data,
+		       (char*)source_data + (start_frame * bytes_per_frame),
+		       length_frames * bytes_per_frame);
+
+		extracted_slot = create_data_buffer_from_pcm(extracted_data, format, channels,
+		                                             length_frames, sample_rate);
+		if (extracted_slot < 0) {
+			free(extracted_data);
+			return PL_resource_error("data_buffer_slots");
+		}
+
+		return unify_audio_handle(extracted_handle, extracted_slot);
+	}
+	else if (strcmp(name_str, "capture") == 0) {
+		capture_slot_t *capture;
+		ma_uint32 sr;
+
+		capture = get_capture_device(slot);
+		if (capture == NULL) {
+			return PL_existence_error("capture", source_handle);
+		}
+		get_engine_format_info(NULL, NULL, &sr);
+		return extract_from_ring_buffer(&capture->buffer, sr,
+		                                capture->buffer.capacity_frames,
+		                                start_term, length_term, extracted_handle);
+	}
+	else if (strcmp(name_str, "granular") == 0) {
+		granular_delay_t *g;
+		ma_uint32 sr;
+
+		if (slot < 0 || slot >= MAX_GRANULAR_DELAYS || !g_granular_delays[slot].in_use) {
+			return PL_existence_error("granular", source_handle);
+		}
+		g = &g_granular_delays[slot];
+		get_engine_format_info(NULL, NULL, &sr);
+		return extract_from_ring_buffer(&g->buffer, sr,
+		                                g->frames_recorded,
+		                                start_term, length_term, extracted_handle);
+	}
+	else {
+		return PL_type_error("audio|capture|granular", source_handle);
+	}
 }
 
 /*
@@ -607,9 +754,18 @@ static foreign_t pl_audio_extract(term_t source_handle, term_t start_term, term_
 static foreign_t pl_audio_unload(term_t handle)
 {
 	int slot;
+	atom_t name;
+	size_t arity;
+	term_t arg;
 
-	if (!PL_get_integer(handle, &slot)) {
-		return PL_type_error("integer", handle);
+	if (!PL_get_name_arity(handle, &name, &arity) ||
+	    arity != 1 ||
+	    strcmp(PL_atom_chars(name), "audio") != 0) {
+		return PL_type_error("audio(Handle)", handle);
+	}
+	arg = PL_new_term_ref();
+	if (!PL_get_arg(1, handle, arg) || !PL_get_integer(arg, &slot)) {
+		return PL_type_error("audio(Handle)", handle);
 	}
 
 	if (slot < 0 || slot >= MAX_DATA_BUFFERS || !g_data_buffers[slot].in_use) {
@@ -1042,7 +1198,7 @@ static foreign_t pl_sound_get_position(term_t handle, term_t frame) {
  * Creates a sound instance from a loaded data buffer.
  * Multiple sounds can be created from the same buffer for polyphony.
  */
-static foreign_t pl_sound_create(term_t data_handle, term_t sound_handle) 
+static foreign_t pl_sound_create(term_t data_handle, term_t sound_handle)
 {
 	int data_slot;
 	int sound_slot;
@@ -1055,14 +1211,7 @@ static foreign_t pl_sound_create(term_t data_handle, term_t sound_handle)
 	ma_uint32 channels;
 	ma_uint32 sample_rate;
 
-	if (!PL_get_integer(data_handle, &data_slot)) {
-		return PL_type_error("integer", data_handle);
-	}
-
-	source_buffer = get_data_buffer(data_slot);
-	if (source_buffer == NULL) {
-		return PL_existence_error("data_buffer", data_handle);
-	}
+	GET_DATA_BUFFER_WITH_SLOT(data_handle, source_buffer, data_slot);
 
 	sound_slot = allocate_sound_slot();
 	if (sound_slot < 0) {
@@ -1290,7 +1439,7 @@ static foreign_t pl_audio_reverse(term_t source_handle, term_t reversed_handle)
 		return PL_resource_error("data_buffer_slots");
 	}
 
-	return PL_unify_integer(reversed_handle, slot);
+	return unify_audio_handle(reversed_handle, slot);
 }
 
 
