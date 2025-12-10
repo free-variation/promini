@@ -48,6 +48,11 @@ extern foreign_t pl_promini_init(void);
 #define ONE_POLE(out, in, coeff) ((out) += (coeff) * ((in) - (out)))
 
 /*
+ * Semitones to pitch ratio
+ */
+#define SEMITONES_TO_RATIO(semi) (powf(2.0f, (semi) / 12.0f))
+
+/*
  * Thread safety - mutexes for protecting global state
  */
 extern pthread_mutex_t g_sounds_mutex;

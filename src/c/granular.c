@@ -34,6 +34,8 @@ static int trigger_grain(granular_delay_t *g)
 	ma_uint32 channels;
 	ma_uint64 offset;
 	float max_position;
+	int range, degree, octave, index;
+	float semitone;
 
 	/* find a free slot */
 	for (i = 0; i < MAX_GRAINS; i++) {
@@ -68,7 +70,19 @@ static int trigger_grain(granular_delay_t *g)
 	grain->position = (g->buffer.write_pos + g->buffer.capacity_frames - offset) % g->buffer.capacity_frames;
 	grain->size = (ma_uint64)(fmaxf(g->size_ms + rand_size, 1.0f) * sample_rate / 1000.0f);
 	grain->cursor = 0.0f;
-	grain->pitch_ratio = powf(2.0f, g->pitch / 12.0f);
+
+	/* calculate pitch from mode if enabled */
+	if (g->mode_length > 0) {
+       range = g->deviation_up + g->deviation_down + 1;
+       degree = (rand() % range) - g->deviation_down;
+       octave = (degree >= 0) ? degree / g->mode_length : -1 + (degree + 1) / g->mode_length;
+       index = degree - octave * g->mode_length;
+       semitone = g->pitch + octave * 12.0f + g->mode[index];
+	   grain->pitch_ratio = SEMITONES_TO_RATIO(semitone);
+	} else {
+		grain->pitch_ratio = SEMITONES_TO_RATIO(g->pitch);
+	}
+
 	grain->envelope = g->envelope;
 	grain->pan = CLAMP(g->pan + rand_pan, -1.0f, 1.0f);
 	grain->envelope_phase = 0.0f;
@@ -647,6 +661,64 @@ static foreign_t pl_granular_destroy(term_t handle_term)
 }
 
 /*
+ * pl_granular_set_mode()
+ * Set pitch quantization mode for grain triggering.
+ * granular_set_mode(+Handle, +ModeList, +DeviationDown, +DeviationUp)
+ * ModeList is a list of semitone intervals, e.g. [0, 2, 4, 5, 7, 9, 11] for major.
+ * Empty list disables mode quantization.
+ */
+static foreign_t pl_granular_set_mode(term_t handle_term, term_t mode_term,
+                                      term_t down_term, term_t up_term)
+{
+	int slot;
+	int deviation_down, deviation_up;
+	granular_delay_t *g;
+	term_t head;
+	term_t tail;
+	int count;
+	double interval;
+
+	head = PL_new_term_ref();
+	tail = PL_new_term_ref();
+	count = 0;
+
+	if (!PL_get_integer(handle_term, &slot)) {
+		return PL_type_error("integer", handle_term);
+	}
+
+	if (slot < 0 || slot >= MAX_GRANULAR_DELAYS || !g_granular_delays[slot].in_use) {
+		return PL_existence_error("granular_delay", handle_term);
+	}
+
+	if (!PL_get_integer(down_term, &deviation_down)) {
+		return PL_type_error("integer", down_term);
+	}
+
+	if (!PL_get_integer(up_term, &deviation_up)) {
+		return PL_type_error("integer", up_term);
+	}
+
+	g = &g_granular_delays[slot];
+
+	/* parse mode list */
+	if (!PL_put_term(tail, mode_term)) return FALSE;
+
+	while (PL_get_list(tail, head, tail) && count < MAX_MODE_INTERVAL) {
+		if (!PL_get_float(head, &interval)) {
+			return PL_type_error("float", head);
+		}
+		g->mode[count] = (float)interval;
+		count++;
+	}
+
+	g->mode_length = count;
+	g->deviation_down = deviation_down;
+	g->deviation_up = deviation_up;
+
+	return TRUE;
+}
+
+/*
  * pl_granular_connect()
  * Connect a source to the granular delay input.
  * granular_connect(+Handle, +Source)
@@ -694,6 +766,7 @@ install_t granular_register_predicates(void)
 	PL_register_foreign("granular_trigger", 1, pl_granular_trigger, 0);
 	PL_register_foreign("granular_set", 2, pl_granular_set, 0);
 	PL_register_foreign("granular_get", 2, pl_granular_get, 0);
+	PL_register_foreign("granular_set_mode", 4, pl_granular_set_mode, 0);
 	PL_register_foreign("granular_connect", 2, pl_granular_connect, 0);
 }
 

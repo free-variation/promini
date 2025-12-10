@@ -198,4 +198,26 @@ test(granular_connect_invalid_source, [error(existence_error(source, _)), cleanu
     granular_create(2.0, G),
     granular_connect(G, sound(999)).
 
+% Mode tests
+
+test(granular_set_mode_major, [nondet, cleanup(granular_destroy(G))]) :-
+    granular_create(2.0, G),
+    granular_set_mode(G, [0.0, 2.0, 4.0, 5.0, 7.0, 9.0, 11.0], 0, 6).
+
+test(granular_set_mode_pentatonic, [nondet, cleanup(granular_destroy(G))]) :-
+    granular_create(2.0, G),
+    granular_set_mode(G, [0.0, 3.0, 5.0, 7.0, 10.0], 0, 10).
+
+test(granular_set_mode_disable, [nondet, cleanup(granular_destroy(G))]) :-
+    granular_create(2.0, G),
+    granular_set_mode(G, [0.0, 2.0, 4.0], 0, 2),
+    granular_set_mode(G, [], 0, 0).
+
+test(granular_set_mode_with_deviation_down, [nondet, cleanup(granular_destroy(G))]) :-
+    granular_create(2.0, G),
+    granular_set_mode(G, [0.0, 4.0, 7.0], 2, 4).
+
+test(granular_set_mode_invalid_handle, [error(existence_error(granular_delay, _))]) :-
+    granular_set_mode(999, [0.0, 2.0, 4.0], 0, 2).
+
 :- end_tests(granular).

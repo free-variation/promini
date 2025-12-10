@@ -10,6 +10,7 @@
  * demo_granular_normalization - Compare normalization vs compression
  * demo_granular_trigger       - Manual grain triggering
  * demo_granular_partial_buffer - Demonstrate click-free partial buffer granulation
+ * demo_granular_mode          - Pitch quantization to musical scales
  */
 
 demo_granular_file :-
@@ -511,3 +512,75 @@ demo_granular_partial_buffer :-
     granular_destroy(G),
     sound_unload(Sound),
     format('Partial buffer demo complete.~n~n').
+
+
+/*
+ * demo_granular_mode
+ * Demonstrate pitch quantization to musical scales.
+ */
+demo_granular_mode :-
+    format('~n=== Granular Mode (Scale) Demo ===~n~n'),
+
+    format('Loading gong.wav...~n'),
+    sound_load('audio/gong.wav', Sound),
+
+    granular_create(4.0, G),
+    granular_connect(G, sound(Sound)),
+    granular_set(G, [recording=true, normalize=true, density=0.0]),
+
+    format('Recording source...~n'),
+    sound_start(Sound),
+    sleep(2.0),
+    sound_stop(Sound),
+    granular_set(G, [recording=false]),
+
+    format('~n--- No mode (continuous pitch) ---~n'),
+    granular_set(G, [
+        density=8.0,
+        size=150.0,
+        position=0.3,
+        position_spray=0.2,
+        envelope=0.5,
+        pan_spray=0.6
+    ]),
+    sleep(4.0),
+
+    format('~n--- Major scale, root octave only ---~n'),
+    granular_set_mode(G, [0.0, 2.0, 4.0, 5.0, 7.0, 9.0, 11.0], 0, 6),
+    sleep(5.0),
+
+    format('~n--- Major scale, two octaves ---~n'),
+    granular_set_mode(G, [0.0, 2.0, 4.0, 5.0, 7.0, 9.0, 11.0], 0, 13),
+    sleep(5.0),
+
+    format('~n--- Minor pentatonic ---~n'),
+    granular_set_mode(G, [0.0, 3.0, 5.0, 7.0, 10.0], 0, 9),
+    sleep(5.0),
+
+    format('~n--- Major triad (chord tones only) ---~n'),
+    granular_set_mode(G, [0.0, 4.0, 7.0], 0, 8),
+    granular_set(G, [density=12.0, size=100.0]),
+    sleep(5.0),
+
+    format('~n--- Whole tone scale ---~n'),
+    granular_set_mode(G, [0.0, 2.0, 4.0, 6.0, 8.0, 10.0], 0, 11),
+    sleep(5.0),
+
+    format('~n--- Minor scale with octave below (deviation_down) ---~n'),
+    granular_set_mode(G, [0.0, 2.0, 3.0, 5.0, 7.0, 8.0, 10.0], 7, 7),
+    granular_set(G, [pitch=12.0]),  % shift tonic up so we hear the lower octave
+    sleep(5.0),
+
+    format('~n--- Chromatic (all semitones) ---~n'),
+    granular_set_mode(G, [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0], 0, 23),
+    granular_set(G, [pitch=0.0]),
+    sleep(5.0),
+
+    format('~n--- Disable mode (back to continuous) ---~n'),
+    granular_set_mode(G, [], 0, 0),
+    sleep(3.0),
+
+    format('~nCleaning up...~n'),
+    granular_destroy(G),
+    sound_unload(Sound),
+    format('Mode demo complete.~n~n').

@@ -137,7 +137,7 @@ static float pitchshift_process(reverb_pitchshift_t* ps, float input,
 	slope = 2.0f / (float)framesize;
 
 	/* Convert semitones to ratio */
-	ratio = powf(2.0f, shift_semitones / 12.0f);
+	ratio = SEMITONES_TO_RATIO(shift_semitones);
 	pchratio1 = ratio - 1.0f;
 	samp_slope = -pchratio1;
 

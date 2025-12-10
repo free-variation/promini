@@ -104,6 +104,7 @@
     granular_trigger/1,
     granular_set/2,
     granular_get/2,
+    granular_set_mode/4,
     granular_connect/2,
     granular_attach_effect/4
   ]).

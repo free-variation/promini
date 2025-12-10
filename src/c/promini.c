@@ -1382,7 +1382,7 @@ static foreign_t pl_sound_set_pitch(term_t handle, term_t pitch)
 		return PL_type_error("float", pitch);
 	}
 
-	ratio = powf(2.0f, (float)pitch_value / 12.0f);
+	ratio = SEMITONES_TO_RATIO((float)pitch_value);
 	ma_sound_set_pitch(sound, ratio);
 	return TRUE;
 }
