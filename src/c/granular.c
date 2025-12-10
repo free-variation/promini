@@ -33,6 +33,7 @@ static int trigger_grain(granular_delay_t *g)
 	ma_format format;
 	ma_uint32 channels;
 	ma_uint64 offset;
+	float max_position;
 
 	/* find a free slot */
 	for (i = 0; i < MAX_GRAINS; i++) {
@@ -52,11 +53,18 @@ static int trigger_grain(granular_delay_t *g)
 	rand_size = g->size_spray * (2.0f * ((float)rand() / RAND_MAX) - 1.0f);
 	rand_pan = g->pan_spray * (2.0f * ((float)rand() / RAND_MAX) - 1.0f);
 
+	max_position = (g->buffer.capacity_frames > 0 && g->frames_recorded > 0)
+		? (float)g->frames_recorded / (float)g->buffer.capacity_frames
+		: 0.0f;
+	if (max_position < 0.01f) {
+		return -1; /* not enough recorded */
+	}
+
 	/* set grain parameters */
 	grain->source_type = GRAIN_SOURCE_RING_BUFFER;
 	grain->source_index = 0;
 	/* position is relative to write head: 0 = newest, 1 = oldest */
-	offset = (ma_uint64)(CLAMP(g->position + rand_pos, 0.0f, 1.0f) * g->buffer.capacity_frames);
+	offset = (ma_uint64)(CLAMP(g->position + rand_pos, 0.0f, max_position * 0.99f) * g->buffer.capacity_frames);
 	grain->position = (g->buffer.write_pos + g->buffer.capacity_frames - offset) % g->buffer.capacity_frames;
 	grain->size = (ma_uint64)(fmaxf(g->size_ms + rand_size, 1.0f) * sample_rate / 1000.0f);
 	grain->cursor = 0.0f;
@@ -91,14 +99,24 @@ static float compute_envelope(float shape, float position)
 
 	/* position is 0.0 to 1.0 through the grain */
 
-	/* square: always max (no envelope) */
-	square = 1.0f;
+	/* square: tiny ramps at start and end to avoid clicks */
+	if (position < 0.02f) {
+		square = position / 0.02f;
+	} else if (position > 0.98f) {
+		square = (1.0f - position) / 0.02f;
+	} else {
+		square = 1.0f;
+	}
 
 	/* hann window for bell curve with zero at edges */
 	hann = 0.5f * (1.0f - cos(M_PI * 2.0f * position));
 
-	/* sawtooth drops linearly to zero */
-	sawtooth = 1.0f - position;
+	/* sawtooth: tiny attack ramp then linear decay to zero */
+	if (position < 0.02f) {
+		sawtooth = position / 0.02f;
+	} else {
+		sawtooth = 1.0f - (position - 0.02f) / 0.98f;
+	}
 
 	if (shape <= 0.5f) {
 		return square + (hann - square) * (shape * 2.0f);
@@ -187,10 +205,22 @@ static void granular_process_pcm_frames(
 	float jitter;
 	ma_format format;
 	ma_uint32 sample_rate;
+	int active_count = 0;
+	float target_gain;
+	float window_gain;
+	float overlap;
+	ma_uint32 c;
 
 	/* record input to ring buffer if recording */
 	if (g->recording && frames_in != NULL && frames_in[0] != NULL) {
 		ring_buffer_write(&g->buffer, frames_in[0], *frame_count_in);
+
+		if (g->frames_recorded < g->buffer.capacity_frames) {
+			g->frames_recorded += frame_count;
+			if (g->frames_recorded > g->buffer.capacity_frames) {
+				g->frames_recorded = g->buffer.capacity_frames;
+			}
+		}
 	}
 
 	/* clear output buffer */
@@ -205,6 +235,8 @@ static void granular_process_pcm_frames(
 	
 	/* process each frame */
 	for (i = 0; i < frame_count; i++) {
+		active_count = 0;
+
 		/* density-based trigger */
 		if (g->density > 0.0f) {
 			g->density_accumulator += grains_per_frame;
@@ -230,9 +262,40 @@ static void granular_process_pcm_frames(
 					if (channels > 1) {
 						output[i * channels + 1] += right;
 					}
+					active_count++;
 				} else {
 					g->grains[j].active = MA_FALSE;
 				}
+			}
+		}
+
+		if (g->normalize) {
+			/* asymmetric smoothing: moderate attack, slow release */
+			if (active_count > g->num_grains_smoothed) {
+				ONE_POLE(g->num_grains_smoothed, (float)active_count, 0.1f);
+			} else {
+				ONE_POLE(g->num_grains_smoothed, (float)active_count, 0.05f);
+			}
+
+			/* inverse sqrt normalization */
+			target_gain = (g->num_grains_smoothed > 2.0f)
+				? 1.0f / sqrtf(g->num_grains_smoothed - 1.0f)
+				: 1.0f;
+
+			/* window shape compensation, crossfaded by overlap amount (like Clouds) */
+			/* overlap = expected number of concurrent grains */
+			overlap = g->num_grains_smoothed;
+			overlap = CLAMP(overlap, 0.0f, 4.0f) / 4.0f;  /* normalize to 0-1 */
+			window_gain = 1.0f + g->envelope;  /* 1.0 to 2.0 */
+			/* at low overlap, no compensation; at high overlap, full compensation */
+			target_gain *= 1.0f + (window_gain - 1.0f) * overlap;
+
+			/* smooth final gain */
+			ONE_POLE(g->gain_normalization, target_gain, 0.01f);
+
+			/* apply normalization */
+			for (c = 0; c < channels; c++) {
+				output[i * channels + c] *= g->gain_normalization;
 			}
 		}
 	}
@@ -284,6 +347,7 @@ static ma_node_vtable granular_vtable = {
   		if (g->in_use) {
   			free_effect_chain(g->effect_chain);
   			g->effect_chain = NULL;
+  			ma_node_detach_output_bus(&g->base, 0);
   			ring_buffer_free(&g->buffer);
   			ma_node_uninit(&g->base, NULL);
   			g->in_use = MA_FALSE;
@@ -382,6 +446,10 @@ static foreign_t pl_granular_create(term_t buffer_term, term_t handle_term)
   	g->deviation_up = 0;
   	g->deviation_down = 0;
   	g->density_accumulator = 0.0f;
+	g->num_grains_smoothed = 0.0f;
+	g->gain_normalization = 1.0f;
+	g->normalize = MA_TRUE;
+	g->frames_recorded = 0;
 
 	return PL_unify_integer(handle_term, slot);
 }
@@ -468,6 +536,14 @@ static foreign_t pl_granular_set(term_t handle_term, term_t params_term)
 	if (get_param_bool(params_term, "recording", &b)) {
 		g->recording = b;
 	}
+	if (get_param_bool(params_term, "normalize", &b)) {
+		if (b && !g->normalize) {
+			/* turning on - reset smoothing state */
+			g->num_grains_smoothed = 0.0f;
+			g->gain_normalization = 1.0f;
+		}
+		g->normalize = b;
+	}
 
 	return TRUE;
 }
@@ -531,6 +607,7 @@ static foreign_t pl_granular_get(term_t handle_term, term_t params_term)
 	eq = PL_new_functor(PL_new_atom("="), 2);
 
 	/* add params in reverse order so list comes out in natural order */
+	if (!add_bool_param(&list, eq, "normalize", g->normalize)) return FALSE;
 	if (!add_bool_param(&list, eq, "recording", g->recording)) return FALSE;
 	if (!add_float_param(&list, eq, "regularity", g->regularity)) return FALSE;
 	if (!add_float_param(&list, eq, "reverse_probability", g->reverse_probability)) return FALSE;

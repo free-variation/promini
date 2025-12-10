@@ -43,6 +43,11 @@ extern foreign_t pl_promini_init(void);
 #define CLAMP(val, min, max) ((val) < (min) ? (min) : ((val) > (max) ? (max) : (val)))
 
 /*
+ * One-pole filter for exponential smoothing
+ */
+#define ONE_POLE(out, in, coeff) ((out) += (coeff) * ((in) - (out)))
+
+/*
  * Thread safety - mutexes for protecting global state
  */
 extern pthread_mutex_t g_sounds_mutex;
@@ -564,6 +569,10 @@ typedef struct {
 	int deviation_down;
 
 	float density_accumulator;
+	float num_grains_smoothed;
+	float gain_normalization;
+	ma_bool32 normalize;
+	ma_uint64 frames_recorded; 
 } granular_delay_t;
 
 

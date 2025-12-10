@@ -2209,7 +2209,6 @@ static void vca_process_pcm_frames(
 	const float* input;
 	float* output;
 	ma_uint32 i;
-	float step, gain;
 
 	vca = (vca_node_t*)node;
 	channels = ma_node_get_output_channels(node, 0);
@@ -2218,14 +2217,11 @@ static void vca_process_pcm_frames(
 	input = frames_in[0];
 	output = frames_out[0];
 
-	step = (vca->target_gain - vca->current_gain) / frame_count;
-	gain = vca->current_gain;
-
 	for (i = 0; i < total_samples; i++) {
-		if (i % channels == 0 && i > 0) {
-			gain += step;
+		if (i % channels == 0) {
+			ONE_POLE(vca->current_gain, vca->target_gain, 0.01f);
 		}
-		output[i] = input[i] * gain;
+		output[i] = input[i] * vca->current_gain;
 	}
 
 	vca->current_gain = vca->target_gain;
@@ -2459,9 +2455,9 @@ static void compressor_process_pcm_frames(
 
 		/* envelope follower: fast attack, slow release */
 		if (peak > comp->envelope) {
-			comp->envelope += comp->attack_coeff * (peak - comp->envelope);
+			ONE_POLE(comp->envelope, peak, comp->attack_coeff);
 		} else {
-			comp->envelope += comp->release_coeff * (peak - comp->envelope);
+			ONE_POLE(comp->envelope, peak, comp->release_coeff);
 		}
 
 		/* compute and apply gain */

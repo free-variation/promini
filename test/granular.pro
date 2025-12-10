@@ -31,7 +31,8 @@ test(granular_get_defaults, [nondet, cleanup(granular_destroy(G))]) :-
     memberchk(envelope=0.5, Params),
     memberchk(pan=0.0, Params),
     memberchk(pan_spray=0.0, Params),
-    memberchk(recording=false, Params).
+    memberchk(recording=false, Params),
+    memberchk(normalize=true, Params).
 
 % Parameter setter tests
 
@@ -117,6 +118,19 @@ test(granular_set_recording, [nondet, cleanup(granular_destroy(G))]) :-
     granular_set(G, [recording=true]),
     granular_get(G, Params),
     memberchk(recording=true, Params).
+
+test(granular_set_normalize_false, [nondet, cleanup(granular_destroy(G))]) :-
+    granular_create(2.0, G),
+    granular_set(G, [normalize=false]),
+    granular_get(G, Params),
+    memberchk(normalize=false, Params).
+
+test(granular_set_normalize_true, [nondet, cleanup(granular_destroy(G))]) :-
+    granular_create(2.0, G),
+    granular_set(G, [normalize=false]),
+    granular_set(G, [normalize=true]),
+    granular_get(G, Params),
+    memberchk(normalize=true, Params).
 
 test(granular_set_multiple, [nondet, cleanup(granular_destroy(G))]) :-
     granular_create(2.0, G),

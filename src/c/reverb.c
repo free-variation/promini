@@ -22,12 +22,6 @@ static const float mod_freq_ratios[4] = {1.0f, 1.5f, 1.2f, 1.8f};
  * Basic DSP primitives
  * ============================================================================ */
 
-/* One-pole low-pass filter */
-static inline float lpf_process(float* state, float coeff, float input) {
-	*state += coeff * (input - *state);
-	return *state;
-}
-
 /* Write to circular buffer */
 static inline void delay_write(float* buffer, ma_uint32 mask, ma_uint32 t, float value) {
 	buffer[t & mask] = value;
@@ -363,7 +357,8 @@ static float process_tank_half(reverb_tank_half_t* th, ma_uint32 t, float input,
 	x = delay_read(th->pre_damp.buffer, th->pre_damp.mask, t, th->pre_damp.main_delay);
 
 	/* Damping LPF */
-	x = lpf_process(&th->damping_state, damping, x);
+	ONE_POLE(th->damping_state, x, damping);
+	x = th->damping_state;
 
 	/* Apply decay */
 	x *= decay;
@@ -417,7 +412,8 @@ static void process_channel(reverb_channel_t* ch, ma_uint32 t, float input,
 	               ch->predelay_mask + 1 - predelay_samples);
 
 	/* Input bandwidth LPF */
-	x = lpf_process(&ch->input_lpf_state, bandwidth, x);
+	ONE_POLE(ch->input_lpf_state, x, bandwidth);
+	x = ch->input_lpf_state;
 
 	/* 4 input diffusers */
 	x = allpass_process(ch->diffuser_buf[0], ch->diffuser_mask[0], t,
@@ -566,8 +562,8 @@ static void reverb_process_pcm_frames(
 
 		if (reverb->high_cut > 0.0f && reverb->high_cut < (float)sample_rate * 0.5f) {
 			float lpf_coeff = 1.0f - expf(-2.0f * M_PI * reverb->high_cut / (float) sample_rate);
-			reverb->lpf_l += lpf_coeff * (wet_l - reverb->lpf_l);
-			reverb->lpf_r += lpf_coeff * (wet_r - reverb->lpf_r);
+			ONE_POLE(reverb->lpf_l, wet_l, lpf_coeff);
+			ONE_POLE(reverb->lpf_r, wet_r, lpf_coeff);
 			wet_l = reverb->lpf_l;
 			wet_r = reverb->lpf_r;
 		}

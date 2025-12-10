@@ -3,10 +3,13 @@
 /*
  * Granular Delay Demos
  *
- * demo_granular_file    - Granulate guitar.wav with various settings
- * demo_granular_live    - Granulate live microphone input
- * demo_granular_texture - Create evolving granular textures
- * demo_granular_freeze  - Freeze and granulate a moment in time
+ * demo_granular_file          - Granulate guitar.wav with various settings
+ * demo_granular_live          - Granulate live microphone input
+ * demo_granular_texture       - Create evolving granular textures
+ * demo_granular_freeze        - Freeze and granulate a moment in time
+ * demo_granular_normalization - Compare normalization vs compression
+ * demo_granular_trigger       - Manual grain triggering
+ * demo_granular_partial_buffer - Demonstrate click-free partial buffer granulation
  */
 
 demo_granular_file :-
@@ -19,14 +22,11 @@ demo_granular_file :-
     format('Creating granular delay (4 second buffer)...~n'),
     granular_create(4.0, G),
     granular_connect(G, sound(Sound)),
-    granular_set(G, [recording=true]),
-
-    format('Attaching compressor to tame overlapping grains...~n'),
-    granular_attach_effect(G, compressor, [threshold=0.5, ratio=8.0, knee=6.0], _),
+    granular_set(G, [recording=true, normalize=true]),
 
     format('Starting source playback...~n'),
     sound_start(Sound),
-    sleep(1.0),  % let buffer fill
+    sleep(4.0),  % let buffer fill
 
     format('~n--- Sparse grains (2/sec, 200ms) ---~n'),
     granular_set(G, [
@@ -104,13 +104,10 @@ demo_granular_live :-
     format('Creating granular delay...~n'),
     granular_create(4.0, G),
     granular_connect(G, capture(Capture)),
-    granular_set(G, [recording=true]),
-
-    format('Attaching compressor to tame overlapping grains...~n'),
-    granular_attach_effect(G, compressor, [threshold=0.5, ratio=8.0, knee=6.0], _),
+    granular_set(G, [recording=true, normalize=true]),
 
     format('~n*** SPEAK OR MAKE SOUNDS INTO MICROPHONE ***~n~n'),
-    sleep(2.0),  % let buffer fill
+    sleep(4.0),  % let buffer fill
 
     format('--- Real-time granulation (low latency) ---~n'),
     granular_set(G, [
@@ -163,8 +160,7 @@ demo_granular_texture :-
 
     granular_create(6.0, G),
     granular_connect(G, sound(Sound)),
-    granular_set(G, [recording=true]),
-    granular_attach_effect(G, compressor, [threshold=0.5, ratio=8.0, knee=6.0], _),
+    granular_set(G, [recording=true, normalize=true]),
 
     format('Playing source once to fill buffer...~n'),
     sound_start(Sound),
@@ -225,8 +221,7 @@ demo_granular_freeze :-
 
     granular_create(2.0, G),
     granular_connect(G, sound(Sound)),
-    granular_set(G, [recording=true, density=0.0]),  % recording but no grains yet
-    granular_attach_effect(G, compressor, [threshold=0.5, ratio=8.0, knee=6.0], _),
+    granular_set(G, [recording=true, density=0.0, normalize=true]),
 
     format('Playing source...~n'),
     sound_start(Sound),
@@ -302,6 +297,110 @@ sweep_pitch_(G, Pitch, End, Step) :-
     sweep_pitch_(G, NextPitch, End, Step).
 
 
+/*
+ * demo_granular_normalization
+ * Compare built-in normalization vs compressor for managing grain overlap levels.
+ */
+demo_granular_normalization :-
+    format('~n=== Granular Normalization vs Compression Demo ===~n~n'),
+
+    format('Loading guitar.wav...~n'),
+    sound_load('audio/guitar.wav', Sound),
+    sound_loop(Sound),
+
+    granular_create(4.0, G),
+    granular_connect(G, sound(Sound)),
+    granular_set(G, [recording=true]),
+
+    format('Starting source playback to fill buffer...~n'),
+    sound_start(Sound),
+    sleep(4.0),
+    sound_stop(Sound),
+    granular_set(G, [recording=false]),
+    format('Buffer filled, source stopped.~n'),
+
+    format('~n--- Baseline: low density (5/sec), normalization ON ---~n'),
+    granular_set(G, [
+        normalize=true,
+        density=5.0,
+        size=100.0,
+        position=0.5,
+        position_spray=0.3,
+        size_spray=20.0,
+        envelope=0.5,
+        pan_spray=0.5
+    ]),
+    sleep(4.0),
+
+    format('~n--- Increasing density: 5 -> 15 -> 40 -> 80 ---~n'),
+    format('With normalization, level stays consistent.~n'),
+    format('density=5~n'),
+    sleep(3.0),
+    granular_set(G, [density=15.0]),
+    format('density=15~n'),
+    sleep(3.0),
+    granular_set(G, [density=40.0]),
+    format('density=40~n'),
+    sleep(3.0),
+    granular_set(G, [density=80.0]),
+    format('density=80~n'),
+    sleep(3.0),
+
+    format('~n--- Same density sweep, normalization OFF ---~n'),
+    format('WARNING: Gets progressively louder!~n'),
+    granular_set(G, [normalize=false, density=5.0]),
+    format('density=5~n'),
+    sleep(3.0),
+    granular_set(G, [density=15.0]),
+    format('density=15~n'),
+    sleep(3.0),
+    granular_set(G, [density=40.0]),
+    format('density=40~n'),
+    sleep(3.0),
+    granular_set(G, [density=80.0]),
+    format('density=80 (loud!)~n'),
+    sleep(3.0),
+
+    format('~n--- Compressor instead of normalization ---~n'),
+    format('Compressor reacts to peaks, adds pumping character.~n'),
+    granular_set(G, [density=20.0]),
+    granular_attach_effect(G, compressor, [
+        threshold=0.3,
+        ratio=8.0,
+        attack=5.0,
+        release=100.0,
+        knee=6.0
+    ], _),
+    sleep(6.0),
+
+    format('~n--- Both normalization AND compressor ---~n'),
+    format('Normalization handles overlap, compressor adds glue.~n'),
+    granular_set(G, [normalize=true]),
+    sleep(6.0),
+
+    format('~n--- Envelope shape comparison ---~n'),
+    format('Square envelope (0.0) - harsh edges~n'),
+    granular_set(G, [density=0.0]),
+    sleep(0.3),
+    granular_set(G, [envelope=0.0, density=15.0]),
+    sleep(3.0),
+    format('Hann envelope (0.5) - smooth, natural~n'),
+    granular_set(G, [density=0.0]),
+    sleep(0.3),
+    granular_set(G, [envelope=0.5, density=15.0]),
+    sleep(3.0),
+    format('Sawtooth envelope (1.0) - percussive attack~n'),
+    granular_set(G, [density=0.0]),
+    sleep(0.3),
+    granular_set(G, [envelope=1.0, density=15.0]),
+    sleep(3.0),
+
+    format('~nCleaning up...~n'),
+    granular_destroy(G),
+    sound_unload(Sound),
+    format('Normalization demo complete.~n~n').
+
+
 % Manual trigger demo
 demo_granular_trigger :-
     format('~n=== Manual Grain Trigger Demo ===~n~n'),
@@ -311,12 +410,12 @@ demo_granular_trigger :-
     granular_connect(G, sound(Sound)),
     granular_set(G, [
         recording=true,
+        normalize=true,
         density=0.0,  % no automatic triggering
         size=200.0,
         envelope=0.5,
         pan_spray=0.8
     ]),
-    granular_attach_effect(G, compressor, [threshold=0.5, ratio=8.0, knee=6.0], _),
 
     format('Recording gong...~n'),
     sound_start(Sound),
@@ -360,3 +459,55 @@ rhythmic_triggers(G, N) :-
     ),
     N1 is N - 1,
     rhythmic_triggers(G, N1).
+
+
+/*
+ * demo_granular_partial_buffer
+ * Demonstrate granulation with partially filled buffer - no clicks.
+ */
+demo_granular_partial_buffer :-
+    format('~n=== Granular Partial Buffer Demo ===~n~n'),
+
+    format('Loading guitar.wav...~n'),
+    sound_load('audio/guitar.wav', Sound),
+
+    granular_create(8.0, G),
+    granular_connect(G, sound(Sound)),
+    granular_set(G, [recording=true, normalize=true, density=0.0]),
+    granular_attach_effect(G, reverb, [wet=0.3, decay=0.8, shimmer1_shift=12.0, shimmer1_mix=0.15], _),
+
+    format('Recording 1 second into 8 second buffer...~n'),
+    sound_start(Sound),
+    sleep(1.0),
+    sound_stop(Sound),
+    granular_set(G, [recording=false]),
+
+    format('Playing grains from partial buffer (12.5%% filled)...~n~n'),
+    granular_set(G, [
+        density=10.0,
+        size=100.0,
+        position=0.05,
+        position_spray=0.05,
+        envelope=0.5,
+        pan_spray=0.5
+    ]),
+    sleep(4.0),
+
+    format('Recording 2 more seconds...~n'),
+    granular_set(G, [recording=true]),
+    sound_start(Sound),
+    sleep(2.0),
+    sound_stop(Sound),
+    granular_set(G, [recording=false]),
+
+    format('Playing grains from larger buffer (37.5%% filled)...~n~n'),
+    granular_set(G, [
+        position=0.15,
+        position_spray=0.1
+    ]),
+    sleep(4.0),
+
+    format('~nCleaning up...~n'),
+    granular_destroy(G),
+    sound_unload(Sound),
+    format('Partial buffer demo complete.~n~n').
