@@ -829,6 +829,19 @@ void free_effect_chain(effect_node_t* effect) {
 			}
 		} else if (effect->type == EFFECT_REVERB) {
 			free_reverb_node((reverb_node_t*)effect->effect_node);
+		} else if (effect->type == EFFECT_COMPRESSOR) {
+			compressor_node_t* comp = (compressor_node_t*)effect->effect_node;
+			if (comp->delay_buffer != NULL) {
+				free(comp->delay_buffer);
+			}
+		} else if (effect->type == EFFECT_PING_PONG_DELAY) {
+			ping_pong_delay_node_t* pp = (ping_pong_delay_node_t*)effect->effect_node;
+			if (pp->buffer_l != NULL) {
+				free(pp->buffer_l);
+			}
+			if (pp->buffer_r != NULL) {
+				free(pp->buffer_r);
+			}
 		}
 
 		ma_node_uninit(effect->effect_node, NULL);
