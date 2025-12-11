@@ -8,8 +8,7 @@
 
 test(granular_create, [nondet, cleanup(granular_destroy(G))]) :-
     granular_create(2.0, G),
-    integer(G),
-    G >= 0.
+    G = granular(_).
 
 test(granular_create_fails_zero_buffer, [error(domain_error(positive_number, _))]) :-
     granular_create(0.0, _).
@@ -156,7 +155,7 @@ test(granular_trigger, [nondet, cleanup(granular_destroy(G))]) :-
     granular_trigger(G).
 
 test(granular_trigger_invalid_handle, [error(existence_error(granular_delay, _))]) :-
-    granular_trigger(999).
+    granular_trigger(granular(999)).
 
 % Destroy tests
 
@@ -165,14 +164,14 @@ test(granular_destroy, [nondet]) :-
     granular_destroy(G).
 
 test(granular_destroy_invalid_handle, [error(existence_error(granular_delay, _))]) :-
-    granular_destroy(999).
+    granular_destroy(granular(999)).
 
 % Connect tests with sound source
 
 test(granular_connect_sound, [nondet, cleanup((granular_destroy(G), sound_unload(S)))]) :-
     granular_create(2.0, G),
     sound_load('audio/counting.wav', S),
-    granular_connect(G, sound(S)).
+    granular_connect(G, S).
 
 % Connect tests with voice source
 
@@ -180,7 +179,7 @@ test(granular_connect_voice, [nondet, cleanup((granular_destroy(G), synth_voice_
     granular_create(2.0, G),
     synth_voice_create(V),
     synth_oscillator_add(V, 440.0, 0.0, _),
-    granular_connect(G, voice(V)).
+    granular_connect(G, V).
 
 % Connect tests with capture source
 
@@ -190,7 +189,7 @@ test(granular_connect_capture, [nondet]) :-
     !,
     capture_start(Name, 1.0, C, _),
     granular_create(2.0, G),
-    granular_connect(G, capture(C)),
+    granular_connect(G, C),
     granular_destroy(G),
     capture_stop(C).
 
@@ -218,6 +217,6 @@ test(granular_set_mode_with_deviation_down, [nondet, cleanup(granular_destroy(G)
     granular_set_mode(G, [0.0, 4.0, 7.0], 2, 4).
 
 test(granular_set_mode_invalid_handle, [error(existence_error(granular_delay, _))]) :-
-    granular_set_mode(999, [0.0, 2.0, 4.0], 0, 2).
+    granular_set_mode(granular(999), [0.0, 2.0, 4.0], 0, 2).
 
 :- end_tests(granular).

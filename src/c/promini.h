@@ -156,8 +156,8 @@ typedef struct {
 /* Helper macro to validate and retrieve sound from handle */
 #define GET_SOUND_WITH_SLOT(handle_term, sound_var, slot_var) \
     do { \
-        if (!PL_get_integer(handle_term, &slot_var)) { \
-            return PL_type_error("integer", handle_term); \
+        if (!get_typed_handle(handle_term, "sound", &slot_var)) { \
+            return PL_type_error("sound", handle_term); \
         } \
         if (slot_var < 0 || slot_var >= MAX_SOUNDS || !g_sounds[slot_var].in_use) { \
             return PL_existence_error("sound", handle_term); \
@@ -451,20 +451,54 @@ struct mod_route {
 	ma_bool32 rate_mode;
 };
 
+/* clocks */
+#define MAX_CLOCKS 8
+#define MAX_CLOCK_ROUTES 128
+
+typedef struct {
+	float bpm;
+	ma_bool32 running;
+	double beat_position;
+	ma_bool32 in_use;
+} promini_clock_t;
+
+typedef enum {
+	CLOCK_TARGET_LFO,
+	CLOCK_TARGET_ENVELOPE,
+	CLOCK_TARGET_GRANULAR,
+	CLOCK_TARGET_PING_PONG_DELAY,
+	CLOCK_TARGET_DELAY
+} clock_target_type_t;
+
+typedef struct {
+	ma_bool32 in_use;
+	int clock_slot;
+	void *target_slot;
+	clock_target_type_t target_type;
+	float division;
+	float phase_offset;
+	double last_trigger_beat;
+} clock_route_t;
+
 /* modulaation arrays and mutex */
 extern mod_source_t g_mod_sources[MAX_MOD_SOURCES];
 extern mod_route_t g_mod_routes[MAX_MOD_ROUTES];
 extern pthread_mutex_t g_mod_mutex;
+
+extern promini_clock_t g_clocks[MAX_CLOCKS];
+extern clock_route_t g_clock_routes[MAX_CLOCK_ROUTES];
 
 /* modulation functions in mod.c */
 extern void process_modulation(ma_uint32 frame_count, ma_uint32 sample_rate);
 extern install_t mod_register_predicates(void);
 extern install_t uninstall_mod(void);
 
+extern install_t clock_register_predicates(void);
+extern install_t uninstall_clock(void);
+
 /* image slot type */
 
-# define MAX_IMAGES 64
-
+#define MAX_IMAGES 64
 
 typedef struct {
 	unsigned char* pixels;	/* original image data */
@@ -595,6 +629,10 @@ extern void get_engine_format_info(ma_format* format, ma_uint32* channels, ma_ui
 extern void free_effect_chain(effect_node_t* effect);
 extern data_slot_t* get_data_slot(int index);
 extern ma_bool32 get_source_from_term(term_t source_term, ma_node** source_node, effect_node_t** chain);
+
+/* Typed handle helpers (implemented in promini.c) */
+extern int unify_typed_handle(term_t term, const char* type, int slot);
+extern int get_typed_handle(term_t term, const char* type, int* slot);
 
 /* Parameter parsing helpers for key=value lists (implemented in promini.c) */
 extern ma_bool32 get_param_int(term_t params, const char* key, int* value);

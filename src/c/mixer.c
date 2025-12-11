@@ -70,7 +70,8 @@ static ma_node_vtable summing_vtable = {
 /*
  * pl_summing_node_create()
  * Creates a summing node. Multiple sources can connect to it.
- * summing_node_create(-Handle)
+ * summing_node_create(-SummingNode)
+ * Returns summing_node(N).
  */
 static foreign_t pl_summing_node_create(term_t handle_term)
 {
@@ -118,20 +119,22 @@ static foreign_t pl_summing_node_create(term_t handle_term)
 	node->effect_chain = NULL;
 
 	pthread_mutex_unlock(&g_summing_mutex);
-	return PL_unify_integer(handle_term, slot);
+	return unify_typed_handle(handle_term, "summing_node", slot);
 }
 
 /*
  * pl_summing_node_unload()
  * Destroys a summing node.
- * summing_node_unload(+Handle)
+ * summing_node_unload(+SummingNode)
  */
 static foreign_t pl_summing_node_unload(term_t handle_term)
 {
 	int slot;
 	summing_node_t* node;
 
-	if (!PL_get_integer(handle_term, &slot)) return FALSE;
+	if (!get_typed_handle(handle_term, "summing_node", &slot)) {
+		return PL_type_error("summing_node", handle_term);
+	}
 	if (slot < 0 || slot >= MAX_SUMMING_NODES) {
 		return PL_existence_error("summing_node", handle_term);
 	}
@@ -154,7 +157,7 @@ static foreign_t pl_summing_node_unload(term_t handle_term)
 
 /* pl_summing_node_connect()
  * Connects a source to a summing node.
- * summing_node_connect(+Handle, +Source)
+ * summing_node_connect(+SummingNode, +Source)
  * Source is sound(N), voice(N)
  */
 static foreign_t pl_summing_node_connect(term_t handle_term, term_t source_term)
@@ -166,10 +169,12 @@ static foreign_t pl_summing_node_connect(term_t handle_term, term_t source_term)
 	effect_node_t* chain;
 	ma_result result;
 
-	if (!PL_get_integer(handle_term, &slot)) return FALSE;
-  	if (slot < 0 || slot >= MAX_SUMMING_NODES) {
-  		return PL_existence_error("summing_node", handle_term);
-  	}
+	if (!get_typed_handle(handle_term, "summing_node", &slot)) {
+		return PL_type_error("summing_node", handle_term);
+	}
+	if (slot < 0 || slot >= MAX_SUMMING_NODES) {
+		return PL_existence_error("summing_node", handle_term);
+	}
 
 	if (!get_source_from_term(source_term, &source_node, &chain)) {
   		return PL_existence_error("source", source_term);

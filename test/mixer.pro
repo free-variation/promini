@@ -8,8 +8,7 @@
 
 test(summing_node_create, [nondet]) :-
     summing_node_create(N),
-    integer(N),
-    N >= 0,
+    N = summing_node(_),
     summing_node_unload(N).
 
 test(summing_node_unload, [nondet]) :-
@@ -21,7 +20,7 @@ test(summing_node_unload, [nondet]) :-
 test(summing_node_connect_sound, [nondet]) :-
     summing_node_create(N),
     sound_load('audio/guitar.wav', S),
-    summing_node_connect(N, sound(S)),
+    summing_node_connect(N, S),
     sound_unload(S),
     summing_node_unload(N).
 
@@ -29,15 +28,15 @@ test(summing_node_connect_voice, [nondet]) :-
     summing_node_create(N),
     synth_voice_create(V),
     synth_oscillator_add(V, 440.0, 0.5, _O),
-    summing_node_connect(N, voice(V)),
+    summing_node_connect(N, V),
     synth_voice_unload(V),
     summing_node_unload(N).
 
 test(summing_node_disconnect_sound, [nondet]) :-
     summing_node_create(N),
     sound_load('audio/guitar.wav', S),
-    summing_node_connect(N, sound(S)),
-    summing_node_disconnect(sound(S)),
+    summing_node_connect(N, S),
+    summing_node_disconnect(S),
     sound_unload(S),
     summing_node_unload(N).
 
@@ -45,8 +44,8 @@ test(summing_node_disconnect_voice, [nondet]) :-
     summing_node_create(N),
     synth_voice_create(V),
     synth_oscillator_add(V, 440.0, 0.5, _O),
-    summing_node_connect(N, voice(V)),
-    summing_node_disconnect(voice(V)),
+    summing_node_connect(N, V),
+    summing_node_disconnect(V),
     synth_voice_unload(V),
     summing_node_unload(N).
 
@@ -56,7 +55,7 @@ test(summing_node_connect_sound_with_effect, [nondet]) :-
     summing_node_create(N),
     sound_load('audio/guitar.wav', S),
     sound_attach_effect(S, vca, [gain=0.5], _Effect),
-    summing_node_connect(N, sound(S)),
+    summing_node_connect(N, S),
     sound_unload(S),
     summing_node_unload(N).
 
@@ -65,7 +64,7 @@ test(summing_node_connect_voice_with_effect, [nondet]) :-
     synth_voice_create(V),
     synth_oscillator_add(V, 440.0, 0.5, _O),
     voice_attach_effect(V, vca, [gain=0.5], _Effect),
-    summing_node_connect(N, voice(V)),
+    summing_node_connect(N, V),
     synth_voice_unload(V),
     summing_node_unload(N).
 
@@ -75,8 +74,8 @@ test(summing_node_multiple_sources, [nondet]) :-
     summing_node_create(N),
     sound_load('audio/guitar.wav', S1),
     sound_load('audio/counting.wav', S2),
-    summing_node_connect(N, sound(S1)),
-    summing_node_connect(N, sound(S2)),
+    summing_node_connect(N, S1),
+    summing_node_connect(N, S2),
     sound_unload(S1),
     sound_unload(S2),
     summing_node_unload(N).
@@ -86,25 +85,25 @@ test(summing_node_multiple_sources, [nondet]) :-
 test(summing_node_attach_vca, [nondet]) :-
     summing_node_create(N),
     summing_node_attach_effect(N, vca, [gain=0.5], Effect),
-    Effect = effect(summing_node(N), _),
+    Effect = effect(N, _),
     summing_node_unload(N).
 
 test(summing_node_attach_lpf, [nondet]) :-
     summing_node_create(N),
     summing_node_attach_effect(N, lpf, [cutoff=1000.0], Effect),
-    Effect = effect(summing_node(N), _),
+    Effect = effect(N, _),
     summing_node_unload(N).
 
 test(summing_node_attach_reverb, [nondet]) :-
     summing_node_create(N),
     summing_node_attach_effect(N, reverb, [decay=0.8, wet=0.3], Effect),
-    Effect = effect(summing_node(N), _),
+    Effect = effect(N, _),
     summing_node_unload(N).
 
 test(summing_node_with_effect_and_sources, [nondet]) :-
     summing_node_create(N),
     sound_load('audio/guitar.wav', S),
-    summing_node_connect(N, sound(S)),
+    summing_node_connect(N, S),
     summing_node_attach_effect(N, vca, [gain=0.5], _Effect),
     sound_unload(S),
     summing_node_unload(N).
@@ -119,12 +118,12 @@ test(summing_node_query_effects, [nondet]) :-
     summing_node_create(N),
     summing_node_attach_effect(N, vca, [gain=0.5], VcaEffect),
     summing_node_attach_effect(N, lpf, [cutoff=1000.0], _),
-    effects(summing_node(N), Effects1),
+    effects(N, Effects1),
     length(Effects1, 2),
-    member(effect(summing_node(N), vca, _, [gain=0.5]), Effects1),
-    member(effect(summing_node(N), lpf, _, [cutoff=1000.0, order=2]), Effects1),
+    member(effect(N, vca, _, [gain=0.5]), Effects1),
+    member(effect(N, lpf, _, [cutoff=1000.0, order=2]), Effects1),
     effect_detach(VcaEffect),
-    effects(summing_node(N), Effects2),
+    effects(N, Effects2),
     length(Effects2, 1),
     summing_node_unload(N).
 

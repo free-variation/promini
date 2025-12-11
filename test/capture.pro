@@ -9,7 +9,7 @@ test(capture_start_stop, [nondet]) :-
     member(device(Name, capture, _), Devices),
     !,
     capture_start(Name, 1.0, Capture, BufferFrames),
-    integer(Capture),
+    Capture = capture(_),
     integer(BufferFrames),
     BufferFrames > 0,
     capture_stop(Capture).
@@ -38,7 +38,7 @@ test(capture_extract, [nondet]) :-
     Offset is -(SampleRate // 10),
     Length is SampleRate // 20,
     capture_extract(Capture, Offset, Length, Data),
-    integer(Data),
+    Data = audio(_),
     audio_info(Data, data_info(Frames, Channels, Rate, Duration)),
     Frames =:= Length,
     Channels > 0,
@@ -56,7 +56,7 @@ test(capture_extract_wraparound, [nondet]) :-
     Offset is -BufferFrames + 100,
     Length is 200,
     capture_extract(Capture, Offset, Length, Data),
-    integer(Data),
+    Data = audio(_),
     audio_unload(Data),
     capture_stop(Capture).
 

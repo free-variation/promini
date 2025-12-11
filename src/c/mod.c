@@ -459,14 +459,16 @@ static void set_ping_pong_delay(void* target, float value, ma_uint32 frame_count
 /*
  * pl_mod_source_unload()
  * Unloads a modulation source and removes any routes using it.
- * mod_source_unload(+Handle)
+ * mod_source_unload(+Source)
  */
 static foreign_t pl_mod_source_unload(term_t handle_term)
 {
 	int slot, i;
 	mod_source_t* src;
 
-	if (!PL_get_integer(handle_term, &slot)) return FALSE;
+	if (!get_typed_handle(handle_term, "mod_source", &slot)) {
+		return PL_type_error("mod_source", handle_term);
+	}
 	if (slot < 0 || slot >= MAX_MOD_SOURCES) {
 		return PL_existence_error("mod_source", handle_term);
 	}
@@ -500,8 +502,8 @@ static foreign_t pl_mod_source_unload(term_t handle_term)
 /*
  * pl_mod_route_create()
  * Creates a modulation route from source to target parameter.
- * mod_route_create(+SourceHandle, +TargetType, +TargetHandle, +Param, +Mode, +Depth, +Offset, +Slew, -RouteHandle)
- * Mode is 'absolute' or 'rate'.
+ * mod_route_create(+Source, +TargetType, +Target, +Param, +Mode, +Depth, +Offset, +Slew, -Route)
+ * Returns mod_route(N). Mode is 'absolute' or 'rate'.
  */
 static foreign_t pl_mod_route_create(
 		term_t source_term,
@@ -525,7 +527,9 @@ static foreign_t pl_mod_route_create(
 	void* target;
 	mod_setter_t setter;
 
-	if (!PL_get_integer(source_term, &source_slot)) return FALSE;
+	if (!get_typed_handle(source_term, "mod_source", &source_slot)) {
+		return PL_type_error("mod_source", source_term);
+	}
 	if (!PL_get_atom_chars(type_term, &target_type)) return FALSE;
 	if (!PL_get_atom_chars(param_term, &param)) return FALSE;
 	if (!PL_get_atom_chars(mode_term, &mode)) return FALSE;
@@ -550,7 +554,9 @@ static foreign_t pl_mod_route_create(
 	setter = NULL;
 
 	if (strcmp(target_type, "oscillator") == 0) {
-		if (!PL_get_integer(target_term, &target_handle)) return FALSE;
+		if (!get_typed_handle(target_term, "oscillator", &target_handle)) {
+			return PL_type_error("oscillator", target_term);
+		}
 		if (target_handle < 0 || target_handle >= MAX_OSCILLATORS || !g_oscillators[target_handle].in_use) {
 			return PL_existence_error("oscillator", target_term);
 		}
@@ -636,19 +642,21 @@ static foreign_t pl_mod_route_create(
 	route->rate_mode = rate_mode;
 
 	pthread_mutex_unlock(&g_mod_mutex);
-	return PL_unify_integer(handle_term, slot);
+	return unify_typed_handle(handle_term, "mod_route", slot);
 }
 
 /*
  * pl_mod_route_unload()
  * Removes a modulation route.
- * mod_route_unload(+Handle)
+ * mod_route_unload(+Route)
  */
 static foreign_t pl_mod_route_unload(term_t handle_term)
 {
 	int slot;
 
-	if (!PL_get_integer(handle_term, &slot)) return FALSE;
+	if (!get_typed_handle(handle_term, "mod_route", &slot)) {
+		return PL_type_error("mod_route", handle_term);
+	}
 	if (slot < 0 || slot >= MAX_MOD_ROUTES) {
 		return PL_existence_error("mod_route", handle_term);
 	}
@@ -671,8 +679,8 @@ static foreign_t pl_mod_route_unload(term_t handle_term)
 /*
  * pl_mod_lfo_create()
  * Createas an LFO modulation source.
- * mod_lfo_create(+Type, +Freq, -Handle)
- * Type is one of: sine, square, triangle, sawtooth
+ * mod_lfo_create(+Type, +Freq, -Source)
+ * Returns mod_source(N). Type is one of: sine, square, triangle, sawtooth
  */
 static foreign_t pl_mod_lfo_create(term_t type_term, term_t freq_term, term_t handle_term)
 {
@@ -728,7 +736,7 @@ static foreign_t pl_mod_lfo_create(term_t type_term, term_t freq_term, term_t ha
 	}
 
 	pthread_mutex_unlock(&g_mod_mutex);
-	return PL_unify_integer(handle_term, slot);
+	return unify_typed_handle(handle_term, "mod_source", slot);
 }
 
 /*
@@ -743,7 +751,7 @@ static void set_lfo_frequency(void* target, float value)
 
 /*
  * pl_mod_lfo_set_frequency()
- * mod_lfo_set_frequency(+Handle, +Freq)
+ * mod_lfo_set_frequency(+Source, +Freq)
  */
 static foreign_t pl_mod_lfo_set_frequency(term_t handle_term, term_t freq_term)
 {
@@ -751,7 +759,9 @@ static foreign_t pl_mod_lfo_set_frequency(term_t handle_term, term_t freq_term)
 	double freq;
 	mod_source_t* src;
 
-	if (!PL_get_integer(handle_term, &slot)) return FALSE;
+	if (!get_typed_handle(handle_term, "mod_source", &slot)) {
+		return PL_type_error("mod_source", handle_term);
+	}
 	if (!PL_get_float(freq_term, &freq)) return FALSE;
 
 	if (slot < 0 || slot >= MAX_MOD_SOURCES) return FALSE;
@@ -770,7 +780,7 @@ static foreign_t pl_mod_lfo_set_frequency(term_t handle_term, term_t freq_term)
 
 /*
  * pl_mod_lfo_get_frequency()
- * mod_lfo_get_frequency(+Handle, -Freq)
+ * mod_lfo_get_frequency(+Source, -Freq)
  */
 static foreign_t pl_mod_lfo_get_frequency(term_t handle_term, term_t freq_term)
 {
@@ -778,7 +788,9 @@ static foreign_t pl_mod_lfo_get_frequency(term_t handle_term, term_t freq_term)
 	mod_source_t* src;
 	float freq;
 
-	if (!PL_get_integer(handle_term, &slot)) return FALSE;
+	if (!get_typed_handle(handle_term, "mod_source", &slot)) {
+		return PL_type_error("mod_source", handle_term);
+	}
 	if (slot < 0 || slot >= MAX_MOD_SOURCES) return FALSE;
 
 	pthread_mutex_lock(&g_mod_mutex);
@@ -800,8 +812,8 @@ static foreign_t pl_mod_lfo_get_frequency(term_t handle_term, term_t freq_term)
 /*
  * pl_mod_envelope_create()
  * Creates an ADBR envelope modulation source.
- * mod_envelope_create(+Attack, +Decay, +Break, +BreakLevel, +Release, +DurationMs, +Loop, -Handle)
- * Attack, Decay, Break, Release are proportions (should sum to 1.0)
+ * mod_envelope_create(+Attack, +Decay, +Break, +BreakLevel, +Release, +DurationMs, +Loop, -Source)
+ * Returns mod_source(N). Attack, Decay, Break, Release are proportions (should sum to 1.0)
  * BreakLevel is the level at the break point (0.0-1.0)
  * DurationMs is the total envelope time in milliseconds
  * Loop is true/false
@@ -849,20 +861,22 @@ static foreign_t pl_mod_envelope_create(
 	src->source.envelope.stage_progress = 0.0f;
 
 	pthread_mutex_unlock(&g_mod_mutex);
-	return PL_unify_integer(handle_term, slot);
+	return unify_typed_handle(handle_term, "mod_source", slot);
 }
 
 /*
  * pl_mod_envelope_trigger()
  * Triggers (restarts) an envelope from the beginning.
- * mod_envelope_trigger(+Handle)
+ * mod_envelope_trigger(+Source)
  */
 static foreign_t pl_mod_envelope_trigger(term_t handle_term)
 {
 	int slot;
 	mod_source_t* src;
 
-	if (!PL_get_integer(handle_term, &slot)) return FALSE;
+	if (!get_typed_handle(handle_term, "mod_source", &slot)) {
+		return PL_type_error("mod_source", handle_term);
+	}
 	if (slot < 0 || slot >= MAX_MOD_SOURCES) return FALSE;
 
 	pthread_mutex_lock(&g_mod_mutex);
@@ -884,9 +898,9 @@ static foreign_t pl_mod_envelope_trigger(term_t handle_term)
  *****************************************************************************/
 
 /*
- * pl_mod_gamepdad_create()
- * mod_garempad_create(+Gamepad, +Axis, -Handle)
- * Create a modulation source from a gamepad axis
+ * pl_mod_gamepad_create()
+ * mod_gamepad_create(+Gamepad, +Axis, -Source)
+ * Creates a modulation source from a gamepad axis. Returns mod_source(N).
  */
 static foreign_t pl_mod_gamepad_create(term_t gamepad_term, term_t axis_term, term_t handle_term)
 {
@@ -931,7 +945,7 @@ static foreign_t pl_mod_gamepad_create(term_t gamepad_term, term_t axis_term, te
 	src->source.gamepad.dpad_axis = dpad_axis;
 
 	pthread_mutex_unlock(&g_mod_mutex);
-	return PL_unify_integer(handle_term, slot);
+	return unify_typed_handle(handle_term, "mod_source", slot);
 }
 
 /******************************************************************************

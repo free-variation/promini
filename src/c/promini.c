@@ -33,8 +33,8 @@
 #define GET_SOUND_FROM_HANDLE(handle_term, sound_var) \
     do { \
         int _slot; \
-        if (!PL_get_integer(handle_term, &_slot)) { \
-            return PL_type_error("integer", handle_term); \
+        if (!get_typed_handle(handle_term, "sound", &_slot)) { \
+            return PL_type_error("sound", handle_term); \
         } \
         sound_var = get_sound(_slot); \
         if (sound_var == NULL) { \
@@ -49,17 +49,8 @@
 #define GET_DATA_BUFFER_FROM_HANDLE(handle_term, buffer_var) \
     do { \
         int _slot; \
-        atom_t _name; \
-        size_t _arity; \
-        term_t _arg; \
-        if (!PL_get_name_arity(handle_term, &_name, &_arity) || \
-            _arity != 1 || \
-            strcmp(PL_atom_chars(_name), "audio") != 0) { \
-            return PL_type_error("audio(Handle)", handle_term); \
-        } \
-        _arg = PL_new_term_ref(); \
-        if (!PL_get_arg(1, handle_term, _arg) || !PL_get_integer(_arg, &_slot)) { \
-            return PL_type_error("audio(Handle)", handle_term); \
+        if (!get_typed_handle(handle_term, "audio", &_slot)) { \
+            return PL_type_error("audio", handle_term); \
         } \
         buffer_var = get_data_buffer(_slot); \
         if (buffer_var == NULL) { \
@@ -74,17 +65,8 @@
  */
 #define GET_DATA_BUFFER_WITH_SLOT(handle_term, buffer_var, slot_var) \
     do { \
-        atom_t _name; \
-        size_t _arity; \
-        term_t _arg; \
-        if (!PL_get_name_arity(handle_term, &_name, &_arity) || \
-            _arity != 1 || \
-            strcmp(PL_atom_chars(_name), "audio") != 0) { \
-            return PL_type_error("audio(Handle)", handle_term); \
-        } \
-        _arg = PL_new_term_ref(); \
-        if (!PL_get_arg(1, handle_term, _arg) || !PL_get_integer(_arg, &slot_var)) { \
-            return PL_type_error("audio(Handle)", handle_term); \
+        if (!get_typed_handle(handle_term, "audio", &slot_var)) { \
+            return PL_type_error("audio", handle_term); \
         } \
         buffer_var = get_data_buffer(slot_var); \
         if (buffer_var == NULL) { \
@@ -93,16 +75,32 @@
     } while(0)
 
 /*
- * unify_audio_handle()
- * Unifies term with audio(Handle).
+ * unify_typed_handle()
+ * Unifies term with type(slot), e.g. sound(0), voice(1).
  */
-static int unify_audio_handle(term_t term, int slot)
+int unify_typed_handle(term_t term, const char* type, int slot)
 {
 	term_t arg = PL_new_term_ref();
-	functor_t f = PL_new_functor(PL_new_atom("audio"), 1);
+	functor_t f = PL_new_functor(PL_new_atom(type), 1);
 
 	if (!PL_put_integer(arg, slot)) return FALSE;
 	return PL_unify_term(term, PL_FUNCTOR, f, PL_TERM, arg);
+}
+
+/*
+ * get_typed_handle()
+ * Extracts slot from type(slot) term. Returns FALSE if wrong type.
+ */
+int get_typed_handle(term_t term, const char* type, int* slot)
+{
+	term_t arg = PL_new_term_ref();
+	functor_t f;
+
+	if (!PL_get_functor(term, &f)) return FALSE;
+	if (f != PL_new_functor(PL_new_atom(type), 1)) return FALSE;
+	if (!PL_get_arg(1, term, arg)) return FALSE;
+	if (!PL_get_integer(arg, slot)) return FALSE;
+	return TRUE;
 }
 
 /******************************************************************************
@@ -533,9 +531,9 @@ float ring_buffer_read_interpolated(ring_buffer_t* rb, float position, ma_uint32
 
 /*
  * pl_audio_load()
- * audio_load(+FilePath, -Handle)
+ * audio_load(+FilePath, -Audio)
  * Loads audio data from file into a shareable buffer.
- * Returns a data handle that can be used to create multiple sounds.
+ * Returns audio(N) that can be used to create multiple sounds.
  */
 static foreign_t pl_audio_load(term_t filepath, term_t handle)
 {
@@ -569,7 +567,7 @@ static foreign_t pl_audio_load(term_t filepath, term_t handle)
 		return PL_resource_error("data_buffer_slots");
 	}
 
-	return unify_audio_handle(handle, slot);
+	return unify_typed_handle(handle, "audio", slot);
 }
 
 /*
@@ -618,17 +616,17 @@ static foreign_t extract_from_ring_buffer(
 		return PL_resource_error("data_buffer_slots");
 	}
 
-	return unify_audio_handle(extracted_handle, slot);
+	return unify_typed_handle(extracted_handle, "audio", slot);
 }
 
 /*
  * pl_audio_extract()
- * audio_extract(+Source, +Offset, +Length, -ExtractedHandle)
- * Extracts a slice of frames into a new buffer.
+ * audio_extract(+Source, +Offset, +Length, -Audio)
+ * Extracts a slice of frames into a new buffer. Returns audio(N).
  * Source can be:
- * 	- audio(Handle) - data buffer (absolute offset)
- * 	- capture(Handle) - capture ring buffer (negative offset from write head)
- * 	- granular(Handle) - granular ring buffer (negative offset from write head)
+ * 	- audio(N) - data buffer (absolute offset)
+ * 	- capture(N) - capture ring buffer (negative offset from write head)
+ * 	- granular(N) - granular ring buffer (negative offset from write head)
  */
 static foreign_t pl_audio_extract(
 		term_t source_handle,
@@ -713,7 +711,7 @@ static foreign_t pl_audio_extract(
 			return PL_resource_error("data_buffer_slots");
 		}
 
-		return unify_audio_handle(extracted_handle, extracted_slot);
+		return unify_typed_handle(extracted_handle, "audio", extracted_slot);
 	}
 	else if (strcmp(name_str, "capture") == 0) {
 		capture_slot_t *capture;
@@ -747,25 +745,16 @@ static foreign_t pl_audio_extract(
 }
 
 /*
- * audio_unload(+Handle)
+ * audio_unload(+Audio)
  * Decrements reference count on data buffer.
  * Frees the buffer when refcount reaches zero.
  */
 static foreign_t pl_audio_unload(term_t handle)
 {
 	int slot;
-	atom_t name;
-	size_t arity;
-	term_t arg;
 
-	if (!PL_get_name_arity(handle, &name, &arity) ||
-	    arity != 1 ||
-	    strcmp(PL_atom_chars(name), "audio") != 0) {
-		return PL_type_error("audio(Handle)", handle);
-	}
-	arg = PL_new_term_ref();
-	if (!PL_get_arg(1, handle, arg) || !PL_get_integer(arg, &slot)) {
-		return PL_type_error("audio(Handle)", handle);
+	if (!get_typed_handle(handle, "audio", &slot)) {
+		return PL_type_error("audio", handle);
 	}
 
 	if (slot < 0 || slot >= MAX_DATA_BUFFERS || !g_data_buffers[slot].in_use) {
@@ -982,15 +971,15 @@ foreign_t pl_promini_init(void)
 }
 
 /*
- * sound_unload(+Handle)
+ * sound_unload(+Sound)
  * Unloads a sound and frees its resources.
  */
 static foreign_t pl_sound_unload(term_t handle)
 {
     int slot;
 
-    if (!PL_get_integer(handle, &slot)) {
-        return PL_type_error("integer", handle);
+    if (!get_typed_handle(handle, "sound", &slot)) {
+        return PL_type_error("sound", handle);
     }
 
     if (slot < 0 || slot >= MAX_SOUNDS || !g_sounds[slot].in_use) {
@@ -1089,7 +1078,7 @@ static foreign_t pl_promini_devices(term_t devices)
 
 /*
  * pl_sound_start()
- * sound_start(+Handle)
+ * sound_start(+Sound)
  * Starts playing a sound
  */
 static foreign_t pl_sound_start(term_t handle)
@@ -1104,7 +1093,7 @@ static foreign_t pl_sound_start(term_t handle)
 }
 
 /*
- * sound_stop(+Handle)
+ * sound_stop(+Sound)
  * Stops playing a sound
  */
 static foreign_t pl_sound_stop(term_t handle)
@@ -1119,7 +1108,7 @@ static foreign_t pl_sound_stop(term_t handle)
 }
 
 /*
- * sound_is_playing(+Handle)
+ * sound_is_playing(+Sound)
  * Succeeds if sound is playing, fails otherwise.
  */
 static foreign_t pl_sound_is_playing(term_t handle)
@@ -1132,7 +1121,7 @@ static foreign_t pl_sound_is_playing(term_t handle)
 }
 
 /*
- * sound_set_looping(+Handle, +Loop)
+ * sound_set_looping(+Sound, +Loop)
  * Sets whether a sound should loop
  */
 static foreign_t pl_sound_set_looping(term_t handle, term_t loop)
@@ -1154,7 +1143,7 @@ static foreign_t pl_sound_set_looping(term_t handle, term_t loop)
 }
 
 /*
- * sound_is_looping(+Handle)
+ * sound_is_looping(+Sound)
  * Succeeds if sound is set to loop, fails otherwise.
  */
 static foreign_t pl_sound_is_looping(term_t handle)
@@ -1167,7 +1156,7 @@ static foreign_t pl_sound_is_looping(term_t handle)
 }
 
 /*
- * sound_seek(+Handle, +Frame)
+ * sound_seek(+Sound, +Frame)
  * Seeks to a specific frame position in the sound.
  */
 static foreign_t pl_sound_seek(term_t handle, term_t frame)
@@ -1187,7 +1176,7 @@ static foreign_t pl_sound_seek(term_t handle, term_t frame)
 }
 
 /*
- * sound_get_position(+Handle, -Frame)
+ * sound_get_position(+Sound, -Frame)
  * Gets the current playback position in frames.
  */
 static foreign_t pl_sound_get_position(term_t handle, term_t frame) {
@@ -1206,9 +1195,9 @@ static foreign_t pl_sound_get_position(term_t handle, term_t frame) {
 }
 
 
-/* 
- * sound_create(+DataHandle, -SoundHandle)
- * Creates a sound instance from a loaded data buffer.
+/*
+ * sound_create(+Audio, -Sound)
+ * Creates a sound instance from a loaded data buffer. Returns sound(N).
  * Multiple sounds can be created from the same buffer for polyphony.
  */
 static foreign_t pl_sound_create(term_t data_handle, term_t sound_handle)
@@ -1271,11 +1260,11 @@ static foreign_t pl_sound_create(term_t data_handle, term_t sound_handle)
 	g_sounds[sound_slot].data_buffer_index = data_slot;
 	g_data_buffers[data_slot].refcount++;
 
-	return PL_unify_integer(sound_handle, sound_slot);
+	return unify_typed_handle(sound_handle, "sound", sound_slot);
 }
 
 /*
- * sound_set_range(+Handle, +StartFrame, +EndFrame)
+ * sound_set_range(+Sound, +StartFrame, +EndFrame)
  * Sets the playback range for a sound (which frames to play).
  */
 static foreign_t pl_sound_set_range(term_t handle, term_t start_term, term_t end_term)
@@ -1347,7 +1336,7 @@ static foreign_t pl_audio_info(term_t data_handle, term_t info)
 }
 
 /*
- * sound_length(+Handle, -Frames)
+ * sound_length(+Sound, -Frames)
  * Gets the total length of a sound in PCM frames.
  */
 static foreign_t pl_sound_length(term_t handle, term_t frames)
@@ -1367,7 +1356,7 @@ static foreign_t pl_sound_length(term_t handle, term_t frames)
 }
 
 /*
- * sound_set_pitch(+Handle, +Pitch)
+ * sound_set_pitch(+Sound, +Pitch)
  * Sets the pitch in semitones (12 = one octave up, -12 = one octave down).
  */
 static foreign_t pl_sound_set_pitch(term_t handle, term_t pitch)
@@ -1388,7 +1377,7 @@ static foreign_t pl_sound_set_pitch(term_t handle, term_t pitch)
 }
 
 /*
- * sound_get_pitch(+Handle, -Pitch)
+ * sound_get_pitch(+Sound, -Pitch)
  * Gets pitch in semitones.
  */
 static foreign_t pl_sound_get_pitch(term_t handle, term_t pitch)
@@ -1406,8 +1395,8 @@ static foreign_t pl_sound_get_pitch(term_t handle, term_t pitch)
 }
 
 /*
- * audio_reverse(+SourceHandle, -ReversedHandle)
- * Creates a reversed copy of a data buffer
+ * audio_reverse(+Audio, -ReversedAudio)
+ * Creates a reversed copy of a data buffer. Returns audio(N).
  */
 static foreign_t pl_audio_reverse(term_t source_handle, term_t reversed_handle)
 {
@@ -1452,7 +1441,7 @@ static foreign_t pl_audio_reverse(term_t source_handle, term_t reversed_handle)
 		return PL_resource_error("data_buffer_slots");
 	}
 
-	return unify_audio_handle(reversed_handle, slot);
+	return unify_typed_handle(reversed_handle, "audio", slot);
 }
 
 

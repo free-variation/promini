@@ -20,8 +20,8 @@ pthread_mutex_t g_capture_devices_mutex = PTHREAD_MUTEX_INITIALIZER;
 #define GET_CAPTURE_DEVICE_FROM_HANDLE(handle_term, capture_var) \
 	do { \
 		int _slot; \
-		if (!PL_get_integer(handle_term, &_slot)) { \
-			return PL_type_error("integer", handle_term); \
+		if (!get_typed_handle(handle_term, "capture", &_slot)) { \
+			return PL_type_error("capture", handle_term); \
 		} \
 		capture_var = get_capture_device(_slot); \
 		if (capture_var == NULL) { \
@@ -166,8 +166,8 @@ static void capture_data_callback(ma_device *device, void *output, const void *i
 
 /*
  * pl_capture_start()
- * capture_start(+DeviceName, +PeriodSeconds, -CaptureHandle, -BufferFrames)
- * Starts capture from specified device into ring buffer.
+ * capture_start(+DeviceName, +PeriodSeconds, -Capture, -BufferFrames)
+ * Starts capture from specified device into ring buffer. Returns capture(N).
  */
 static foreign_t pl_capture_start(term_t device_name, term_t period_term, term_t capture_handle, term_t buffer_frames_out)
 {
@@ -290,12 +290,12 @@ static foreign_t pl_capture_start(term_t device_name, term_t period_term, term_t
 		return FALSE;
 	}
 
-	return PL_unify_integer(capture_handle, slot);
+	return unify_typed_handle(capture_handle, "capture", slot);
 }
 
 /*
  * pl_capture_stop()
- * capture_stop(+CaptureHandle)
+ * capture_stop(+Capture)
  * Stops capture and frees resources.
  */
 static foreign_t pl_capture_stop(term_t capture_handle)
@@ -310,7 +310,7 @@ static foreign_t pl_capture_stop(term_t capture_handle)
 
 /*
  * pl_capture_get_info()
- * capture_get_info(+CaptureHandle, -Info)
+ * capture_get_info(+Capture, -Info)
  * Returns capture_info(WritePosition, Capacity, SampleRate).
  */
 static foreign_t pl_capture_get_info(term_t capture_handle, term_t info)
@@ -341,8 +341,8 @@ static foreign_t pl_capture_get_info(term_t capture_handle, term_t info)
 
 /*
  * pl_capture_extract()
- * capture_extract(+CaptureHandle, +RelativeOffset, +Length, -DataHandle)
- * Extracts frames from capture buffer to a new data buffer.
+ * capture_extract(+Capture, +RelativeOffset, +Length, -Audio)
+ * Extracts frames from capture buffer to a new data buffer. Returns audio(N).
  * RelativeOffset is negative frames from current write position.
  */
 static foreign_t pl_capture_extract(term_t capture_handle, term_t offset_term, term_t length_term, term_t data_handle)
@@ -404,7 +404,7 @@ static foreign_t pl_capture_extract(term_t capture_handle, term_t offset_term, t
 		return PL_resource_error("data_buffer_slots");
 	}
 
-	return PL_unify_integer(data_handle, slot);
+	return unify_typed_handle(data_handle, "audio", slot);
 }
 
 /******************************************************************************

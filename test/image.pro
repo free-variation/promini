@@ -119,7 +119,7 @@ test(image_synth_create, [nondet, cleanup((image_synth_unload(Synth), image_unlo
     image_to_grayscale(Img),
     image_downsample(Img, 50, 50),
     image_synth_create(Img, 0, additive, Synth),
-    integer(Synth).
+    Synth = image_synth(_).
 
 test(image_synth_unload, [nondet, cleanup(image_unload(Img))]) :-
     image_load('images/pascal.jpg', Img),
@@ -169,7 +169,7 @@ test(image_synth_waveform_create, [nondet, cleanup((image_synth_unload(Synth), i
     image_to_grayscale(Img),
     image_downsample(Img, 50, 50),
     image_synth_create(Img, 0, waveform, Synth),
-    integer(Synth).
+    Synth = image_synth(_).
 
 test(image_synth_waveform_get_parameters, [nondet, cleanup((image_synth_unload(Synth), image_unload(Img)))]) :-
     image_load('images/pascal.jpg', Img),

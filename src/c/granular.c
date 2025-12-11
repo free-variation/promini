@@ -6,6 +6,17 @@
 
 #include "promini.h"
 
+#define GET_GRANULAR_FROM_HANDLE(handle_term, granular_var, slot_var) \
+	do { \
+		if (!get_typed_handle(handle_term, "granular", &slot_var)) { \
+			return PL_type_error("granular", handle_term); \
+		} \
+		if (slot_var < 0 || slot_var >= MAX_GRANULAR_DELAYS || !g_granular_delays[slot_var].in_use) { \
+			return PL_existence_error("granular_delay", handle_term); \
+		} \
+		granular_var = &g_granular_delays[slot_var]; \
+	} while(0)
+
 /******************************************************************************
  * GLOBAL VARIABLES
  *****************************************************************************/
@@ -65,6 +76,7 @@ static int trigger_grain(granular_delay_t *g)
 	/* set grain parameters */
 	grain->source_type = GRAIN_SOURCE_RING_BUFFER;
 	grain->source_index = 0;
+
 	/* position is relative to write head: 0 = newest, 1 = oldest */
 	offset = (ma_uint64)(CLAMP(g->position + rand_pos, 0.0f, max_position * 0.99f) * g->buffer.capacity_frames);
 	grain->position = (g->buffer.write_pos + g->buffer.capacity_frames - offset) % g->buffer.capacity_frames;
@@ -378,8 +390,9 @@ static ma_node_vtable granular_vtable = {
 
 /*
  * pl_granular_create()
- * Creates a granular delay with the speficied buffer duration.
- * granular_create(+BufferSeconds, -Handle)
+ * Creates a granular delay with the specified buffer duration.
+ * granular_create(+BufferSeconds, -Granular)
+ * Returns granular(N).
  */
 static foreign_t pl_granular_create(term_t buffer_term, term_t handle_term)
 {
@@ -465,28 +478,20 @@ static foreign_t pl_granular_create(term_t buffer_term, term_t handle_term)
 	g->normalize = MA_TRUE;
 	g->frames_recorded = 0;
 
-	return PL_unify_integer(handle_term, slot);
+	return unify_typed_handle(handle_term, "granular", slot);
 }
 
 /*
  * pl_granular_trigger()
  * Manually trigger a grain.
- * granular_trigger(+Handle)
+ * granular_trigger(+Granular)
  */
 static foreign_t pl_granular_trigger(term_t handle_term)
 {
 	int slot;
 	granular_delay_t *g;
 
-	if (!PL_get_integer(handle_term, &slot)) {
-		return PL_type_error("integer", handle_term);
-	}
-
-	if (slot < 0 || slot >= MAX_GRANULAR_DELAYS || !g_granular_delays[slot].in_use) {
-		return PL_existence_error("granular_delay", handle_term);
-	}
-
-	g = &g_granular_delays[slot];
+	GET_GRANULAR_FROM_HANDLE(handle_term, g, slot);
 	trigger_grain(g);
 
 	return TRUE;
@@ -495,7 +500,7 @@ static foreign_t pl_granular_trigger(term_t handle_term)
 /*
  * pl_granular_set()
  * Set granular delay parameters from key=value list.
- * granular_set(+Handle, +Params)
+ * granular_set(+Granular, +Params)
  */
 static foreign_t pl_granular_set(term_t handle_term, term_t params_term)
 {
@@ -504,15 +509,7 @@ static foreign_t pl_granular_set(term_t handle_term, term_t params_term)
 	float f;
 	ma_bool32 b;
 
-	if (!PL_get_integer(handle_term, &slot)) {
-		return PL_type_error("integer", handle_term);
-	}
-
-	if (slot < 0 || slot >= MAX_GRANULAR_DELAYS || !g_granular_delays[slot].in_use) {
-		return PL_existence_error("granular_delay", handle_term);
-	}
-
-	g = &g_granular_delays[slot];
+	GET_GRANULAR_FROM_HANDLE(handle_term, g, slot);
 
 	if (get_param_float(params_term, "density", &f)) {
 		g->density = f;
@@ -597,7 +594,7 @@ static int add_bool_param(term_t *list, functor_t eq, const char *name, ma_bool3
 /*
  * pl_granular_get()
  * Get all granular delay parameters as key=value list.
- * granular_get(+Handle, -Params)
+ * granular_get(+Granular, -Params)
  */
 static foreign_t pl_granular_get(term_t handle_term, term_t params_term)
 {
@@ -606,15 +603,7 @@ static foreign_t pl_granular_get(term_t handle_term, term_t params_term)
 	term_t list;
 	functor_t eq;
 
-	if (!PL_get_integer(handle_term, &slot)) {
-		return PL_type_error("integer", handle_term);
-	}
-
-	if (slot < 0 || slot >= MAX_GRANULAR_DELAYS || !g_granular_delays[slot].in_use) {
-		return PL_existence_error("granular_delay", handle_term);
-	}
-
-	g = &g_granular_delays[slot];
+	GET_GRANULAR_FROM_HANDLE(handle_term, g, slot);
 
 	list = PL_new_term_ref();
 	PL_put_nil(list);
@@ -641,19 +630,15 @@ static foreign_t pl_granular_get(term_t handle_term, term_t params_term)
 /*
  * pl_granular_destroy()
  * Destroy a granular delay and free resources.
- * granular_destroy(+Handle)
+ * granular_destroy(+Granular)
  */
 static foreign_t pl_granular_destroy(term_t handle_term)
 {
 	int slot;
+	granular_delay_t *g;
 
-	if (!PL_get_integer(handle_term, &slot)) {
-		return PL_type_error("integer", handle_term);
-	}
-
-	if (slot < 0 || slot >= MAX_GRANULAR_DELAYS || !g_granular_delays[slot].in_use) {
-		return PL_existence_error("granular_delay", handle_term);
-	}
+	GET_GRANULAR_FROM_HANDLE(handle_term, g, slot);
+	(void)g;
 
 	free_granular_slot(slot);
 
@@ -663,7 +648,7 @@ static foreign_t pl_granular_destroy(term_t handle_term)
 /*
  * pl_granular_set_mode()
  * Set pitch quantization mode for grain triggering.
- * granular_set_mode(+Handle, +ModeList, +DeviationDown, +DeviationUp)
+ * granular_set_mode(+Granular, +ModeList, +DeviationDown, +DeviationUp)
  * ModeList is a list of semitone intervals, e.g. [0, 2, 4, 5, 7, 9, 11] for major.
  * Empty list disables mode quantization.
  */
@@ -682,13 +667,7 @@ static foreign_t pl_granular_set_mode(term_t handle_term, term_t mode_term,
 	tail = PL_new_term_ref();
 	count = 0;
 
-	if (!PL_get_integer(handle_term, &slot)) {
-		return PL_type_error("integer", handle_term);
-	}
-
-	if (slot < 0 || slot >= MAX_GRANULAR_DELAYS || !g_granular_delays[slot].in_use) {
-		return PL_existence_error("granular_delay", handle_term);
-	}
+	GET_GRANULAR_FROM_HANDLE(handle_term, g, slot);
 
 	if (!PL_get_integer(down_term, &deviation_down)) {
 		return PL_type_error("integer", down_term);
@@ -697,8 +676,6 @@ static foreign_t pl_granular_set_mode(term_t handle_term, term_t mode_term,
 	if (!PL_get_integer(up_term, &deviation_up)) {
 		return PL_type_error("integer", up_term);
 	}
-
-	g = &g_granular_delays[slot];
 
 	/* parse mode list */
 	if (!PL_put_term(tail, mode_term)) return FALSE;
@@ -721,7 +698,7 @@ static foreign_t pl_granular_set_mode(term_t handle_term, term_t mode_term,
 /*
  * pl_granular_connect()
  * Connect a source to the granular delay input.
- * granular_connect(+Handle, +Source)
+ * granular_connect(+Granular, +Source)
  * Source is sound(N), voice(N), image_synth(N), or capture(N).
  */
 static foreign_t pl_granular_connect(term_t handle_term, term_t source_term)
@@ -733,19 +710,11 @@ static foreign_t pl_granular_connect(term_t handle_term, term_t source_term)
 	effect_node_t *chain;
 	ma_result result;
 
-	if (!PL_get_integer(handle_term, &slot)) {
-		return PL_type_error("integer", handle_term);
-	}
-
-	if (slot < 0 || slot >= MAX_GRANULAR_DELAYS || !g_granular_delays[slot].in_use) {
-		return PL_existence_error("granular_delay", handle_term);
-	}
+	GET_GRANULAR_FROM_HANDLE(handle_term, g, slot);
 
 	if (!get_source_from_term(source_term, &source_node, &chain)) {
 		return PL_existence_error("source", source_term);
 	}
-
-	g = &g_granular_delays[slot];
 
 	/* find output node: end of effect chain, or source itself */
 	output_node = get_effect_chain_tail(chain);

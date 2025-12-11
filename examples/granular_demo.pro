@@ -4,6 +4,7 @@
  * Granular Delay Demos
  *
  * demo_granular_file          - Granulate guitar.wav with various settings
+ * demo_granular_live_reverb   - Live mic input with wide stereo and reverb
  * demo_granular_live          - Granulate live microphone input
  * demo_granular_texture       - Create evolving granular textures
  * demo_granular_freeze        - Freeze and granulate a moment in time
@@ -22,7 +23,7 @@ demo_granular_file :-
 
     format('Creating granular delay (4 second buffer)...~n'),
     granular_create(4.0, G),
-    granular_connect(G, sound(Sound)),
+    granular_connect(G, Sound),
     granular_set(G, [recording=true, normalize=true]),
 
     format('Starting source playback...~n'),
@@ -88,6 +89,77 @@ demo_granular_file :-
     format('Granular file demo complete.~n~n').
 
 
+/*
+ * demo_granular_live_reverb
+ * Record from microphone continuously while granulating
+ * with wide stereo spread and reverb.
+ */
+demo_granular_live_reverb :-
+    format('~n=== Live Granular with Reverb ===~n~n'),
+
+    % Find capture device
+    promini_devices(Devices),
+    (   member(device(DeviceName, capture, _), Devices)
+    ->  format('Using capture device: ~w~n', [DeviceName])
+    ;   format('ERROR: No capture device found~n'), fail
+    ),
+
+    format('Starting capture (6 second buffer)...~n'),
+    capture_start(DeviceName, 6.0, Capture, BufferFrames),
+    format('Buffer: ~w frames~n', [BufferFrames]),
+
+    format('Creating granular delay...~n'),
+    granular_create(6.0, G),
+    granular_connect(G, Capture),
+    granular_set(G, [recording=true, normalize=true, density=0.0]),
+
+    % Add reverb with shimmer
+    granular_attach_effect(G, reverb, [
+        wet=0.4,
+        decay=0.85,
+        damping=0.3,
+        width=1.5,
+        shimmer1_shift=12.0,
+        shimmer1_mix=0.15
+    ], _),
+
+    format('~n*** SPEAK OR MAKE SOUNDS INTO MICROPHONE ***~n'),
+    format('Filling buffer...~n~n'),
+    sleep(6.0),
+
+    format('Starting granulation (Ctrl-C to stop)...~n~n'),
+    granular_set(G, [
+        density=12.0,
+        size=150.0,
+        size_spray=50.0,
+        position=0.4,
+        position_spray=0.3,
+        envelope=0.5,
+        pan_spray=1.0,
+        reverse_probability=0.2
+    ]),
+
+    % Aeolian mode (natural minor): W-H-W-W-H-W-W
+    % Range: 2 semitones down, 12 semitones up
+    granular_set_mode(G, [0.0, 2.0, 3.0, 5.0, 7.0, 8.0, 10.0], 2, 12),
+
+    % Run until interrupted
+    catch(
+        live_granular_loop(G),
+        _,
+        true
+    ),
+
+    format('~nCleaning up...~n'),
+    granular_destroy(G),
+    capture_stop(Capture),
+    format('Live reverb demo complete.~n~n').
+
+live_granular_loop(G) :-
+    sleep(30.0),
+    live_granular_loop(G).
+
+
 demo_granular_live :-
     format('~n=== Granular Delay Demo (Live Input) ===~n~n'),
 
@@ -104,7 +176,7 @@ demo_granular_live :-
 
     format('Creating granular delay...~n'),
     granular_create(4.0, G),
-    granular_connect(G, capture(Capture)),
+    granular_connect(G, Capture),
     granular_set(G, [recording=true, normalize=true]),
 
     format('~n*** SPEAK OR MAKE SOUNDS INTO MICROPHONE ***~n~n'),
@@ -160,7 +232,7 @@ demo_granular_texture :-
     sound_load('audio/gong.wav', Sound),
 
     granular_create(6.0, G),
-    granular_connect(G, sound(Sound)),
+    granular_connect(G, Sound),
     granular_set(G, [recording=true, normalize=true]),
 
     format('Playing source once to fill buffer...~n'),
@@ -221,7 +293,7 @@ demo_granular_freeze :-
     sound_load('audio/counting.wav', Sound),
 
     granular_create(2.0, G),
-    granular_connect(G, sound(Sound)),
+    granular_connect(G, Sound),
     granular_set(G, [recording=true, density=0.0, normalize=true]),
 
     format('Playing source...~n'),
@@ -310,7 +382,7 @@ demo_granular_normalization :-
     sound_loop(Sound),
 
     granular_create(4.0, G),
-    granular_connect(G, sound(Sound)),
+    granular_connect(G, Sound),
     granular_set(G, [recording=true]),
 
     format('Starting source playback to fill buffer...~n'),
@@ -408,7 +480,7 @@ demo_granular_trigger :-
 
     sound_load('audio/gong.wav', Sound),
     granular_create(3.0, G),
-    granular_connect(G, sound(Sound)),
+    granular_connect(G, Sound),
     granular_set(G, [
         recording=true,
         normalize=true,
@@ -473,7 +545,7 @@ demo_granular_partial_buffer :-
     sound_load('audio/guitar.wav', Sound),
 
     granular_create(8.0, G),
-    granular_connect(G, sound(Sound)),
+    granular_connect(G, Sound),
     granular_set(G, [recording=true, normalize=true, density=0.0]),
     granular_attach_effect(G, reverb, [wet=0.3, decay=0.8, shimmer1_shift=12.0, shimmer1_mix=0.15], _),
 
@@ -525,7 +597,7 @@ demo_granular_mode :-
     sound_load('audio/gong.wav', Sound),
 
     granular_create(4.0, G),
-    granular_connect(G, sound(Sound)),
+    granular_connect(G, Sound),
     granular_set(G, [recording=true, normalize=true, density=0.0]),
 
     format('Recording source...~n'),

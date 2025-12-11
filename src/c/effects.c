@@ -3125,7 +3125,7 @@ static foreign_t attach_effect_to_node(ma_sound* sound, effect_node_t** effect_c
 static foreign_t pl_sound_attach_effect(term_t handle, term_t effect_type, term_t params, term_t effect_handle)
 {
 	int slot;
-	if (!PL_get_integer(handle, &slot) || slot < 0 || slot >= MAX_SOUNDS || !g_sounds[slot].in_use)
+	if (!get_typed_handle(handle, "sound", &slot) || slot < 0 || slot >= MAX_SOUNDS || !g_sounds[slot].in_use)
 		return PL_existence_error("sound", handle);
 	return attach_effect_to_node(g_sounds[slot].sound, &g_sounds[slot].effect_chain, "sound", slot, effect_type, params, effect_handle);
 }
@@ -3133,7 +3133,7 @@ static foreign_t pl_sound_attach_effect(term_t handle, term_t effect_type, term_
 static foreign_t pl_voice_attach_effect(term_t handle, term_t effect_type, term_t params, term_t effect_handle)
 {
 	int slot;
-	if (!PL_get_integer(handle, &slot) || slot < 0 || slot >= MAX_VOICES || !g_voices[slot].in_use)
+	if (!get_typed_handle(handle, "voice", &slot) || slot < 0 || slot >= MAX_VOICES || !g_voices[slot].in_use)
 		return PL_existence_error("voice", handle);
 	return attach_effect_to_node(&g_voices[slot].group, &g_voices[slot].effect_chain, "voice", slot, effect_type, params, effect_handle);
 }
@@ -3141,7 +3141,7 @@ static foreign_t pl_voice_attach_effect(term_t handle, term_t effect_type, term_
 static foreign_t pl_summing_node_attach_effect(term_t handle, term_t effect_type, term_t params, term_t effect_handle)
 {
 	int slot;
-	if (!PL_get_integer(handle, &slot) || slot < 0 || slot >= MAX_SUMMING_NODES || !g_summing_nodes[slot].in_use)
+	if (!get_typed_handle(handle, "summing_node", &slot) || slot < 0 || slot >= MAX_SUMMING_NODES || !g_summing_nodes[slot].in_use)
 		return PL_existence_error("summing_node", handle);
 	return attach_effect_to_node((ma_sound*)&g_summing_nodes[slot].base, &g_summing_nodes[slot].effect_chain, "summing_node", slot, effect_type, params, effect_handle);
 }
@@ -3149,7 +3149,7 @@ static foreign_t pl_summing_node_attach_effect(term_t handle, term_t effect_type
 static foreign_t pl_image_synth_attach_effect(term_t handle, term_t effect_type, term_t params, term_t effect_handle)
 {
 	int slot;
-	if (!PL_get_integer(handle, &slot) || slot < 0 || slot >= MAX_IMAGE_SYNTHS || !g_image_synths[slot].in_use)
+	if (!get_typed_handle(handle, "image_synth", &slot) || slot < 0 || slot >= MAX_IMAGE_SYNTHS || !g_image_synths[slot].in_use)
 		return PL_existence_error("image_synth", handle);
 	return attach_effect_to_node((ma_sound*)&g_image_synths[slot].base, &g_image_synths[slot].effect_chain, "image_synth", slot, effect_type, params, effect_handle);
 }
@@ -3157,7 +3157,7 @@ static foreign_t pl_image_synth_attach_effect(term_t handle, term_t effect_type,
 static foreign_t pl_granular_attach_effect(term_t handle, term_t effect_type, term_t params, term_t effect_handle)
 {
 	int slot;
-	if (!PL_get_integer(handle, &slot) || slot < 0 || slot >= MAX_GRANULAR_DELAYS || !g_granular_delays[slot].in_use)
+	if (!get_typed_handle(handle, "granular", &slot) || slot < 0 || slot >= MAX_GRANULAR_DELAYS || !g_granular_delays[slot].in_use)
 		return PL_existence_error("granular", handle);
 	return attach_effect_to_node((ma_sound*)&g_granular_delays[slot].base, &g_granular_delays[slot].effect_chain, "granular", slot, effect_type, params, effect_handle);
 }

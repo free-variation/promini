@@ -12,8 +12,7 @@ test(voices_in_use_initially_zero, [nondet]) :-
 
 test(create_voice, [nondet, cleanup(synth_voice_unload(Handle))]) :-
     synth_voice_create(Handle),
-    integer(Handle),
-    Handle >= 0.
+    Handle = voice(_).
 
 test(voices_in_use_after_create, [nondet, cleanup(synth_voice_unload(Handle))]) :-
     synth_voices_in_use(Before),
@@ -26,8 +25,7 @@ test(voices_in_use_after_create, [nondet, cleanup(synth_voice_unload(Handle))]) 
 test(add_oscillator, [nondet, cleanup(synth_voice_unload(V))]) :-
     synth_voice_create(V),
     synth_oscillator_add(V, 440.0, 0.0, O),
-    integer(O),
-    O >= 0.
+    O = oscillator(_).
 
 test(oscillator_get_frequency, [nondet, cleanup(synth_voice_unload(V))]) :-
     synth_voice_create(V),
@@ -102,20 +100,17 @@ test(oscillator_set_volume, [nondet, cleanup(synth_voice_unload(V))]) :-
 test(add_white_noise, [nondet, cleanup(synth_voice_unload(V))]) :-
     synth_voice_create(V),
     synth_noise_add(V, white, N),
-    integer(N),
-    N >= 0.
+    N = oscillator(_).
 
 test(add_pink_noise, [nondet, cleanup(synth_voice_unload(V))]) :-
     synth_voice_create(V),
     synth_noise_add(V, pink, N),
-    integer(N),
-    N >= 0.
+    N = oscillator(_).
 
 test(add_brownian_noise, [nondet, cleanup(synth_voice_unload(V))]) :-
     synth_voice_create(V),
     synth_noise_add(V, brownian, N),
-    integer(N),
-    N >= 0.
+    N = oscillator(_).
 
 test(noise_default_volume, [nondet, cleanup(synth_voice_unload(V))]) :-
     synth_voice_create(V),

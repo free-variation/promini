@@ -22,6 +22,17 @@
 		img_var = &g_images[slot]; \
 	} while(0)
 
+#define GET_IMAGE_SYNTH_FROM_HANDLE(handle_term, synth_var, slot_var) \
+	do { \
+		if (!get_typed_handle(handle_term, "image_synth", &slot_var)) { \
+			return PL_type_error("image_synth", handle_term); \
+		} \
+		if (slot_var < 0 || slot_var >= MAX_IMAGE_SYNTHS || !g_image_synths[slot_var].in_use) { \
+			return PL_existence_error("image_synth", handle_term); \
+		} \
+		synth_var = &g_image_synths[slot_var]; \
+	} while(0)
+
 /******************************************************************************
  * GLOBAL VARIABLES
  *****************************************************************************/
@@ -504,7 +515,7 @@ static int image_transpose(int slot, int direction)
 /*
  * pl_image_load()
  * image_load(+Filename, -Image)
- * Loads an image file. Returns image(Handle).
+ * Loads an image file. Returns image(N).
  */
 static foreign_t pl_image_load(term_t filename_term, term_t image_term)
 {
@@ -939,8 +950,8 @@ static ma_node_vtable image_synth_vtable = {
 /*
  * pl_image_synth_create()
  * Creates an image synth node for a given image, channel, and mode.
- * image_synth_create(+Image, +Channel, +Mode, -SynthHandle)
- * Mode is 'additive' or 'waveform'.
+ * image_synth_create(+Image, +Channel, +Mode, -ImageSynth)
+ * Returns image_synth(N). Mode is 'additive' or 'waveform'.
  */
 static foreign_t pl_image_synth_create(term_t image_term, term_t channel_term, term_t mode_term, term_t synth_term)
 {
@@ -1044,29 +1055,21 @@ static foreign_t pl_image_synth_create(term_t image_term, term_t channel_term, t
 		synth->params.waveform.row = 0;
 	}
 
-	return PL_unify_integer(synth_term, synth_slot);
+	return unify_typed_handle(synth_term, "image_synth", synth_slot);
 }
 
 /*
  * pl_image_synth_unload()
  * Destroys an image synth node.
- * image_synth_unload(+SynthHandle)
+ * image_synth_unload(+ImageSynth)
  */
 static foreign_t pl_image_synth_unload(term_t synth_term)
 {
 	int synth_slot;
+	image_synth_node_t* synth;
 
-	if (!PL_get_integer(synth_term, &synth_slot)) {
-		return PL_type_error("integer", synth_term);
-	}
-
-	if (synth_slot < 0 || synth_slot >= MAX_IMAGE_SYNTHS) {
-		return PL_existence_error("image_synth", synth_term);
-	}
-
-	if (!g_image_synths[synth_slot].in_use) {
-		return PL_existence_error("image_synth", synth_term);
-	}
+	GET_IMAGE_SYNTH_FROM_HANDLE(synth_term, synth, synth_slot);
+	(void)synth;
 
 	free_image_synth_slot(synth_slot);
 	return TRUE;
@@ -1075,7 +1078,7 @@ static foreign_t pl_image_synth_unload(term_t synth_term)
 /*
  * pl_image_synth_set_parameters()
  * Set parameters on an image synth.
- * image_synth_set_parameters(+SynthHandle, +ParamsList)
+ * image_synth_set_parameters(+ImageSynth, +ParamsList)
  */
 static foreign_t pl_image_synth_set_parameters(term_t synth_term, term_t params_list)
 {
@@ -1086,15 +1089,7 @@ static foreign_t pl_image_synth_set_parameters(term_t synth_term, term_t params_
 	term_t head;
 	functor_t eq_functor;
 
-	if (!PL_get_integer(synth_term, &synth_slot)) {
-		return PL_type_error("integer", synth_term);
-	}
-
-	if (synth_slot < 0 || synth_slot >= MAX_IMAGE_SYNTHS || !g_image_synths[synth_slot].in_use) {
-		return PL_existence_error("image_synth", synth_term);
-	}
-
-	synth = &g_image_synths[synth_slot];
+	GET_IMAGE_SYNTH_FROM_HANDLE(synth_term, synth, synth_slot);
 	img = &g_images[synth->image_slot];
 	list = PL_copy_term_ref(params_list);
 	head = PL_new_term_ref();
@@ -1258,7 +1253,7 @@ static foreign_t pl_image_synth_set_parameters(term_t synth_term, term_t params_
 /*
  * pl_image_synth_get_parameters()
  * Query all parameters of an image synth.
- * image_synth_get_parameters(+SynthHandle, -ParamsList)
+ * image_synth_get_parameters(+ImageSynth, -ParamsList)
  */
 static foreign_t pl_image_synth_get_parameters(term_t synth_term, term_t params_term)
 {
@@ -1271,15 +1266,7 @@ static foreign_t pl_image_synth_get_parameters(term_t synth_term, term_t params_
 	term_t param_term;
 	int i;
 
-	if (!PL_get_integer(synth_term, &synth_slot)) {
-		return PL_type_error("integer", synth_term);
-	}
-
-	if (synth_slot < 0 || synth_slot >= MAX_IMAGE_SYNTHS || !g_image_synths[synth_slot].in_use) {
-		return PL_existence_error("image_synth", synth_term);
-	}
-
-	synth = &g_image_synths[synth_slot];
+	GET_IMAGE_SYNTH_FROM_HANDLE(synth_term, synth, synth_slot);
 	img = &g_images[synth->image_slot];
 	params_list = PL_new_term_ref();
 	param_args = PL_new_term_refs(2);
@@ -1468,42 +1455,30 @@ static foreign_t pl_image_synth_get_parameters(term_t synth_term, term_t params_
 /*
  * pl_image_synth_start()
  * Start playback of an image synth.
- * image_synth_start(+SynthHandle)
+ * image_synth_start(+ImageSynth)
  */
 static foreign_t pl_image_synth_start(term_t synth_term)
 {
 	int synth_slot;
+	image_synth_node_t* synth;
 
-	if (!PL_get_integer(synth_term, &synth_slot)) {
-		return PL_type_error("integer", synth_term);
-	}
-
-	if (synth_slot < 0 || synth_slot >= MAX_IMAGE_SYNTHS || !g_image_synths[synth_slot].in_use) {
-		return PL_existence_error("image_synth", synth_term);
-	}
-
-	g_image_synths[synth_slot].playing = MA_TRUE;
+	GET_IMAGE_SYNTH_FROM_HANDLE(synth_term, synth, synth_slot);
+	synth->playing = MA_TRUE;
 	return TRUE;
 }
 
 /*
  * pl_image_synth_stop()
  * Stop playback of an image synth.
- * image_synth_stop(+SynthHandle)
+ * image_synth_stop(+ImageSynth)
  */
 static foreign_t pl_image_synth_stop(term_t synth_term)
 {
 	int synth_slot;
+	image_synth_node_t* synth;
 
-	if (!PL_get_integer(synth_term, &synth_slot)) {
-		return PL_type_error("integer", synth_term);
-	}
-
-	if (synth_slot < 0 || synth_slot >= MAX_IMAGE_SYNTHS || !g_image_synths[synth_slot].in_use) {
-		return PL_existence_error("image_synth", synth_term);
-	}
-
-	g_image_synths[synth_slot].playing = MA_FALSE;
+	GET_IMAGE_SYNTH_FROM_HANDLE(synth_term, synth, synth_slot);
+	synth->playing = MA_FALSE;
 	return TRUE;
 }
 

@@ -62,13 +62,13 @@ test(data_extract, [nondet]) :-
 
 test(sound_load, [nondet]) :-
     sound_load('audio/counting.wav', Sound),
-    integer(Sound),
+    Sound = sound(_),
     sound_unload(Sound).
 
 test(sound_create_from_data, [nondet]) :-
     audio_load('audio/counting.wav', Data),
     sound_create(Data, Sound),
-    integer(Sound),
+    Sound = sound(_),
     sound_unload(Sound),
     audio_unload(Data).
 

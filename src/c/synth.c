@@ -11,8 +11,8 @@
 
 #define GET_VOICE_FROM_HANDLE(handle_term, voice_var, slot_var) \
 	do { \
-		if (!PL_get_integer(handle_term, &slot_var)) { \
-			return PL_type_error("integer", handle_term); \
+		if (!get_typed_handle(handle_term, "voice", &slot_var)) { \
+			return PL_type_error("voice", handle_term); \
 		} \
 		if (slot_var < 0 || slot_var >= MAX_VOICES || !g_voices[slot_var].in_use) { \
 			return PL_existence_error("voice", handle_term); \
@@ -22,8 +22,8 @@
 
 #define GET_OSCILLATOR_FROM_HANDLE(handle_term, osc_var, slot_var) \
 	do { \
-		if (!PL_get_integer(handle_term, &slot_var)) { \
-			return PL_type_error("integer", handle_term); \
+		if (!get_typed_handle(handle_term, "oscillator", &slot_var)) { \
+			return PL_type_error("oscillator", handle_term); \
 		} \
 		if (slot_var < 0 || slot_var >= MAX_OSCILLATORS || !g_oscillators[slot_var].in_use) { \
 			return PL_existence_error("oscillator", handle_term); \
@@ -156,8 +156,8 @@ static void free_oscillator_slot(int index)
 
 /*
  * pl_synth_voice_create()
- * synth_voice_create(-Handle)
- * Creates a new empty voice group.
+ * synth_voice_create(-Voice)
+ * Creates a new empty voice group. Returns voice(N).
  */
 static foreign_t pl_synth_voice_create(term_t handle)
 {
@@ -181,7 +181,7 @@ static foreign_t pl_synth_voice_create(term_t handle)
 	g_voices[slot].is_voice = MA_FALSE;
 	g_voices[slot].effect_chain = NULL;
 
-	return PL_unify_integer(handle, slot);
+	return unify_typed_handle(handle, "voice", slot);
 }
 
 /*
@@ -205,7 +205,7 @@ static foreign_t pl_synth_voices_in_use(term_t count)
 
 /*
  * pl_synth_voice_start()
- * synth_voice_start(+Handle)
+ * synth_voice_start(+Voice)
  * Starts playing a voice by starting all its oscillators.
  */
 static foreign_t pl_synth_voice_start(term_t handle)
@@ -233,7 +233,7 @@ static foreign_t pl_synth_voice_start(term_t handle)
 
 /*
  * pl_synth_voice_stop()
- * synth_voice_stop(+Handle)
+ * synth_voice_stop(+Voice)
  * Stops playing a voice by stopping all its oscillators.
  */
 static foreign_t pl_synth_voice_stop(term_t handle)
@@ -262,15 +262,15 @@ static foreign_t pl_synth_voice_stop(term_t handle)
 
 /*
  * pl_synth_voice_unload()
- * synth_voice_unload(+Handle)
+ * synth_voice_unload(+Voice)
  * Unloads a voice and frees its resources.
  */
 static foreign_t pl_synth_voice_unload(term_t handle)
 {
 	int slot;
 
-	if (!PL_get_integer(handle, &slot)) {
-		return PL_type_error("integer", handle);
+	if (!get_typed_handle(handle, "voice", &slot)) {
+		return PL_type_error("voice", handle);
 	}
 
 	if (slot < 0 || slot >= MAX_VOICES || !g_voices[slot].in_use) {
@@ -287,8 +287,8 @@ static foreign_t pl_synth_voice_unload(term_t handle)
 
 /*
  * pl_synth_oscillator_add()
- * synth_oscillator_add(+VoiceHandle, +Frequency, +Phase, -OscHandle)
- * Adds a sine oscillator to a voice.
+ * synth_oscillator_add(+Voice, +Frequency, +Phase, -Oscillator)
+ * Adds a sine oscillator to a voice. Returns oscillator(N).
  */
 static foreign_t pl_synth_oscillator_add(term_t voice_handle, term_t freq_term,
                                          term_t phase_term, term_t osc_handle)
@@ -363,12 +363,12 @@ static foreign_t pl_synth_oscillator_add(term_t voice_handle, term_t freq_term,
 		ma_sound_start(&g_oscillators[osc_slot].sound);
 	}
 
-	return PL_unify_integer(osc_handle, osc_slot);
+	return unify_typed_handle(osc_handle, "oscillator", osc_slot);
 }
 
 /*
  * pl_synth_oscillator_remove()
- * synth_oscillator_remove(+OscHandle)
+ * synth_oscillator_remove(+Oscillator)
  * Removes an oscillator from its voice.
  */
 static foreign_t pl_synth_oscillator_remove(term_t osc_handle)
@@ -408,8 +408,8 @@ static foreign_t pl_synth_oscillator_remove(term_t osc_handle)
 
 /*
  * pl_synth_noise_add()
- * synth_noise_add(+VoiceHandle, +Type, -NoiseHandle)
- * Adds a noise generator to a voice.
+ * synth_noise_add(+Voice, +Type, -Oscillator)
+ * Adds a noise generator to a voice. Returns oscillator(N).
  * Type is one of: white, pink, brownian
  */
 static foreign_t pl_synth_noise_add(term_t voice_handle, term_t type_term, term_t noise_handle)
@@ -484,12 +484,12 @@ static foreign_t pl_synth_noise_add(term_t voice_handle, term_t type_term, term_
 		ma_sound_start(&g_oscillators[osc_slot].sound);
 	}
 
-	return PL_unify_integer(noise_handle, osc_slot);
+	return unify_typed_handle(noise_handle, "oscillator", osc_slot);
 }
 
 /*
  * pl_synth_oscillator_fade()
- * synth_oscillator_fade(+OscHandle, +TargetVolume, +Ms)
+ * synth_oscillator_fade(+Oscillator, +TargetVolume, +Ms)
  * Fades an oscillator to target volume over specified milliseconds.
  */
 static foreign_t pl_synth_oscillator_fade(term_t osc_handle, term_t volume_term, term_t ms_term)
@@ -520,7 +520,7 @@ static foreign_t pl_synth_oscillator_fade(term_t osc_handle, term_t volume_term,
 
 /*
  * pl_synth_oscillator_set_volume()
- * synth_oscillator_set_volume(+OscHandle, +Volume)
+ * synth_oscillator_set_volume(+Oscillator, +Volume)
  * Sets the volume of an oscillator or noise source.
  */
 static foreign_t pl_synth_oscillator_set_volume(term_t osc_handle, term_t volume_term)
@@ -542,7 +542,7 @@ static foreign_t pl_synth_oscillator_set_volume(term_t osc_handle, term_t volume
 
 /*
  * pl_synth_oscillator_get_volume()
- * synth_oscillator_get_volume(+OscHandle, -Volume)
+ * synth_oscillator_get_volume(+Oscillator, -Volume)
  * Gets the volume of an oscillator or noise source.
  */
 static foreign_t pl_synth_oscillator_get_volume(term_t osc_handle, term_t volume_term)
@@ -557,7 +557,7 @@ static foreign_t pl_synth_oscillator_get_volume(term_t osc_handle, term_t volume
 
 /*
  * pl_synth_oscillator_set_frequency()
- * synth_oscillator_set_frequency(+OscHandle, +Frequency)
+ * synth_oscillator_set_frequency(+Oscillator, +Frequency)
  * Sets the frequency of an oscillator.
  */
 static foreign_t pl_synth_oscillator_set_frequency(term_t osc_handle, term_t freq_term)
@@ -582,7 +582,7 @@ static foreign_t pl_synth_oscillator_set_frequency(term_t osc_handle, term_t fre
 
 /*
  * pl_synth_oscillator_get_frequency()
- * synth_oscillator_get_frequency(+OscHandle, -Frequency)
+ * synth_oscillator_get_frequency(+Oscillator, -Frequency)
  * Gets the frequency of an oscillator.
  */
 static foreign_t pl_synth_oscillator_get_frequency(term_t osc_handle, term_t freq_term)
@@ -597,7 +597,7 @@ static foreign_t pl_synth_oscillator_get_frequency(term_t osc_handle, term_t fre
 
 /*
  * pl_synth_oscillator_set_phase()
- * synth_oscillator_set_phase(+OscHandle, +Phase)
+ * synth_oscillator_set_phase(+Oscillator, +Phase)
  * Sets the phase of an oscillator (0.0 to 1.0).
  */
 static foreign_t pl_synth_oscillator_set_phase(term_t osc_handle, term_t phase_term)
@@ -622,7 +622,7 @@ static foreign_t pl_synth_oscillator_set_phase(term_t osc_handle, term_t phase_t
 
 /*
  * pl_synth_oscillator_get_phase()
- * synth_oscillator_get_phase(+OscHandle, -Phase)
+ * synth_oscillator_get_phase(+Oscillator, -Phase)
  * Gets the phase of an oscillator (0.0 to 1.0).
  */
 static foreign_t pl_synth_oscillator_get_phase(term_t osc_handle, term_t phase_term)
