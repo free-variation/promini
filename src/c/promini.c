@@ -43,34 +43,34 @@
     } while(0)
 
 /*
- * Macro to validate handle and get data buffer pointer
+ * Macro to validate handle and get audio buffer pointer
  * Accepts audio(Handle) term
  */
-#define GET_DATA_BUFFER_FROM_HANDLE(handle_term, buffer_var) \
+#define GET_AUDIO_BUFFER_FROM_HANDLE(handle_term, buffer_var) \
     do { \
         int _slot; \
         if (!get_typed_handle(handle_term, "audio", &_slot)) { \
             return PL_type_error("audio", handle_term); \
         } \
-        buffer_var = get_data_buffer(_slot); \
+        buffer_var = get_audio_buffer(_slot); \
         if (buffer_var == NULL) { \
-            return PL_existence_error("data_buffer", handle_term); \
+            return PL_existence_error("audio_buffer", handle_term); \
         } \
     } while(0)
 
 /*
- * Macro to validate handle and get data buffer pointer with slot index
+ * Macro to validate handle and get audio buffer pointer with slot index
  * Use when you need access to both the buffer and the slot (e.g., for pData access)
  * Accepts audio(Handle) term
  */
-#define GET_DATA_BUFFER_WITH_SLOT(handle_term, buffer_var, slot_var) \
+#define GET_AUDIO_BUFFER_WITH_SLOT(handle_term, buffer_var, slot_var) \
     do { \
         if (!get_typed_handle(handle_term, "audio", &slot_var)) { \
             return PL_type_error("audio", handle_term); \
         } \
-        buffer_var = get_data_buffer(slot_var); \
+        buffer_var = get_audio_buffer(slot_var); \
         if (buffer_var == NULL) { \
-            return PL_existence_error("data_buffer", handle_term); \
+            return PL_existence_error("audio_buffer", handle_term); \
         } \
     } while(0)
 
@@ -78,7 +78,7 @@
  * unify_typed_handle()
  * Unifies term with type(slot), e.g. sound(0), voice(1).
  */
-int unify_typed_handle(term_t term, const char* type, int slot)
+int unify_typed_handle(term_t term, const char *type, int slot)
 {
 	term_t arg = PL_new_term_ref();
 	functor_t f = PL_new_functor(PL_new_atom(type), 1);
@@ -91,7 +91,7 @@ int unify_typed_handle(term_t term, const char* type, int slot)
  * get_typed_handle()
  * Extracts slot from type(slot) term. Returns FALSE if wrong type.
  */
-int get_typed_handle(term_t term, const char* type, int* slot)
+int get_typed_handle(term_t term, const char *type, int *slot)
 {
 	term_t arg = PL_new_term_ref();
 	functor_t f;
@@ -110,20 +110,20 @@ int get_typed_handle(term_t term, const char* type, int* slot)
 /*
  * Global engine - one engine for the library lifetime
  */
-ma_engine* g_engine = NULL;
+ma_engine *g_engine = NULL;
 
 /*
  * Thread safety - mutexes for protecting global state
  */
 pthread_mutex_t g_sounds_mutex = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t g_data_buffers_mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t g_audio_buffers_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 /*
  * Sound handle management
  */
 
 
-static data_slot_t g_data_buffers[MAX_DATA_BUFFERS] = {{NULL, NULL, 0, MA_FALSE}};
+static data_slot_t g_audio_buffers[MAX_AUDIO_BUFFERS] = {{NULL, NULL, 0, MA_FALSE}};
 
 /* Shared sound slots array (declared in promini.h) */
 sound_slot_t g_sounds[MAX_SOUNDS] = {{NULL, NULL, -1, MA_FALSE, NULL}};
@@ -138,7 +138,7 @@ sound_slot_t g_sounds[MAX_SOUNDS] = {{NULL, NULL, -1, MA_FALSE, NULL}};
  * Used by effects.c and image.c for set_parameters predicates.
  */
 #define DEFINE_GET_PARAM(suffix, type, get_code) \
-	ma_bool32 get_param_##suffix(term_t params, const char* key, type* value) \
+	ma_bool32 get_param_##suffix(term_t params, const char *key, type *value) \
 { \
 	term_t head = PL_new_term_ref(); \
 	term_t tail = PL_new_term_ref(); \
@@ -152,7 +152,7 @@ sound_slot_t g_sounds[MAX_SOUNDS] = {{NULL, NULL, -1, MA_FALSE, NULL}};
 		term_t arg1 = PL_new_term_ref(); \
 		term_t arg2 = PL_new_term_ref(); \
 		functor_t f; \
-		char* key_str; \
+		char *key_str; \
 		\
 		if (PL_get_functor(head, &f) && f == equals_functor) { \
 			if (!PL_get_arg(1, head, arg1) || !PL_get_arg(2, head, arg2)) \
@@ -205,90 +205,90 @@ DEFINE_GET_PARAM(double, double, {
 		})
 
 /*
- * allocate_data_slot()
- * Finds a free data slot and marks it as in use.
+ * allocate_audio_slot()
+ * Finds a free audio slot and marks it as in use.
  * Returns slot index, or -1 if all slots are full.
- * Thread-safe: protected by g_data_buffers_mutex
+ * Thread-safe: protected by g_audio_buffers_mutex
  */
-static int allocate_data_slot(void)
+static int allocate_audio_slot(void)
 {
 	int i;
 	int slot = -1;
 
-	pthread_mutex_lock(&g_data_buffers_mutex);
-	for (i = 0; i < MAX_DATA_BUFFERS; i++) {
-		if (!g_data_buffers[i].in_use) {
-			g_data_buffers[i].in_use = MA_TRUE;
-			g_data_buffers[i].buffer = NULL;
-			g_data_buffers[i].pData = NULL;
-			g_data_buffers[i].refcount = 0;
+	pthread_mutex_lock(&g_audio_buffers_mutex);
+	for (i = 0; i < MAX_AUDIO_BUFFERS; i++) {
+		if (!g_audio_buffers[i].in_use) {
+			g_audio_buffers[i].in_use = MA_TRUE;
+			g_audio_buffers[i].buffer = NULL;
+			g_audio_buffers[i].pData = NULL;
+			g_audio_buffers[i].refcount = 0;
 			slot = i;
 			break;
 		}
 	}
-	pthread_mutex_unlock(&g_data_buffers_mutex);
+	pthread_mutex_unlock(&g_audio_buffers_mutex);
 
 	return slot;
 }
 
 /*
- * free_data_slot()
- * Frees a data slot and its resources.
- * Thread-safe: protected by g_data_buffers_mutex
+ * free_audio_slot()
+ * Frees an audio slot and its resources.
+ * Thread-safe: protected by g_audio_buffers_mutex
  */
-static void free_data_slot(int index)
+static void free_audio_slot(int index)
 {
-	if (index >= 0 && index < MAX_DATA_BUFFERS) {
-		pthread_mutex_lock(&g_data_buffers_mutex);
+	if (index >= 0 && index < MAX_AUDIO_BUFFERS) {
+		pthread_mutex_lock(&g_audio_buffers_mutex);
 
-		if (g_data_buffers[index].buffer != NULL) {
-			ma_audio_buffer_uninit(g_data_buffers[index].buffer);
-			free(g_data_buffers[index].buffer);
-			g_data_buffers[index].buffer = NULL;
+		if (g_audio_buffers[index].buffer != NULL) {
+			ma_audio_buffer_uninit(g_audio_buffers[index].buffer);
+			free(g_audio_buffers[index].buffer);
+			g_audio_buffers[index].buffer = NULL;
 		}
-		if (g_data_buffers[index].pData != NULL) {
-			ma_free(g_data_buffers[index].pData, NULL);
-			g_data_buffers[index].pData = NULL;
+		if (g_audio_buffers[index].pData != NULL) {
+			ma_free(g_audio_buffers[index].pData, NULL);
+			g_audio_buffers[index].pData = NULL;
 		}
-		g_data_buffers[index].in_use = MA_FALSE;
-		g_data_buffers[index].refcount = 0;
+		g_audio_buffers[index].in_use = MA_FALSE;
+		g_audio_buffers[index].refcount = 0;
 
-		pthread_mutex_unlock(&g_data_buffers_mutex);
+		pthread_mutex_unlock(&g_audio_buffers_mutex);
 	}
 }
 /*
- * get_data_buffer()
+ * get_audio_buffer()
  * Validates handle and returns buffer pointer.
  * Returns NULL if invalid handle.
  */
-static ma_audio_buffer* get_data_buffer(int index)
+static ma_audio_buffer *get_audio_buffer(int index)
 {
-	if (index < 0 || index >= MAX_DATA_BUFFERS) {
+	if (index < 0 || index >= MAX_AUDIO_BUFFERS) {
 		return NULL;
 	}
-	if (!g_data_buffers[index].in_use) {
+	if (!g_audio_buffers[index].in_use) {
 		return NULL;
 	}
-	return g_data_buffers[index].buffer;
+	return g_audio_buffers[index].buffer;
 }
 
 /*
  * get_data_slot()
  * Validates handle and return a data slot
  */
-data_slot_t* get_data_slot(int index)
+data_slot_t *get_data_slot(int index)
 {
-	if (index < 0 || index >= MAX_DATA_BUFFERS || !g_data_buffers[index].in_use) {
+	if (index < 0 || index >= MAX_AUDIO_BUFFERS || !g_audio_buffers[index].in_use) {
 		return NULL;
 	}
-	return &g_data_buffers[index];
+	return &g_audio_buffers[index];
 }
 
 /*
  * get_buffer_info()
  * Retrieves audio buffer format parameters
  */
-static void get_buffer_info(ma_audio_buffer* buffer, ma_uint64* frames, ma_uint32* channels, ma_uint32* sampleRate)
+static void get_buffer_info(ma_audio_buffer *buffer, ma_uint64 *frames, ma_uint32 *channels, ma_uint32 *sampleRate)
 {
 	*frames = buffer->ref.sizeInFrames;
 	*channels = buffer->ref.channels;
@@ -299,9 +299,9 @@ static void get_buffer_info(ma_audio_buffer* buffer, ma_uint64* frames, ma_uint3
  * get_engine_format_info()
  * Retrieve the engine's audio format parameters.
  */
-void get_engine_format_info(ma_format* format, ma_uint32* channels, ma_uint32* sampleRate)
+void get_engine_format_info(ma_format *format, ma_uint32 *channels, ma_uint32 *sampleRate)
 {
-	ma_device* device = ma_engine_get_device(g_engine);
+	ma_device *device = ma_engine_get_device(g_engine);
 	if (format) *format = device->playback.format;
 	if (channels) *channels = device->playback.channels;
 	if (sampleRate) *sampleRate = device->sampleRate;
@@ -355,26 +355,26 @@ ma_bool32 get_source_from_term(term_t source_term, ma_node **source_node, effect
 }
 
 /*
- * create_data_buffer_from_pcm()
- * Creates a data buffer from raw PCM data. Returns slot index or -1 on error.
+ * create_audio_buffer_from_pcm()
+ * Creates an audio buffer from raw PCM data. Returns slot index or -1 on error.
  * Caller is responsible for freeing pData on error.
  */
-int create_data_buffer_from_pcm(void *pData, ma_format format, ma_uint32 channels,
+int create_audio_buffer_from_pcm(void *pData, ma_format format, ma_uint32 channels,
                                 ma_uint64 frame_count, ma_uint32 sample_rate)
 {
 	int slot;
-	ma_audio_buffer* buffer;
+	ma_audio_buffer *buffer;
 	ma_audio_buffer_config buffer_config;
 	ma_result result;
 
-	slot = allocate_data_slot();
+	slot = allocate_audio_slot();
 	if (slot < 0) {
 		return -1;
 	}
 
 	buffer = (ma_audio_buffer*)malloc(sizeof(ma_audio_buffer));
 	if (buffer == NULL) {
-		free_data_slot(slot);
+		free_audio_slot(slot);
 		return -1;
 	}
 
@@ -383,13 +383,13 @@ int create_data_buffer_from_pcm(void *pData, ma_format format, ma_uint32 channel
 	result = ma_audio_buffer_init(&buffer_config, buffer);
 	if (result != MA_SUCCESS) {
 		free(buffer);
-		free_data_slot(slot);
+		free_audio_slot(slot);
 		return -1;
 	}
 
-	g_data_buffers[slot].buffer = buffer;
-	g_data_buffers[slot].pData = pData;
-	g_data_buffers[slot].refcount = 1;
+	g_audio_buffers[slot].buffer = buffer;
+	g_audio_buffers[slot].pData = pData;
+	g_audio_buffers[slot].refcount = 1;
 
 	return slot;
 }
@@ -492,7 +492,7 @@ void ring_buffer_read(ring_buffer_t *rb, void *output, ma_uint64 delay_frames, m
  * Read a single sample from the ring buffer at a fractional position.
  * Uses Catmull-Rom cubic interpolation for smooth pitch shifting.
  */
-float ring_buffer_read_interpolated(ring_buffer_t* rb, float position, ma_uint32 channel)
+float ring_buffer_read_interpolated(ring_buffer_t *rb, float position, ma_uint32 channel)
 {
 	ma_uint64 i0, i1, i2, i3;
 	float frac;
@@ -526,7 +526,7 @@ float ring_buffer_read_interpolated(ring_buffer_t* rb, float position, ma_uint32
 
 
 /******************************************************************************
- * DATA BUFFER MANAGEMENT
+ * AUDIO BUFFER MANAGEMENT
  *****************************************************************************/
 
 /*
@@ -537,10 +537,10 @@ float ring_buffer_read_interpolated(ring_buffer_t* rb, float position, ma_uint32
  */
 static foreign_t pl_audio_load(term_t filepath, term_t handle)
 {
-	char* path;
+	char *path;
 	int slot;
 	ma_uint64 frame_count;
-	void* pData;
+	void *pData;
 	ma_decoder_config decoder_config;
 	ma_format format;
 	ma_uint32 channels;
@@ -561,10 +561,10 @@ static foreign_t pl_audio_load(term_t filepath, term_t handle)
 		return FALSE;
 	}
 
-	slot = create_data_buffer_from_pcm(pData, format, channels, frame_count, sample_rate);
+	slot = create_audio_buffer_from_pcm(pData, format, channels, frame_count, sample_rate);
 	if (slot < 0) {
 		ma_free(pData, NULL);
-		return PL_resource_error("data_buffer_slots");
+		return PL_resource_error("audio_buffer_slots");
 	}
 
 	return unify_typed_handle(handle, "audio", slot);
@@ -609,11 +609,11 @@ static foreign_t extract_from_ring_buffer(
 
 	ring_buffer_read(rb, extracted_data, offset_frames, (ma_uint32)length_frames);
 
-	slot = create_data_buffer_from_pcm(extracted_data, ma_format_f32, rb->channels,
+	slot = create_audio_buffer_from_pcm(extracted_data, ma_format_f32, rb->channels,
 	                                   length_frames, sample_rate);
 	if (slot < 0) {
 		free(extracted_data);
-		return PL_resource_error("data_buffer_slots");
+		return PL_resource_error("audio_buffer_slots");
 	}
 
 	return unify_typed_handle(extracted_handle, "audio", slot);
@@ -664,9 +664,9 @@ static foreign_t pl_audio_extract(
 		void *extracted_data;
 		int extracted_slot;
 
-		source_buffer = get_data_buffer(slot);
+		source_buffer = get_audio_buffer(slot);
 		if (source_buffer == NULL) {
-			return PL_existence_error("data_buffer", source_handle);
+			return PL_existence_error("audio_buffer", source_handle);
 		}
 
 		if (!PL_get_integer(start_term, &start_int)) {
@@ -699,16 +699,16 @@ static foreign_t pl_audio_extract(
 			return PL_resource_error("memory");
 		}
 
-		source_data = g_data_buffers[slot].pData;
+		source_data = g_audio_buffers[slot].pData;
 		memcpy(extracted_data,
 		       (char*)source_data + (start_frame * bytes_per_frame),
 		       length_frames * bytes_per_frame);
 
-		extracted_slot = create_data_buffer_from_pcm(extracted_data, format, channels,
+		extracted_slot = create_audio_buffer_from_pcm(extracted_data, format, channels,
 		                                             length_frames, sample_rate);
 		if (extracted_slot < 0) {
 			free(extracted_data);
-			return PL_resource_error("data_buffer_slots");
+			return PL_resource_error("audio_buffer_slots");
 		}
 
 		return unify_typed_handle(extracted_handle, "audio", extracted_slot);
@@ -757,18 +757,18 @@ static foreign_t pl_audio_unload(term_t handle)
 		return PL_type_error("audio", handle);
 	}
 
-	if (slot < 0 || slot >= MAX_DATA_BUFFERS || !g_data_buffers[slot].in_use) {
-		return PL_existence_error("data_buffer", handle);
+	if (slot < 0 || slot >= MAX_AUDIO_BUFFERS || !g_audio_buffers[slot].in_use) {
+		return PL_existence_error("audio_buffer", handle);
 	}
 
-	if (g_data_buffers[slot].refcount == 0) {
+	if (g_audio_buffers[slot].refcount == 0) {
 		return PL_domain_error("refcount_already_zero", handle);
 	}
 
-	g_data_buffers[slot].refcount--;
+	g_audio_buffers[slot].refcount--;
 
-	if (g_data_buffers[slot].refcount == 0) {
-		free_data_slot(slot);
+	if (g_audio_buffers[slot].refcount == 0) {
+		free_audio_slot(slot);
 	}
 
 	return TRUE;
@@ -791,7 +791,7 @@ static int allocate_sound_slot(void)
             g_sounds[i].in_use = MA_TRUE;
             g_sounds[i].sound = NULL;
             g_sounds[i].audio_buffer = NULL;
-			g_sounds[i].data_buffer_index = -1;
+			g_sounds[i].audio_buffer_index = -1;
             slot = i;
 			break;
         }
@@ -805,26 +805,26 @@ static int allocate_sound_slot(void)
  * free_effect_chain()
  * Frees all nodes in an effect chain.
  */
-void free_effect_chain(effect_node_t* effect) {
+void free_effect_chain(effect_node_t *effect) {
 	while (effect != NULL) {
-		effect_node_t* next = effect->next;
+		effect_node_t *next = effect->next;
 
 		ma_node_detach_output_bus(effect->effect_node, 0);
 
 		if (effect->type == EFFECT_BITCRUSH) {
-			bitcrush_node_t* bitcrush = (bitcrush_node_t*)effect->effect_node;
+			bitcrush_node_t *bitcrush = (bitcrush_node_t*)effect->effect_node;
 			if (bitcrush->hold_samples != NULL) {
 				free(bitcrush->hold_samples);
 			}
 		} else if (effect->type == EFFECT_REVERB) {
 			free_reverb_node((reverb_node_t*)effect->effect_node);
 		} else if (effect->type == EFFECT_COMPRESSOR) {
-			compressor_node_t* comp = (compressor_node_t*)effect->effect_node;
+			compressor_node_t *comp = (compressor_node_t*)effect->effect_node;
 			if (comp->delay_buffer != NULL) {
 				free(comp->delay_buffer);
 			}
 		} else if (effect->type == EFFECT_PING_PONG_DELAY) {
-			ping_pong_delay_node_t* pp = (ping_pong_delay_node_t*)effect->effect_node;
+			ping_pong_delay_node_t *pp = (ping_pong_delay_node_t*)effect->effect_node;
 			if (pp->buffer_l != NULL) {
 				free(pp->buffer_l);
 			}
@@ -868,15 +868,15 @@ static void free_sound_slot(int index)
 		}
 
 		/* Decrement data buffer refcount if sound was created from a buffer */
-		if (g_sounds[index].data_buffer_index >= 0) {
-			g_data_buffers[g_sounds[index].data_buffer_index].refcount--;
-			if (g_data_buffers[g_sounds[index].data_buffer_index].refcount == 0) {
-				free_data_slot(g_sounds[index].data_buffer_index);
+		if (g_sounds[index].audio_buffer_index >= 0) {
+			g_audio_buffers[g_sounds[index].audio_buffer_index].refcount--;
+			if (g_audio_buffers[g_sounds[index].audio_buffer_index].refcount == 0) {
+				free_audio_slot(g_sounds[index].audio_buffer_index);
 			}
 		}
 
         g_sounds[index].in_use = MA_FALSE;
-        g_sounds[index].data_buffer_index = -1;
+        g_sounds[index].audio_buffer_index = -1;
 
 		pthread_mutex_unlock(&g_sounds_mutex);
     }
@@ -887,7 +887,7 @@ static void free_sound_slot(int index)
  * Validates handle and returns sound pointer.
  * Returns NULL if invalid handle.
  */
-static ma_sound* get_sound(int index)
+static ma_sound *get_sound(int index)
 {
     if (index < 0 || index >= MAX_SOUNDS) {
         return NULL;
@@ -920,12 +920,12 @@ static foreign_t pl_promini_version(term_t version)
  * Called by miniaudio once per audio block.
  */
 static void engine_audio_callback(
-		ma_device* device, 
-		void* frames_out, 
-		const void* frames_in, 
+		ma_device *device, 
+		void *frames_out, 
+		const void *frames_in, 
 		ma_uint32 frame_count)
 {
-	ma_engine* engine = (ma_engine*)device->pUserData;
+	ma_engine *engine = (ma_engine*)device->pUserData;
 	ma_uint32 sample_rate = ma_engine_get_sample_rate(engine);
 
 	process_modulation(frame_count, sample_rate);
@@ -1002,11 +1002,11 @@ static foreign_t pl_sound_unload(term_t handle)
  */
 static foreign_t pl_promini_devices(term_t devices)
 {
-    ma_context* pContext;
+    ma_context *pContext;
     ma_result result;
-    ma_device_info* pPlaybackInfos;
+    ma_device_info *pPlaybackInfos;
     ma_uint32 playbackCount;
-    ma_device_info* pCaptureInfos;
+    ma_device_info *pCaptureInfos;
     ma_uint32 captureCount;
     term_t list = PL_new_term_ref();
     functor_t device_functor;
@@ -1085,7 +1085,7 @@ static foreign_t pl_promini_devices(term_t devices)
  */
 static foreign_t pl_sound_start(term_t handle)
 {
-	ma_sound* sound;
+	ma_sound *sound;
 	ma_result result;
 
 	GET_SOUND_FROM_HANDLE(handle, sound);
@@ -1100,7 +1100,7 @@ static foreign_t pl_sound_start(term_t handle)
  */
 static foreign_t pl_sound_stop(term_t handle)
 {
-	ma_sound* sound;
+	ma_sound *sound;
 	ma_result result;
 
 	GET_SOUND_FROM_HANDLE(handle, sound);
@@ -1115,7 +1115,7 @@ static foreign_t pl_sound_stop(term_t handle)
  */
 static foreign_t pl_sound_is_playing(term_t handle)
 {
-	ma_sound* sound;
+	ma_sound *sound;
 
 	GET_SOUND_FROM_HANDLE(handle, sound);
 
@@ -1128,8 +1128,8 @@ static foreign_t pl_sound_is_playing(term_t handle)
  */
 static foreign_t pl_sound_set_looping(term_t handle, term_t loop)
 {
-	ma_sound* sound;
-	char* loop_str;
+	ma_sound *sound;
+	char *loop_str;
 	ma_bool32 should_loop;
 
 	GET_SOUND_FROM_HANDLE(handle, sound);
@@ -1150,7 +1150,7 @@ static foreign_t pl_sound_set_looping(term_t handle, term_t loop)
  */
 static foreign_t pl_sound_is_looping(term_t handle)
 {
-	ma_sound* sound;
+	ma_sound *sound;
 
 	GET_SOUND_FROM_HANDLE(handle, sound);
 
@@ -1163,7 +1163,7 @@ static foreign_t pl_sound_is_looping(term_t handle)
  */
 static foreign_t pl_sound_seek(term_t handle, term_t frame)
 {
-	ma_sound* sound;
+	ma_sound *sound;
 	ma_uint64 frame_index;
 	ma_result result;
 
@@ -1182,7 +1182,7 @@ static foreign_t pl_sound_seek(term_t handle, term_t frame)
  * Gets the current playback position in frames.
  */
 static foreign_t pl_sound_get_position(term_t handle, term_t frame) {
-	ma_sound* sound;
+	ma_sound *sound;
 	ma_uint64 cursor;
 	ma_result result;
 
@@ -1206,16 +1206,16 @@ static foreign_t pl_sound_create(term_t data_handle, term_t sound_handle)
 {
 	int data_slot;
 	int sound_slot;
-	ma_audio_buffer* source_buffer;
-	ma_audio_buffer* sound_buffer;
-	ma_sound* sound;
+	ma_audio_buffer *source_buffer;
+	ma_audio_buffer *sound_buffer;
+	ma_sound *sound;
 	ma_result result;
 	ma_audio_buffer_config buffer_config;
 	ma_uint64 frames;
 	ma_uint32 channels;
 	ma_uint32 sample_rate;
 
-	GET_DATA_BUFFER_WITH_SLOT(data_handle, source_buffer, data_slot);
+	GET_AUDIO_BUFFER_WITH_SLOT(data_handle, source_buffer, data_slot);
 
 	sound_slot = allocate_sound_slot();
 	if (sound_slot < 0) {
@@ -1230,7 +1230,7 @@ static foreign_t pl_sound_create(term_t data_handle, term_t sound_handle)
 	}
 
 	get_buffer_info(source_buffer, &frames, &channels, &sample_rate);
-	buffer_config = ma_audio_buffer_config_init(source_buffer->ref.format, channels, frames, g_data_buffers[data_slot].pData, NULL);
+	buffer_config = ma_audio_buffer_config_init(source_buffer->ref.format, channels, frames, g_audio_buffers[data_slot].pData, NULL);
 	buffer_config.sampleRate = sample_rate;
 
 	result = ma_audio_buffer_init(&buffer_config, sound_buffer);
@@ -1259,8 +1259,8 @@ static foreign_t pl_sound_create(term_t data_handle, term_t sound_handle)
 
 	g_sounds[sound_slot].sound = sound;
 	g_sounds[sound_slot].audio_buffer = sound_buffer;
-	g_sounds[sound_slot].data_buffer_index = data_slot;
-	g_data_buffers[data_slot].refcount++;
+	g_sounds[sound_slot].audio_buffer_index = data_slot;
+	g_audio_buffers[data_slot].refcount++;
 
 	return unify_typed_handle(sound_handle, "sound", sound_slot);
 }
@@ -1271,10 +1271,10 @@ static foreign_t pl_sound_create(term_t data_handle, term_t sound_handle)
  */
 static foreign_t pl_sound_set_range(term_t handle, term_t start_term, term_t end_term)
 {
-	ma_sound* sound;
+	ma_sound *sound;
   	ma_uint64 start_frame;
   	ma_uint64 end_frame;
-  	ma_data_source* data_source;
+  	ma_data_source *data_source;
   	ma_result result;
   	int start_int, end_int;
 
@@ -1311,7 +1311,7 @@ static foreign_t pl_sound_set_range(term_t handle, term_t start_term, term_t end
 
 static foreign_t pl_audio_info(term_t data_handle, term_t info)
 {
-	ma_audio_buffer* buffer;
+	ma_audio_buffer *buffer;
 	ma_uint64 frames;
 	ma_uint32 channels;
 	ma_uint32 sampleRate;
@@ -1319,7 +1319,7 @@ static foreign_t pl_audio_info(term_t data_handle, term_t info)
 	term_t args = PL_new_term_refs(4);
 	functor_t info_functor;
 
-	GET_DATA_BUFFER_FROM_HANDLE(data_handle, buffer);
+	GET_AUDIO_BUFFER_FROM_HANDLE(data_handle, buffer);
 
 	get_buffer_info(buffer, &frames, &channels, &sampleRate);
 	duration = (double)frames / (double)sampleRate;
@@ -1343,7 +1343,7 @@ static foreign_t pl_audio_info(term_t data_handle, term_t info)
  */
 static foreign_t pl_sound_length(term_t handle, term_t frames)
 {
-	ma_sound* sound;
+	ma_sound *sound;
 	ma_uint64 length;
 	ma_result result;
 
@@ -1363,7 +1363,7 @@ static foreign_t pl_sound_length(term_t handle, term_t frames)
  */
 static foreign_t pl_sound_set_pitch(term_t handle, term_t pitch)
 {
-	ma_sound* sound;
+	ma_sound *sound;
 	double pitch_value;
 	float ratio;
 
@@ -1384,7 +1384,7 @@ static foreign_t pl_sound_set_pitch(term_t handle, term_t pitch)
  */
 static foreign_t pl_sound_get_pitch(term_t handle, term_t pitch)
 {
-	ma_sound* sound;
+	ma_sound *sound;
 	float ratio;
 	double semitones;
 
@@ -1402,19 +1402,19 @@ static foreign_t pl_sound_get_pitch(term_t handle, term_t pitch)
  */
 static foreign_t pl_audio_reverse(term_t source_handle, term_t reversed_handle)
 {
-	ma_audio_buffer* source_buffer;
+	ma_audio_buffer *source_buffer;
 	int slot;
 	ma_uint64 frame_count;
 	ma_uint32 channels;
 	ma_uint32 sample_rate;
 	ma_format format;
 	ma_uint32 bytes_per_frame;
-	void* source_data;
-	void* reversed_data;
+	void *source_data;
+	void *reversed_data;
 	ma_uint64 i;
 	int source_slot;
 
-	GET_DATA_BUFFER_WITH_SLOT(source_handle, source_buffer, source_slot);
+	GET_AUDIO_BUFFER_WITH_SLOT(source_handle, source_buffer, source_slot);
 
 	get_buffer_info(source_buffer, &frame_count, &channels, &sample_rate);
 	format = source_buffer->ref.format;
@@ -1428,7 +1428,7 @@ static foreign_t pl_audio_reverse(term_t source_handle, term_t reversed_handle)
 	/* Reverse frame order while preserving channel interleaving within each frame.
 	 * Frame i in source becomes frame (frame_count - 1 - i) in destination.
 	 * e.g., stereo: [L0,R0, L1,R1, L2,R2] becomes [L2,R2, L1,R1, L0,R0] */
-	source_data = g_data_buffers[source_slot].pData;
+	source_data = g_audio_buffers[source_slot].pData;
 	for (i = 0; i < frame_count; i++) {
 		memcpy(
 			(char*)reversed_data + ((frame_count - 1 - i) * bytes_per_frame),
@@ -1437,10 +1437,10 @@ static foreign_t pl_audio_reverse(term_t source_handle, term_t reversed_handle)
 		);
 	}
 
-	slot = create_data_buffer_from_pcm(reversed_data, format, channels, frame_count, sample_rate);
+	slot = create_audio_buffer_from_pcm(reversed_data, format, channels, frame_count, sample_rate);
 	if (slot < 0) {
 		free(reversed_data);
-		return PL_resource_error("data_buffer_slots");
+		return PL_resource_error("audio_buffer_slots");
 	}
 
 	return unify_typed_handle(reversed_handle, "audio", slot);
@@ -1493,9 +1493,9 @@ install_t uninstall_promini(void)
     int i;
 
 	/* Clean up all data buffers */
-	for (i = 0; i < MAX_DATA_BUFFERS; i++) {
-		if (g_data_buffers[i].in_use) {
-			free_data_slot(i);
+	for (i = 0; i < MAX_AUDIO_BUFFERS; i++) {
+		if (g_audio_buffers[i].in_use) {
+			free_audio_slot(i);
 		}
 	}
 

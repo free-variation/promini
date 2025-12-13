@@ -57,7 +57,7 @@ static void free_clock_route_slot(int index)
 void clock_init(ma_uint32 sample_rate)
 {
 	ma_waveform_config wf_config;
-	ma_waveform* waveform;
+	ma_waveform *waveform;
 
 	/* Allocate waveform */
 	waveform = (ma_waveform*)malloc(sizeof(ma_waveform));
@@ -97,7 +97,7 @@ void clock_init(ma_uint32 sample_rate)
  */
 void clock_uninit(void)
 {
-	ma_waveform* wf;
+	ma_waveform *wf;
 
 	ma_sound_stop(&g_clock.sound);
 	wf = (ma_waveform*)ma_sound_get_data_source(&g_clock.sound);
@@ -136,7 +136,7 @@ void update_clock_routes(clock_route_type_t route_type)
 					break;
 				case CLOCK_TARGET_DELAY:
 				case CLOCK_TARGET_PING_PONG_DELAY:
-					delay_frames = (ma_uint32)((60.0f / g_clock.bm * (route->division / CLOCK_PPQN) * sample_rate);
+					delay_frames = (ma_uint32)((60.0f / g_clock.bpm) * (route->division / CLOCK_PPQN) * sample_rate);
 					((ping_pong_delay_node_t *)route->target_slot)->target_delay_in_frames = delay_frames;
 					break;
 				default:
@@ -147,12 +147,13 @@ void update_clock_routes(clock_route_type_t route_type)
 				switch (route->target_type) {
 					case CLOCK_TARGET_LFO:
 						ma_waveform_seek_to_pcm_frame(&((mod_source_t *)route->target_slot)->source.waveform, 0);
+						break;
 					case CLOCK_TARGET_ENVELOPE:
 						((mod_source_t *)route->target_slot)->source.envelope.stage = 0;
 						((mod_source_t *)route->target_slot)->source.envelope.stage_progress = 0.0f;
 						break;
 					case CLOCK_TARGET_GRANULAR:
-						/* TODO: spawn grain */
+						trigger_grain((granular_delay_t *)route->target_slot);
 						break;
 					default:
 						break;
@@ -198,7 +199,7 @@ static foreign_t set_bpm_from_term(term_t term)
 	wf = (ma_waveform*)ma_sound_get_data_source(&g_clock.sound);
 	ma_waveform_set_frequency(wf, (bpm * CLOCK_PPQN) / 60.0);
 
-	update_clock_routes(CLOCk_ROUTE_SYNC);
+	update_clock_routes(CLOCK_ROUTE_SYNC);
 
 	return TRUE;
 }
@@ -236,6 +237,8 @@ static foreign_t pl_clock_get_bpm(term_t bpm_term)
  */
 static foreign_t pl_clock_start(void)
 {
+	ma_waveform *wf = (ma_waveform *)ma_sound_get_data_source(&g_clock.sound);
+	g_clock.last_time = wf->time;
 	g_clock.running = MA_TRUE;
 	return TRUE;
 }
@@ -275,6 +278,126 @@ static foreign_t pl_clock_get_beat_position(term_t position_term)
 	return PL_unify_float(position_term, wf->time / CLOCK_PPQN);
 }
 
+/*
+ * pl_clock_route_init()
+ * clock_route_init(+TargetType, +Target, +RouteType, +Division, -Route)
+ * Creates a clock route to a target with specified division.
+ * TargetType: lfo, envelop, granular, delay, ping_pong_delay
+ * RouteType: pulse, sync
+ */
+static foreign_t pl_clock_route_init(
+		term_t target_type_term, term_t target_term,
+		term_t route_type_term, term_t division_term,
+		term_t route_term)
+{
+	atom_t target_type_atom;
+  	atom_t route_type_atom;
+  	double division;
+  	int slot;
+  	int target_slot;
+  	clock_route_t *route;
+  	clock_target_type_t target_type;
+  	clock_route_type_t route_type;
+  	void *target_ptr;
+
+  	if (!PL_get_atom(target_type_term, &target_type_atom)) {
+  		return PL_type_error("atom", target_type_term);
+  	}
+  	if (!PL_get_atom(route_type_term, &route_type_atom)) {
+  		return PL_type_error("atom", route_type_term);
+  	}
+  	if (!PL_get_float(division_term, &division)) {
+  		int div_int;
+  		if (!PL_get_integer(division_term, &div_int)) {
+  			return PL_type_error("number", division_term);
+  		}
+  		division = (double)div_int;
+  	}
+
+  	/* Parse target type */
+  	if (target_type_atom == PL_new_atom("lfo")) {
+  		target_type = CLOCK_TARGET_LFO;
+  		if (!get_typed_handle(target_term, "mod_source", &target_slot)) {
+  			return PL_type_error("mod_source", target_term);
+  		}
+  		target_ptr = &g_mod_sources[target_slot];
+  	} else if (target_type_atom == PL_new_atom("envelope")) {
+  		target_type = CLOCK_TARGET_ENVELOPE;
+  		if (!get_typed_handle(target_term, "mod_source", &target_slot)) {
+  			return PL_type_error("mod_source", target_term);
+  		}
+  		target_ptr = &g_mod_sources[target_slot];
+  	} else if (target_type_atom == PL_new_atom("granular")) {
+  		target_type = CLOCK_TARGET_GRANULAR;
+  		if (!get_typed_handle(target_term, "granular", &target_slot)) {
+  			return PL_type_error("granular", target_term);
+  		}
+  		target_ptr = &g_granular_delays[target_slot];
+  	} else if (target_type_atom == PL_new_atom("delay")) {
+  		target_type = CLOCK_TARGET_DELAY;
+  		target_ptr = get_effect_pointer(target_term);
+  		if (target_ptr == NULL) {
+  			return PL_type_error("effect", target_term);
+  		}
+  	} else if (target_type_atom == PL_new_atom("ping_pong_delay")) {
+  		target_type = CLOCK_TARGET_PING_PONG_DELAY;
+  		target_ptr = get_effect_pointer(target_term);
+  		if (target_ptr == NULL) {
+  			return PL_type_error("effect", target_term);
+  		}
+  	} else {
+  		return PL_domain_error("target_type", target_type_term);
+  	}
+
+  	/* Parse route type */
+  	if (route_type_atom == PL_new_atom("pulse")) {
+  		route_type = CLOCK_ROUTE_PULSE;
+  	} else if (route_type_atom == PL_new_atom("sync")) {
+  		route_type = CLOCK_ROUTE_SYNC;
+  	} else {
+  		return PL_domain_error("route_type", route_type_term);
+  	}
+
+  	slot = allocate_clock_route_slot();
+  	if (slot < 0) {
+  		return PL_resource_error("clock_route_slots");
+  	}
+
+  	route = &g_clock_routes[slot];
+  	route->target_type = target_type;
+  	route->target_slot = target_ptr;
+  	route->route_type = route_type;
+  	route->division = (float)division;
+  	route->phase_offset = 0.0f;
+
+  	/* For sync routes, update immediately */
+  	if (route_type == CLOCK_ROUTE_SYNC) {
+  		update_clock_routes(CLOCK_ROUTE_SYNC);
+  	}
+
+  	return unify_typed_handle(route_term, "clock_route", slot);
+}
+
+/*
+ * pl_clock_route_uninit()
+ * clock_route_uninit(+Route)
+ * Removes a clock route.
+ */
+static foreign_t pl_clock_route_uninit(term_t route_term)
+{
+	int slot;
+
+	if (!get_typed_handle(route_term, "clock_route", &slot)) {
+		return PL_type_error("clock_route", route_term);
+	}
+	if (slot < 0 || slot >= MAX_CLOCK_ROUTES || !g_clock_routes[slot].in_use) {
+		return PL_existence_error("clock_route", route_term);
+	}
+
+	free_clock_route_slot(slot);
+	return TRUE;
+}
+
 /******************************************************************************
  * MODULE REGISTRATION
  *****************************************************************************/
@@ -291,6 +414,8 @@ install_t clock_register_predicates(void)
 	PL_register_foreign("clock_stop", 0, pl_clock_stop, 0);
 	PL_register_foreign("clock_is_running", 0, pl_clock_is_running, 0);
 	PL_register_foreign("clock_get_beat_position", 1, pl_clock_get_beat_position, 0);
+	PL_register_foreign("clock_route_init", 5, pl_clock_route_init, 0);
+	PL_register_foreign("clock_route_uninit", 1, pl_clock_route_uninit, 0);
 }
 
 /*

@@ -20,7 +20,7 @@
  * Shared global engine
  * Initialized by promini.c, shared with other modules
  */
-extern ma_engine* g_engine;
+extern ma_engine *g_engine;
 
 /* Forward declaration for initialization */
 extern foreign_t pl_promini_init(void);
@@ -56,7 +56,7 @@ extern foreign_t pl_promini_init(void);
  * Thread safety - mutexes for protecting global state
  */
 extern pthread_mutex_t g_sounds_mutex;
-extern pthread_mutex_t g_data_buffers_mutex;
+extern pthread_mutex_t g_audio_buffers_mutex;
 extern pthread_mutex_t g_capture_devices_mutex;
 extern pthread_mutex_t g_voices_mutex;
 
@@ -64,10 +64,10 @@ extern pthread_mutex_t g_voices_mutex;
  * Sound management
  */
 #define MAX_SOUNDS 1024
-#define MAX_DATA_BUFFERS 256
+#define MAX_AUDIO_BUFFERS 256
 
 typedef struct {
-	ma_audio_buffer* buffer;
+	ma_audio_buffer *buffer;
 	void *pData;
 	ma_uint32 refcount;
 	ma_bool32 in_use;
@@ -92,17 +92,17 @@ typedef enum {
 /* Effect chain node */
 typedef struct effect_node {
 	effect_type_t type;
-	ma_node_base* effect_node;
-	struct effect_node* next;
+	ma_node_base *effect_node;
+	struct effect_node *next;
 } effect_node_t;
 
 /* Sound slot */
 typedef struct {
-	ma_sound* sound;
-	ma_audio_buffer* audio_buffer;
-	int data_buffer_index;
+	ma_sound *sound;
+	ma_audio_buffer *audio_buffer;
+	int audio_buffer_index;
 	ma_bool32 in_use;
-	effect_node_t* effect_chain;
+	effect_node_t *effect_chain;
 } sound_slot_t;
 
 typedef struct {
@@ -135,7 +135,7 @@ typedef struct {
 	ma_sound_group group;
 	ma_bool32 in_use;
 	ma_bool32 is_voice;
-	effect_node_t* effect_chain;
+	effect_node_t *effect_chain;
 } synth_voice_t;
 
 #define MAX_OSCILLATORS 256
@@ -170,7 +170,7 @@ typedef struct {
 	ma_node_base base;
 	ma_uint32 target_bits;
 	ma_uint32 target_sample_rate;
-	float* hold_samples;
+	float *hold_samples;
 	ma_uint64 hold_counter;
 	ma_uint32 hold_interval;
 } bitcrush_node_t;
@@ -208,8 +208,8 @@ typedef struct {
 /* Ping-pong delay node */
 typedef struct {
 	ma_node_base base;
-	float* buffer_l;
-	float* buffer_r;
+	float *buffer_l;
+	float *buffer_r;
 	ma_uint32 buffer_size;
 	ma_uint32 cursor;
 	ma_uint32 delay_in_frames;
@@ -228,7 +228,7 @@ typedef struct {
 
 /* Delay line with multiple tap points (for reverb) */
 typedef struct {
-	float* buffer;
+	float *buffer;
 	ma_uint32 mask;
 	ma_uint32 main_delay;
 	ma_uint32 tap1, tap2, tap3;
@@ -236,7 +236,7 @@ typedef struct {
 
 /* Tank half for reverb (one side of figure-8) */
 typedef struct {
-	float* decay_diff1_buf;
+	float *decay_diff1_buf;
 	ma_uint32 decay_diff1_mask;
 	ma_uint32 decay_diff1_delay;
 	float decay_diff1_out;
@@ -245,7 +245,7 @@ typedef struct {
 
 	float damping_state;
 
-	float* decay_diff2_buf;
+	float *decay_diff2_buf;
 	ma_uint32 decay_diff2_mask;
 	ma_uint32 decay_diff2_delay;
 	ma_uint32 decay_diff2_tap1;  /* output tap offset */
@@ -256,12 +256,12 @@ typedef struct {
 
 /* Complete reverb channel (L or R) */
 typedef struct {
-	float* predelay_buf;
+	float *predelay_buf;
 	ma_uint32 predelay_mask;
 
 	float input_lpf_state;
 
-	float* diffuser_buf[4];
+	float *diffuser_buf[4];
 	ma_uint32 diffuser_mask[4];
 	ma_uint32 diffuser_delay[4];
 
@@ -270,7 +270,7 @@ typedef struct {
 
 /* Pitch shifter for shimmer effect (4-grain overlap-add) */
 typedef struct {
-	float* buffer;
+	float *buffer;
 	ma_uint32 size;
 	ma_uint32 write_pos;
 	/* 4 grains, each with: delay position, ramp level, ramp slope */
@@ -337,7 +337,7 @@ typedef struct {
 
 typedef struct {
 	ma_node_base base;
-	effect_node_t* effect_chain;
+	effect_node_t *effect_chain;
 	ma_bool32 in_use;
 } summing_node_t;
 
@@ -373,7 +373,7 @@ typedef struct {
 	float release_coeff;	/* envelope follower release coefficient */
 	float makeup_gain;		/* output gain compensation */
 	float envelope;			/* current envelope level */
-	float* delay_buffer;	/* look-ahead delay buffer */
+	float *delay_buffer;	/* look-ahead delay buffer */
 	ma_uint32 delay_frames;	/* look-ahead delay in frames */
 	ma_uint32 delay_pos;	/* current write position in delay buffer */
 } compressor_node_t;
@@ -419,7 +419,7 @@ typedef struct {
 			float stage_progress; /* 0-1 within current stage */
 		} envelope;
 		struct {
-			SDL_Gamepad* gamepad;
+			SDL_Gamepad *gamepad;
 			SDL_GamepadAxis axis;
 			float dead_zone;
 			int dpad_axis;  /* 0=normal, 1=dpad_x, 2=dpad_y */
@@ -436,13 +436,13 @@ typedef struct {
 typedef struct mod_route mod_route_t;
 
 /* modulation setter function */
-typedef void (*mod_setter_t)(void* target, float value, ma_uint32 frame_count, mod_route_t* route);
+typedef void (*mod_setter_t)(void *target, float value, ma_uint32 frame_count, mod_route_t *route);
 
 /* modulation route */
 struct mod_route {
 	ma_bool32 in_use;
 	int source_slot;
-	void* target;
+	void *target;
 	mod_setter_t setter;
 	float depth;
 	float offset;
@@ -510,8 +510,8 @@ extern void update_clock_routes(clock_route_type_t);
 #define MAX_IMAGES 64
 
 typedef struct {
-	unsigned char* pixels;	/* original image data */
-	unsigned char* buffer;	/* working buffer (may be smaller) */
+	unsigned char *pixels;	/* original image data */
+	unsigned char *buffer;	/* working buffer (may be smaller) */
 	int width;
 	int height;
 	int buf_width;			/* buffer dimensions (time steps) */
@@ -534,7 +534,7 @@ typedef enum {
 typedef struct {
 	ma_node_base base;
 	ma_bool32 in_use;
-	effect_node_t* effect_chain;
+	effect_node_t *effect_chain;
 
 	int image_slot;
 	int channel;
@@ -572,7 +572,7 @@ extern pthread_mutex_t g_image_synths_mutex;
 
 typedef enum {
 	GRAIN_SOURCE_RING_BUFFER,
-	GRAIN_SOURCE_DATA_BUFFER
+	GRAIN_SOURCE_AUDIO_BUFFER
 } grain_source_type_t;
 
 typedef struct {
@@ -592,7 +592,7 @@ typedef struct {
 typedef struct {
 	ma_node_base base;
 	ma_bool32 in_use;
-	effect_node_t* effect_chain;
+	effect_node_t *effect_chain;
 
 	ring_buffer_t buffer;
 	ma_bool32 recording;
@@ -634,46 +634,55 @@ extern granular_delay_t g_granular_delays[MAX_GRANULAR_DELAYS];
 extern pthread_mutex_t g_granular_mutex;
 
 /* Helper functions (implemented in promini.c) */
-extern void get_engine_format_info(ma_format* format, ma_uint32* channels, ma_uint32* sampleRate);
-extern void free_effect_chain(effect_node_t* effect);
-extern data_slot_t* get_data_slot(int index);
+extern void get_engine_format_info(ma_format *format, ma_uint32 *channels, ma_uint32 *sampleRate);
+extern void free_effect_chain(effect_node_t *effect);
+extern data_slot_t *get_data_slot(int index);
 extern ma_bool32 get_source_from_term(term_t source_term, ma_node** source_node, effect_node_t** chain);
 
 /* Typed handle helpers (implemented in promini.c) */
-extern int unify_typed_handle(term_t term, const char* type, int slot);
-extern int get_typed_handle(term_t term, const char* type, int* slot);
+extern int unify_typed_handle(term_t term, const char *type, int slot);
+extern int get_typed_handle(term_t term, const char *type, int *slot);
 
 /* Parameter parsing helpers for key=value lists (implemented in promini.c) */
-extern ma_bool32 get_param_int(term_t params, const char* key, int* value);
-extern ma_bool32 get_param_float(term_t params, const char* key, float* value);
-extern ma_bool32 get_param_bool(term_t params, const char* key, ma_bool32* value);
-extern ma_bool32 get_param_double(term_t params, const char* key, double* value);
+extern ma_bool32 get_param_int(term_t params, const char *key, int *value);
+extern ma_bool32 get_param_float(term_t params, const char *key, float *value);
+extern ma_bool32 get_param_bool(term_t params, const char *key, ma_bool32 *value);
+extern ma_bool32 get_param_double(term_t params, const char *key, double *value);
 
 /* Ring buffer */
 extern ma_result ring_buffer_init(ring_buffer_t *rb, ma_uint64 capacity_frames, ma_uint32 channels, ma_format format);
 extern void ring_buffer_free(ring_buffer_t *rb);
 extern void ring_buffer_write(ring_buffer_t *rb, const void *input, ma_uint32 frame_count);
 extern void ring_buffer_read(ring_buffer_t *rb, void *output, ma_uint64 delay_frames, ma_uint32 frame_count);
-extern float ring_buffer_read_interpolated(ring_buffer_t* rb, float position, ma_uint32 channel);
+extern float ring_buffer_read_interpolated(ring_buffer_t *rb, float position, ma_uint32 channel);
+
 /* Effect functions (implemented in effects.c) */
-extern ma_node* get_effect_chain_tail(effect_node_t* chain);
-extern ma_result attach_effect_node(ma_node* source_node, effect_node_t** effect_chain, ma_node_base* effect_node, effect_type_t type);
+extern ma_node *get_effect_chain_tail(effect_node_t *chain);
+extern ma_result attach_effect_node(ma_node *source_node, effect_node_t** effect_chain, ma_node_base *effect_node, effect_type_t type);
+extern void *get_effect_pointer(term_t term);
 
 /* Reverb functions (implemented in reverb.c) */
 extern ma_node_vtable reverb_vtable;
-extern ma_result init_reverb_node(reverb_node_t* reverb, ma_uint32 sample_rate);
-extern void free_reverb_node(reverb_node_t* reverb);
+extern ma_result init_reverb_node(reverb_node_t *reverb, ma_uint32 sample_rate);
+extern void free_reverb_node(reverb_node_t *reverb);
 
 /* Gamepad axis lookup (implemented in control.c) */
-extern int get_axis_from_atom(atom_t atom_term, SDL_GamepadAxis* axis);
+extern int get_axis_from_atom(atom_t atom_term, SDL_GamepadAxis *axis);
 extern SDL_Gamepad *get_gamepad_ptr(term_t gamepad_term);
 
 /* Capture functions (implemented in capture.c) */
 extern capture_slot_t *get_capture_device(int index);
 
-/* Data buffer creation (implemented in promini.c) */
-extern int create_data_buffer_from_pcm(void *pData, ma_format format, ma_uint32 channels,
-                                       ma_uint64 frame_count, ma_uint32 sample_rate);
+/* Audio buffer creation (implemented in promini.c) */
+extern int create_audio_buffer_from_pcm(
+		void *data, 
+		ma_format format, 
+		ma_uint32 channels, 
+		ma_uint64 frame_count, 
+		ma_uint32 sample_rate);
+
+/* Grain triggering (implemented in granular.c) */
+extern int trigger_grain(granular_delay_t *g);
 
 /* Module registration functions */
 extern install_t promini_register_predicates(void);

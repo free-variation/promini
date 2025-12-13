@@ -23,17 +23,17 @@ static const float mod_freq_ratios[4] = {1.0f, 1.5f, 1.2f, 1.8f};
  * ============================================================================ */
 
 /* Write to circular buffer */
-static inline void delay_write(float* buffer, ma_uint32 mask, ma_uint32 t, float value) {
+static inline void delay_write(float *buffer, ma_uint32 mask, ma_uint32 t, float value) {
 	buffer[t & mask] = value;
 }
 
 /* Read from circular buffer at offset */
-static inline float delay_read(float* buffer, ma_uint32 mask, ma_uint32 t, ma_uint32 offset) {
+static inline float delay_read(float *buffer, ma_uint32 mask, ma_uint32 t, ma_uint32 offset) {
 	return buffer[(t + offset) & mask];
 }
 
 /* Allpass filter - Dattorro/Schroeder form */
-static inline float allpass_process(float* buffer, ma_uint32 mask, ma_uint32 t,
+static inline float allpass_process(float *buffer, ma_uint32 mask, ma_uint32 t,
                                      ma_uint32 delay, float gain, float input) {
 	float delayed = delay_read(buffer, mask, t, delay);
 	input += delayed * -gain;
@@ -55,8 +55,8 @@ static ma_uint32 calc_buffer_size(ma_uint32 delay) {
 }
 
 /* Allocate delay buffer, returns mask (size - 1) or 0 on failure */
-static float* alloc_buffer(ma_uint32 size) {
-	float* buf = (float*)malloc(size * sizeof(float));
+static float *alloc_buffer(ma_uint32 size) {
+	float *buf = (float*)malloc(size * sizeof(float));
 	if (buf) {
 		memset(buf, 0, size * sizeof(float));
 	}
@@ -77,7 +77,7 @@ static float* alloc_buffer(ma_uint32 size) {
  * ============================================================================ */
 
 /* Read from buffer with cubic interpolation (Catmull-Rom) */
-static inline float buffer_read_cubic_ps(float* buffer, ma_uint32 size, float pos) {
+static inline float buffer_read_cubic_ps(float *buffer, ma_uint32 size, float pos) {
 	ma_uint32 i0, i1, i2, i3;
 	float frac;
 	float y0, y1, y2, y3;
@@ -110,7 +110,7 @@ static inline float buffer_read_cubic_ps(float* buffer, ma_uint32 size, float po
  * windowed with a triangular ramp. Every framesize/4 samples, one head resets.
  * The overlapping triangular windows sum to constant amplitude.
  */
-static float pitchshift_process(reverb_pitchshift_t* ps, float input,
+static float pitchshift_process(reverb_pitchshift_t *ps, float input,
                                  float shift_semitones, float mix,
                                  ma_uint32 sample_rate) {
 	float ratio, pchratio1, samp_slope, startpos;
@@ -212,14 +212,14 @@ static float pitchshift_process(reverb_pitchshift_t* ps, float input,
  * Initialization
  * ============================================================================ */
 
-static void free_tank_half(reverb_tank_half_t* th) {
+static void free_tank_half(reverb_tank_half_t *th) {
 	if (th->decay_diff1_buf) { free(th->decay_diff1_buf); th->decay_diff1_buf = NULL; }
 	if (th->pre_damp.buffer) { free(th->pre_damp.buffer); th->pre_damp.buffer = NULL; }
 	if (th->decay_diff2_buf) { free(th->decay_diff2_buf); th->decay_diff2_buf = NULL; }
 	if (th->post_damp.buffer) { free(th->post_damp.buffer); th->post_damp.buffer = NULL; }
 }
 
-static void free_channel(reverb_channel_t* ch) {
+static void free_channel(reverb_channel_t *ch) {
 	int i;
 	if (ch->predelay_buf) { free(ch->predelay_buf); ch->predelay_buf = NULL; }
 	for (i = 0; i < 4; i++) {
@@ -229,7 +229,7 @@ static void free_channel(reverb_channel_t* ch) {
 	free_tank_half(&ch->tank[1]);
 }
 
-static ma_result init_delay_line(reverb_delay_line_t* dl, ma_uint32 main_delay,
+static ma_result init_delay_line(reverb_delay_line_t *dl, ma_uint32 main_delay,
                                   ma_uint32 tap1, ma_uint32 tap2, ma_uint32 tap3) {
 	ma_uint32 size = calc_buffer_size(main_delay + 1);
 	dl->buffer = alloc_buffer(size);
@@ -242,7 +242,7 @@ static ma_result init_delay_line(reverb_delay_line_t* dl, ma_uint32 main_delay,
 	return MA_SUCCESS;
 }
 
-static ma_result init_tank_half(reverb_tank_half_t* th, int half_idx, ma_uint32 sample_rate) {
+static ma_result init_tank_half(reverb_tank_half_t *th, int half_idx, ma_uint32 sample_rate) {
 	ma_uint32 size;
 	float scale = (float)sample_rate / 29761.0f;
 
@@ -300,7 +300,7 @@ static ma_result init_tank_half(reverb_tank_half_t* th, int half_idx, ma_uint32 
 	return MA_SUCCESS;
 }
 
-static ma_result init_channel(reverb_channel_t* ch, ma_uint32 sample_rate) {
+static ma_result init_channel(reverb_channel_t *ch, ma_uint32 sample_rate) {
 	int i;
 	ma_uint32 size;
 	float scale = (float)sample_rate / 29761.0f;
@@ -338,7 +338,7 @@ static ma_result init_channel(reverb_channel_t* ch, ma_uint32 sample_rate) {
  * ============================================================================ */
 
 /* Process one sample through a tank half, return feedback for other half */
-static float process_tank_half(reverb_tank_half_t* th, ma_uint32 t, float input,
+static float process_tank_half(reverb_tank_half_t *th, ma_uint32 t, float input,
                                 float decay, float decay_diff1_gain,
                                 float decay_diff2_gain, float damping,
                                 ma_int32 mod_offset) {
@@ -375,7 +375,7 @@ static float process_tank_half(reverb_tank_half_t* th, ma_uint32 t, float input,
 }
 
 /* Get output taps from tank - Dattorro Table 2 */
-static void get_tank_output(reverb_tank_half_t* tank, ma_uint32 t, float* out_l, float* out_r) {
+static void get_tank_output(reverb_tank_half_t *tank, ma_uint32 t, float *out_l, float *out_r) {
 	/* Left output: taps from tank[1] positive, tank[0] negative */
 	*out_l = tank[1].decay_diff1_out;
 	*out_l += delay_read(tank[1].pre_damp.buffer, tank[1].pre_damp.mask, t, tank[1].pre_damp.tap1);
@@ -398,12 +398,12 @@ static void get_tank_output(reverb_tank_half_t* tank, ma_uint32 t, float* out_l,
 }
 
 /* Process one sample through complete channel */
-static void process_channel(reverb_channel_t* ch, ma_uint32 t, float input,
+static void process_channel(reverb_channel_t *ch, ma_uint32 t, float input,
                             ma_uint32 predelay_samples, float bandwidth,
                             float input_diff1, float input_diff2,
                             float decay, float decay_diff1, float decay_diff2,
                             float damping, ma_int32 mod_offset0, ma_int32 mod_offset1,
-                            float* out_l, float* out_r) {
+                            float *out_l, float *out_r) {
 	float x, feedback0, feedback1;
 
 	/* Predelay */
@@ -446,16 +446,16 @@ static void process_channel(reverb_channel_t* ch, ma_uint32 t, float input,
  * ============================================================================ */
 
 static void reverb_process_pcm_frames(
-		ma_node* node,
+		ma_node *node,
 		const float** frames_in,
-		ma_uint32* frame_count_in,
+		ma_uint32 *frame_count_in,
 		float** frames_out,
-		ma_uint32* frame_count_out)
+		ma_uint32 *frame_count_out)
 {
-	reverb_node_t* reverb = (reverb_node_t*)node;
+	reverb_node_t *reverb = (reverb_node_t*)node;
 	ma_uint32 frame_count = *frame_count_in;
-	const float* in = frames_in[0];
-	float* out = frames_out[0];
+	const float *in = frames_in[0];
+	float *out = frames_out[0];
 	ma_uint32 i, j;
 	ma_uint32 sample_rate;
 
@@ -590,7 +590,7 @@ ma_node_vtable reverb_vtable = {
  * Public interface
  * ============================================================================ */
 
-void free_reverb_node(reverb_node_t* reverb) {
+void free_reverb_node(reverb_node_t *reverb) {
 	int i, j;
 	free_channel(&reverb->channels[0]);
 	free_channel(&reverb->channels[1]);
@@ -604,7 +604,7 @@ void free_reverb_node(reverb_node_t* reverb) {
 	}
 }
 
-ma_result init_reverb_node(reverb_node_t* reverb, ma_uint32 sample_rate) {
+ma_result init_reverb_node(reverb_node_t *reverb, ma_uint32 sample_rate) {
 	ma_result result;
 	int i, j;
 	ma_uint32 shimmer_size;

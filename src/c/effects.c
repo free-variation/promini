@@ -17,7 +17,7 @@
  * init_effect_node_base()
  * Initialize effect node base (common boilerplate)
  */
-static ma_result init_effect_node_base(ma_node_base* node, ma_node_vtable* vtable)
+static ma_result init_effect_node_base(ma_node_base *node, ma_node_vtable *vtable)
 {
 	ma_node_config node_config;
 	ma_uint32 channels[1];
@@ -36,7 +36,7 @@ static ma_result init_effect_node_base(ma_node_base* node, ma_node_vtable* vtabl
  * get_effect_chain_tail()
  * Returns the last effect node in a chain, or NULL if chain is empty.
  */
-ma_node* get_effect_chain_tail(effect_node_t* chain)
+ma_node *get_effect_chain_tail(effect_node_t *chain)
 {
 	if (chain == NULL) return NULL;
 	while (chain->next != NULL) {
@@ -46,19 +46,37 @@ ma_node* get_effect_chain_tail(effect_node_t* chain)
 }
 
 /*
+ * get_effect_pointer()
+ * Extracts pointer from effect(Source, Pointer) term.
+ * Returns pointer on success, NULL if term is not valid effect handle.
+ */
+void *get_effect_pointer(term_t term)
+{
+	term_t arg = PL_new_term_ref();
+	functor_t f;
+	void *p;
+
+	if (!PL_get_functor(term, &f)) return NULL;
+	if (f != PL_new_functor(PL_new_atom("effect"), 2)) return NULL;
+	if (!PL_get_arg(2, term, arg)) return NULL;
+	if (!PL_get_pointer(arg, &p)) return NULL;
+	return p;
+}
+
+/*
  * attach_effect_node()
  * Attach an effect node to a source node's processing chain.
  * Works with any ma_node (sounds, sound groups, voices, etc.)
  */
 ma_result attach_effect_node(
-		ma_node* source_node,
+		ma_node *source_node,
 		effect_node_t** effect_chain,
-		ma_node_base* effect_node,
+		ma_node_base *effect_node,
 		effect_type_t type)
 {
-	effect_node_t* new_effect;
-	effect_node_t* tail;
-	ma_node* endpoint;
+	effect_node_t *new_effect;
+	effect_node_t *tail;
+	ma_node *endpoint;
 	ma_result result;
 
 	new_effect = (effect_node_t*)malloc(sizeof(effect_node_t));
@@ -168,21 +186,21 @@ static ma_bool32 get_effect_info_from_handle(term_t effect_handle, ma_sound** so
  * Process audio through bitcrush effect
  */
 static void bitcrush_process_pcm_frames(
-		ma_node* node,
+		ma_node *node,
 		const float** frames_in,
-		ma_uint32* frame_count_in,
+		ma_uint32 *frame_count_in,
 		float** frames_out,
-		ma_uint32* frame_count_out)
+		ma_uint32 *frame_count_out)
 {
-	bitcrush_node_t* bitcrush;
+	bitcrush_node_t *bitcrush;
 	ma_uint32 channels;
 	ma_uint32 frame_count;
 	ma_uint32 total_samples;
 	float levels;
 	ma_uint32 frame;
 	ma_uint32 channel;
-	const float* input;
-	float* output;
+	const float *input;
+	float *output;
 
 	bitcrush = (bitcrush_node_t*)node;
 	channels = ma_node_get_output_channels(node, 0);
@@ -262,7 +280,7 @@ static ma_node_vtable bitcrush_vtable =
  * init_bitcrush_node()
  * Initialize bitcrush effect node
  */
-static ma_result init_bitcrush_node(bitcrush_node_t* node, int bits, int sample_rate)
+static ma_result init_bitcrush_node(bitcrush_node_t *node, int bits, int sample_rate)
 {
 	ma_uint32 channels;
 	ma_result result;
@@ -299,10 +317,10 @@ static ma_result init_bitcrush_node(bitcrush_node_t* node, int bits, int sample_
  * attach_bitcrush_effect()
  * Validate parameters and attach bitcrush effect to a node
  */
-static ma_result attach_bitcrush_effect(term_t params, ma_node* source_node, effect_node_t** effect_chain, ma_node_base** out_effect_node)
+static ma_result attach_bitcrush_effect(term_t params, ma_node *source_node, effect_node_t** effect_chain, ma_node_base** out_effect_node)
 {
 	int bits, sample_rate;
-	bitcrush_node_t* bitcrush;
+	bitcrush_node_t *bitcrush;
 	ma_result result;
 
 	if (!get_param_int(params, "bits", &bits)) {
@@ -353,7 +371,7 @@ static ma_result attach_bitcrush_effect(term_t params, ma_node* source_node, eff
  * query_bitcrush_params()
  * Build parameter list for bitcrush effect
  */
-static int query_bitcrush_params(bitcrush_node_t* bitcrush, term_t params_list)
+static int query_bitcrush_params(bitcrush_node_t *bitcrush, term_t params_list)
 {
 	term_t param_args = PL_new_term_refs(2);
 	functor_t eq_functor = PL_new_functor(PL_new_atom("="), 2);
@@ -388,7 +406,7 @@ static int query_bitcrush_params(bitcrush_node_t* bitcrush, term_t params_list)
  * set_bitcrush_parameters()
  * Set parameters for bitcrush effect from Prolog term list
  */
-static foreign_t set_bitcrush_parameters(bitcrush_node_t* bitcrush, term_t params_list)
+static foreign_t set_bitcrush_parameters(bitcrush_node_t *bitcrush, term_t params_list)
 {
 	term_t list = PL_copy_term_ref(params_list);
 	term_t head = PL_new_term_ref();
@@ -397,7 +415,7 @@ static foreign_t set_bitcrush_parameters(bitcrush_node_t* bitcrush, term_t param
 	while (PL_get_list(list, head, list)) {
 		term_t key_term = PL_new_term_ref();
 		term_t value_term = PL_new_term_ref();
-		char* param_name;
+		char *param_name;
 
 		if (!PL_is_functor(head, eq_functor)) {
 			return PL_type_error("key_value_pair", head);
@@ -455,7 +473,7 @@ static foreign_t set_bitcrush_parameters(bitcrush_node_t* bitcrush, term_t param
  * init_lpf_node()
  * Initialize low pass filter node
  */
-static ma_result init_lpf_node(lpf_node_t* lpf, double cutoff, ma_uint32 order)
+static ma_result init_lpf_node(lpf_node_t *lpf, double cutoff, ma_uint32 order)
 {
 	ma_lpf_node_config lpf_config;
 	ma_uint32 channels;
@@ -479,11 +497,11 @@ static ma_result init_lpf_node(lpf_node_t* lpf, double cutoff, ma_uint32 order)
  * attach_lpf_effect()
  * Validate parameters and attach LPF to a node
  */
-static ma_result attach_lpf_effect(term_t params, ma_node* source_node, effect_node_t** effect_chain, ma_node_base** out_effect_node)
+static ma_result attach_lpf_effect(term_t params, ma_node *source_node, effect_node_t** effect_chain, ma_node_base** out_effect_node)
 {
 	double cutoff;
 	int order_int;
-	lpf_node_t* lpf;
+	lpf_node_t *lpf;
 	ma_result result;
 
 	if (!get_param_double(params, "cutoff", &cutoff)) {
@@ -531,7 +549,7 @@ static ma_result attach_lpf_effect(term_t params, ma_node* source_node, effect_n
  * query_lpf_params()
  * Build parameter list for lpf effect
  */
-static int query_lpf_params(lpf_node_t* lpf, term_t params_list)
+static int query_lpf_params(lpf_node_t *lpf, term_t params_list)
 {
 	term_t param_args = PL_new_term_refs(2);
 	functor_t eq_functor = PL_new_functor(PL_new_atom("="), 2);
@@ -566,7 +584,7 @@ static int query_lpf_params(lpf_node_t* lpf, term_t params_list)
  * set_lpf_parameters()
  * Set parameters for lpf effect from Prolog term list
  */
-static foreign_t set_lpf_parameters(lpf_node_t* lpf, term_t params_list)
+static foreign_t set_lpf_parameters(lpf_node_t *lpf, term_t params_list)
 {
 	term_t list = PL_copy_term_ref(params_list);
 	term_t head = PL_new_term_ref();
@@ -575,7 +593,7 @@ static foreign_t set_lpf_parameters(lpf_node_t* lpf, term_t params_list)
 	while (PL_get_list(list, head, list)) {
 		term_t key_term = PL_new_term_ref();
 		term_t value_term = PL_new_term_ref();
-		char* param_name;
+		char *param_name;
 
 		if (!PL_is_functor(head, eq_functor)) {
 			return PL_type_error("key_value_pair", head);
@@ -653,7 +671,7 @@ static foreign_t set_lpf_parameters(lpf_node_t* lpf, term_t params_list)
  * init_hpf_node()
  * Initialize high pass filter node
  */
-static ma_result init_hpf_node(hpf_node_t* hpf, double cutoff, ma_uint32 order)
+static ma_result init_hpf_node(hpf_node_t *hpf, double cutoff, ma_uint32 order)
 {
 	ma_hpf_node_config hpf_config;
 	ma_uint32 channels;
@@ -677,11 +695,11 @@ static ma_result init_hpf_node(hpf_node_t* hpf, double cutoff, ma_uint32 order)
  * attach_hpf_effect()
  * Validate parameters and attach HPF to a node
  */
-static ma_result attach_hpf_effect(term_t params, ma_node* source_node, effect_node_t** effect_chain, ma_node_base** out_effect_node)
+static ma_result attach_hpf_effect(term_t params, ma_node *source_node, effect_node_t** effect_chain, ma_node_base** out_effect_node)
 {
 	double cutoff;
 	int order_int;
-	hpf_node_t* hpf;
+	hpf_node_t *hpf;
 	ma_result result;
 
 	if (!get_param_double(params, "cutoff", &cutoff)) {
@@ -729,7 +747,7 @@ static ma_result attach_hpf_effect(term_t params, ma_node* source_node, effect_n
  * query_hpf_params()
  * Build parameter list for hpf effect
  */
-static int query_hpf_params(hpf_node_t* hpf, term_t params_list)
+static int query_hpf_params(hpf_node_t *hpf, term_t params_list)
 {
 	term_t param_args = PL_new_term_refs(2);
 	functor_t eq_functor = PL_new_functor(PL_new_atom("="), 2);
@@ -764,7 +782,7 @@ static int query_hpf_params(hpf_node_t* hpf, term_t params_list)
  * set_hpf_parameters()
  * Set parameters for hpf effect from Prolog term list
  */
-static foreign_t set_hpf_parameters(hpf_node_t* hpf, term_t params_list)
+static foreign_t set_hpf_parameters(hpf_node_t *hpf, term_t params_list)
 {
 	term_t list = PL_copy_term_ref(params_list);
 	term_t head = PL_new_term_ref();
@@ -773,7 +791,7 @@ static foreign_t set_hpf_parameters(hpf_node_t* hpf, term_t params_list)
 	while (PL_get_list(list, head, list)) {
 		term_t key_term = PL_new_term_ref();
 		term_t value_term = PL_new_term_ref();
-		char* param_name;
+		char *param_name;
 
 		if (!PL_is_functor(head, eq_functor)) {
 			return PL_type_error("key_value_pair", head);
@@ -851,7 +869,7 @@ static foreign_t set_hpf_parameters(hpf_node_t* hpf, term_t params_list)
  * init_bpf_node()
  * Initialize band pass filter node
  */
-static ma_result init_bpf_node(bpf_node_t* bpf, double cutoff, ma_uint32 order)
+static ma_result init_bpf_node(bpf_node_t *bpf, double cutoff, ma_uint32 order)
 {
 	ma_bpf_node_config bpf_config;
 	ma_uint32 channels;
@@ -875,11 +893,11 @@ static ma_result init_bpf_node(bpf_node_t* bpf, double cutoff, ma_uint32 order)
  * attach_bpf_effect()
  * Validate parameters and attach BPF to sound
  */
-static ma_result attach_bpf_effect(term_t params, ma_node* source_node, effect_node_t** effect_chain, ma_node_base** out_effect_node)
+static ma_result attach_bpf_effect(term_t params, ma_node *source_node, effect_node_t** effect_chain, ma_node_base** out_effect_node)
 {
 	double cutoff;
 	int order_int;
-	bpf_node_t* bpf;
+	bpf_node_t *bpf;
 	ma_result result;
 
 	if (!get_param_double(params, "cutoff", &cutoff)) {
@@ -927,7 +945,7 @@ static ma_result attach_bpf_effect(term_t params, ma_node* source_node, effect_n
  * query_bpf_params()
  * Build parameter list for bpf effect
  */
-static int query_bpf_params(bpf_node_t* bpf, term_t params_list)
+static int query_bpf_params(bpf_node_t *bpf, term_t params_list)
 {
 	term_t param_args = PL_new_term_refs(2);
 	functor_t eq_functor = PL_new_functor(PL_new_atom("="), 2);
@@ -962,7 +980,7 @@ static int query_bpf_params(bpf_node_t* bpf, term_t params_list)
  * set_bpf_parameters()
  * Set parameters for bpf effect from Prolog term list
  */
-static foreign_t set_bpf_parameters(bpf_node_t* bpf, term_t params_list)
+static foreign_t set_bpf_parameters(bpf_node_t *bpf, term_t params_list)
 {
 	term_t list = PL_copy_term_ref(params_list);
 	term_t head = PL_new_term_ref();
@@ -971,7 +989,7 @@ static foreign_t set_bpf_parameters(bpf_node_t* bpf, term_t params_list)
 	while (PL_get_list(list, head, list)) {
 		term_t key_term = PL_new_term_ref();
 		term_t value_term = PL_new_term_ref();
-		char* param_name;
+		char *param_name;
 
 		if (!PL_is_functor(head, eq_functor)) {
 			return PL_type_error("key_value_pair", head);
@@ -1049,7 +1067,7 @@ static foreign_t set_bpf_parameters(bpf_node_t* bpf, term_t params_list)
  * init_delay_node()
  * Initialize delay node
  */
-static ma_result init_delay_node(delay_node_t* delay, ma_uint32 delay_in_frames, float decay, float wet, float dry)
+static ma_result init_delay_node(delay_node_t *delay, ma_uint32 delay_in_frames, float decay, float wet, float dry)
 {
 	ma_delay_node_config delay_config;
 	ma_uint32 channels;
@@ -1078,11 +1096,11 @@ static ma_result init_delay_node(delay_node_t* delay, ma_uint32 delay_in_frames,
  * attach_delay_effect()
  * Validate parameters and attach delay to sound
  */
-static ma_result attach_delay_effect(term_t params, ma_node* source_node, effect_node_t** effect_chain, ma_node_base** out_effect_node)
+static ma_result attach_delay_effect(term_t params, ma_node *source_node, effect_node_t** effect_chain, ma_node_base** out_effect_node)
 {
 	int delay_in_frames_int;
 	float decay, wet, dry;
-	delay_node_t* delay;
+	delay_node_t *delay;
 	ma_result result;
 
 	if (!get_param_int(params, "delay_in_frames", &delay_in_frames_int)) {
@@ -1148,7 +1166,7 @@ static ma_result attach_delay_effect(term_t params, ma_node* source_node, effect
  * query_delay_params()
  * Build parameter list for delay effect
  */
-static int query_delay_params(delay_node_t* delay, term_t params_list)
+static int query_delay_params(delay_node_t *delay, term_t params_list)
 {
 	term_t param_args = PL_new_term_refs(2);
 	functor_t eq_functor = PL_new_functor(PL_new_atom("="), 2);
@@ -1206,7 +1224,7 @@ static int query_delay_params(delay_node_t* delay, term_t params_list)
  * Set parameters for delay effect from Prolog term list
  * Note: delay_in_frames cannot be changed after init
  */
-static foreign_t set_delay_parameters(delay_node_t* delay, term_t params_list)
+static foreign_t set_delay_parameters(delay_node_t *delay, term_t params_list)
 {
 	term_t list = PL_copy_term_ref(params_list);
 	term_t head = PL_new_term_ref();
@@ -1215,7 +1233,7 @@ static foreign_t set_delay_parameters(delay_node_t* delay, term_t params_list)
 	while (PL_get_list(list, head, list)) {
 		term_t key_term = PL_new_term_ref();
 		term_t value_term = PL_new_term_ref();
-		char* param_name;
+		char *param_name;
 
 		if (!PL_is_functor(head, eq_functor)) {
 			return PL_type_error("key_value_pair", head);
@@ -1283,16 +1301,16 @@ static foreign_t set_delay_parameters(delay_node_t* delay, term_t params_list)
  * Process audio through ping-pong delay effect
  */
 static void ping_pong_process_pcm_frames(
-		ma_node* node,
+		ma_node *node,
 		const float** frames_in,
-		ma_uint32* frame_count_in,
+		ma_uint32 *frame_count_in,
 		float** frames_out,
-		ma_uint32* frame_count_out)
+		ma_uint32 *frame_count_out)
 {
-	ping_pong_delay_node_t* pp;
+	ping_pong_delay_node_t *pp;
 	ma_uint32 frame_count;
-	const float* input;
-	float* output;
+	const float *input;
+	float *output;
 	ma_uint32 frame;
 	ma_uint32 read_pos;
 	ma_uint32 old_read_pos;
@@ -1377,7 +1395,7 @@ static ma_node_vtable ping_pong_vtable = {
 };
 
 static ma_result init_ping_pong_delay_node(
-		ping_pong_delay_node_t* node,
+		ping_pong_delay_node_t *node,
 		ma_uint32 max_delay_in_frames,
 		ma_uint32 delay_in_frames,
 		float feedback,
@@ -1427,12 +1445,12 @@ static ma_result init_ping_pong_delay_node(
  * attach_ping_pong_delay_effect()
  * Validate parameters and attach ping-pong delay to sound
  */
-static ma_result attach_ping_pong_delay_effect(term_t params, ma_node* source_node, effect_node_t** effect_chain, ma_node_base** out_effect_node)
+static ma_result attach_ping_pong_delay_effect(term_t params, ma_node *source_node, effect_node_t** effect_chain, ma_node_base** out_effect_node)
 {
 	int max_delay_int, delay_int;
 	int smoothing_mode_int, crossfade_length_int;
 	float feedback, wet, dry, smoothing_speed_float;
-	ping_pong_delay_node_t* pp;
+	ping_pong_delay_node_t *pp;
 	ma_result result;
 
 	if (!get_param_int(params, "max_delay_in_frames", &max_delay_int)) {
@@ -1526,7 +1544,7 @@ static ma_result attach_ping_pong_delay_effect(term_t params, ma_node* source_no
  * query_ping_pong_delay_params()
  * Build parameter list for ping-pong delay effect
  */
-static int query_ping_pong_delay_params(ping_pong_delay_node_t* pp, term_t params_list)
+static int query_ping_pong_delay_params(ping_pong_delay_node_t *pp, term_t params_list)
 {
 	term_t param_args = PL_new_term_refs(2);
 	functor_t eq_functor = PL_new_functor(PL_new_atom("="), 2);
@@ -1627,7 +1645,7 @@ static int query_ping_pong_delay_params(ping_pong_delay_node_t* pp, term_t param
  * set_ping_pong_delay_parameters()
  * Set parameters for ping-pong delay effect from Prolog term list
  */
-static foreign_t set_ping_pong_delay_parameters(ping_pong_delay_node_t* pp, term_t params_list)
+static foreign_t set_ping_pong_delay_parameters(ping_pong_delay_node_t *pp, term_t params_list)
 {
 	term_t list = PL_copy_term_ref(params_list);
 	term_t head = PL_new_term_ref();
@@ -1636,7 +1654,7 @@ static foreign_t set_ping_pong_delay_parameters(ping_pong_delay_node_t* pp, term
 	while (PL_get_list(list, head, list)) {
 		term_t key_term = PL_new_term_ref();
 		term_t value_term = PL_new_term_ref();
-		char* param_name;
+		char *param_name;
 
 		if (!PL_is_functor(head, eq_functor)) {
 			return PL_type_error("key_value_pair", head);
@@ -1750,9 +1768,9 @@ static foreign_t set_ping_pong_delay_parameters(ping_pong_delay_node_t* pp, term
  * All parameters are optional with sensible defaults.
  * Returns MA_SUCCESS or error code.
  */
-static ma_result attach_reverb_effect(term_t params, ma_node* source_node, effect_node_t** effect_chain, ma_node_base** out_effect_node)
+static ma_result attach_reverb_effect(term_t params, ma_node *source_node, effect_node_t** effect_chain, ma_node_base** out_effect_node)
 {
-	reverb_node_t* reverb;
+	reverb_node_t *reverb;
 	ma_result result;
 	ma_uint32 sample_rate;
 	float value;
@@ -1843,7 +1861,7 @@ static ma_result attach_reverb_effect(term_t params, ma_node* source_node, effec
  * query_reverb_params()
  * Build parameter list for reverb effect
  */
-static int query_reverb_params(reverb_node_t* reverb, term_t params_list)
+static int query_reverb_params(reverb_node_t *reverb, term_t params_list)
 {
 	term_t param_args = PL_new_term_refs(2);
 	functor_t eq_functor = PL_new_functor(PL_new_atom("="), 2);
@@ -1936,7 +1954,7 @@ static int query_reverb_params(reverb_node_t* reverb, term_t params_list)
  * set_reverb_parameters()
  * Set parameters for reverb effect from Prolog term list
  */
-static foreign_t set_reverb_parameters(reverb_node_t* reverb, term_t params_list)
+static foreign_t set_reverb_parameters(reverb_node_t *reverb, term_t params_list)
 {
 	term_t list = PL_copy_term_ref(params_list);
 	term_t head = PL_new_term_ref();
@@ -1945,7 +1963,7 @@ static foreign_t set_reverb_parameters(reverb_node_t* reverb, term_t params_list
 	while (PL_get_list(list, head, list)) {
 		term_t key_term = PL_new_term_ref();
 		term_t value_term = PL_new_term_ref();
-		char* param_name;
+		char *param_name;
 		double value;
 
 		if (!PL_is_functor(head, eq_functor)) {
@@ -2013,17 +2031,17 @@ static foreign_t set_reverb_parameters(reverb_node_t* reverb, term_t params_list
  * Interpolate toward target pan each frame, applies stereo panning.
  */
 static void pan_process_pcm_frames(
-		ma_node* node,
+		ma_node *node,
 		const float** frames_in,
-		ma_uint32* frame_count_in,
+		ma_uint32 *frame_count_in,
 		float** frames_out,
-		ma_uint32* frame_count_out)
+		ma_uint32 *frame_count_out)
 {
-	pan_node_t* pan_node;
+	pan_node_t *pan_node;
 	ma_uint32 channels;
 	ma_uint32 frame_count;
-	const float* input;
-	float* output;
+	const float *input;
+	float *output;
 	ma_uint32 i;
 	float step, p, left_gain, right_gain;
 
@@ -2071,7 +2089,7 @@ static ma_node_vtable pan_vtable = {
  * init_pan_node()
  * Initialize a pan effect node.
  */
-static ma_result init_pan_node(pan_node_t* node, float initial_pan)
+static ma_result init_pan_node(pan_node_t *node, float initial_pan)
 {
 	ma_result result;
 
@@ -2090,10 +2108,10 @@ static ma_result init_pan_node(pan_node_t* node, float initial_pan)
  * attach_pan_effect()
  * Create and attach a pan effect to the given source node.
  */
-static ma_result attach_pan_effect(term_t params, ma_node* source_node, effect_node_t** effect_chain, ma_node_base** out_effect_node)
+static ma_result attach_pan_effect(term_t params, ma_node *source_node, effect_node_t** effect_chain, ma_node_base** out_effect_node)
 {
 	float pan;
-	pan_node_t* node;
+	pan_node_t *node;
 	ma_result result;
 
 	if (!get_param_float(params, "pan", &pan)) {
@@ -2126,7 +2144,7 @@ static ma_result attach_pan_effect(term_t params, ma_node* source_node, effect_n
  * query_pan_params()
  * Get the current pan value.
  */
-static int query_pan_params(pan_node_t* node, term_t params_list)
+static int query_pan_params(pan_node_t *node, term_t params_list)
 {
 	term_t param_args = PL_new_term_refs(2);
 	functor_t eq_functor = PL_new_functor(PL_new_atom("="), 2);
@@ -2150,7 +2168,7 @@ static int query_pan_params(pan_node_t* node, term_t params_list)
  * set_pan_parameters()
  * Set pan effect parameters from a Prolog list.
  */
-static foreign_t set_pan_parameters(pan_node_t* node, term_t params_list)
+static foreign_t set_pan_parameters(pan_node_t *node, term_t params_list)
 {
 	term_t list = PL_copy_term_ref(params_list);
 	term_t head = PL_new_term_ref();
@@ -2159,7 +2177,7 @@ static foreign_t set_pan_parameters(pan_node_t* node, term_t params_list)
 	while (PL_get_list(list, head, list)) {
 		term_t key_term = PL_new_term_ref();
 		term_t value_term = PL_new_term_ref();
-		char* param_name;
+		char *param_name;
 
 		if (!PL_is_functor(head, eq_functor)) {
 			return PL_type_error("key_value_pair", head);
@@ -2196,18 +2214,18 @@ static foreign_t set_pan_parameters(pan_node_t* node, term_t params_list)
  * Applies gain with per-sample interpolation from current to target.
  */
 static void vca_process_pcm_frames(
-		ma_node* node,
+		ma_node *node,
 		const float** frames_in,
-		ma_uint32* frame_count_in,
+		ma_uint32 *frame_count_in,
 		float** frames_out,
-		ma_uint32* frame_count_out)
+		ma_uint32 *frame_count_out)
 {
-	vca_node_t* vca;
+	vca_node_t *vca;
 	ma_uint32 channels;
 	ma_uint32 frame_count;
 	ma_uint32 total_samples;
-	const float* input;
-	float* output;
+	const float *input;
+	float *output;
 	ma_uint32 i;
 
 	vca = (vca_node_t*)node;
@@ -2242,7 +2260,7 @@ static ma_node_vtable vca_vtable = {
  * init_vca_node()
  * Initialize a VCA effect node.
  */
-static ma_result init_vca_node(vca_node_t* node, float initial_gain)
+static ma_result init_vca_node(vca_node_t *node, float initial_gain)
 {
 	ma_result result;
 
@@ -2261,10 +2279,10 @@ static ma_result init_vca_node(vca_node_t* node, float initial_gain)
  * attach_vca_effect()
  * Create and attach a VCA effect to the given source node.
  */
-static ma_result attach_vca_effect(term_t params, ma_node* source_node, effect_node_t** effect_chain, ma_node_base** out_effect_node)
+static ma_result attach_vca_effect(term_t params, ma_node *source_node, effect_node_t** effect_chain, ma_node_base** out_effect_node)
 {
 	float gain;
-	vca_node_t* vca;
+	vca_node_t *vca;
 	ma_result result;
 
 	if (!get_param_float(params, "gain", &gain)) {
@@ -2297,7 +2315,7 @@ static ma_result attach_vca_effect(term_t params, ma_node* source_node, effect_n
  * query_vca_params()
  * Build parameter list for VCA effect.
  */
-static int query_vca_params(vca_node_t* vca, term_t params_list)
+static int query_vca_params(vca_node_t *vca, term_t params_list)
 {
 	term_t param_args = PL_new_term_refs(2);
 	functor_t eq_functor = PL_new_functor(PL_new_atom("="), 2);
@@ -2321,7 +2339,7 @@ static int query_vca_params(vca_node_t* vca, term_t params_list)
  * set_vca_parameters()
  * Set parameters for VCA effect from Prolog term list.
  */
-static foreign_t set_vca_parameters(vca_node_t* vca, term_t params_list)
+static foreign_t set_vca_parameters(vca_node_t *vca, term_t params_list)
 {
 	term_t list = PL_copy_term_ref(params_list);
 	term_t head = PL_new_term_ref();
@@ -2330,7 +2348,7 @@ static foreign_t set_vca_parameters(vca_node_t* vca, term_t params_list)
 	while (PL_get_list(list, head, list)) {
 		term_t key_term = PL_new_term_ref();
 		term_t value_term = PL_new_term_ref();
-		char* param_name;
+		char *param_name;
 
 		if (!PL_is_functor(head, eq_functor)) {
 			return PL_type_error("key_value_pair", head);
@@ -2374,7 +2392,7 @@ static foreign_t set_vca_parameters(vca_node_t* vca, term_t params_list)
  * Calculate the gain reduction for a given input level.
  * Uses soft knee if knee > 0
  */
-static float compute_compressor_gain(compressor_node_t* comp, float input_level)
+static float compute_compressor_gain(compressor_node_t *comp, float input_level)
 {
 	float input_db;
 	float threshold_db;
@@ -2416,16 +2434,16 @@ static float compute_compressor_gain(compressor_node_t* comp, float input_level)
  * Look-ahead compressor with ratio control.
  */
 static void compressor_process_pcm_frames(
-		ma_node* node,
+		ma_node *node,
 		const float** frames_in,
-		ma_uint32* frame_count_in,
+		ma_uint32 *frame_count_in,
 		float** frames_out,
-		ma_uint32* frame_count_out)
+		ma_uint32 *frame_count_out)
 {
 
-	compressor_node_t* comp = (compressor_node_t*)node;
-	const float* input = frames_in[0];
-	float* output = frames_out[0];
+	compressor_node_t *comp = (compressor_node_t*)node;
+	const float *input = frames_in[0];
+	float *output = frames_out[0];
 	ma_uint32 frame_count = *frame_count_in;
 	ma_uint32 channels = ma_node_get_output_channels(node, 0);
 	ma_uint32 delay_size = comp->delay_frames * channels;
@@ -2486,7 +2504,7 @@ static ma_node_vtable compressor_vtable = {
  * Initialize a compressor effect node with look-ahead buffer.
  */
 static ma_result init_compressor_node(
-		compressor_node_t* node, 
+		compressor_node_t *node, 
 		float threshold, float ratio, float knee, 
 		float attack_ms, float release_ms,
 		float makeup_gain,
@@ -2527,12 +2545,12 @@ static ma_result init_compressor_node(
  * attach_compressor_effect()
  * Create and attach a compressor effect to the given source node.
  */
-static ma_result attach_compressor_effect(term_t params, ma_node* source_node, effect_node_t** effect_chain, ma_node_base** out_effect_node)
+static ma_result attach_compressor_effect(term_t params, ma_node *source_node, effect_node_t** effect_chain, ma_node_base** out_effect_node)
 {
 	float threshold, ratio, knee;
 	float attack_ms, release_ms;
 	float makeup_gain, lookahead_ms;
-	compressor_node_t* comp;
+	compressor_node_t *comp;
 	ma_result result;
 
 	if (!get_param_float(params, "threshold", &threshold)) {
@@ -2570,6 +2588,7 @@ static ma_result attach_compressor_effect(term_t params, ma_node* source_node, e
 
 	result = attach_effect_node(source_node, effect_chain, &comp->base, EFFECT_COMPRESSOR);
 	if (result != MA_SUCCESS) {
+		free(comp->delay_buffer);
 		ma_node_uninit(&comp->base, NULL);
 		free(comp);
 		return result;
@@ -2583,7 +2602,7 @@ static ma_result attach_compressor_effect(term_t params, ma_node* source_node, e
  * query_compressor_params()
  * Build parameter list for compressor effect.
  */
-static int query_compressor_params(compressor_node_t* comp, term_t params_list)
+static int query_compressor_params(compressor_node_t *comp, term_t params_list)
 {
 	term_t param_args = PL_new_term_refs(2);
 	functor_t eq_functor = PL_new_functor(PL_new_atom("="), 2);
@@ -2667,14 +2686,14 @@ static int query_compressor_params(compressor_node_t* comp, term_t params_list)
  * set_compressor_parameters()
  * Set parameters for compressor effect from Prolog term list.
  */
-static foreign_t set_compressor_parameters(compressor_node_t* comp, term_t params_list)
+static foreign_t set_compressor_parameters(compressor_node_t *comp, term_t params_list)
 {
 	term_t list = PL_copy_term_ref(params_list);
 	term_t head = PL_new_term_ref();
 	functor_t eq_functor = PL_new_functor(PL_new_atom("="), 2);
 	ma_uint32 sample_rate = ma_engine_get_sample_rate(g_engine);
 	term_t key_term, value_term;
-	char* param_name;
+	char *param_name;
 	double val;
 
 	while (PL_get_list(list, head, list)) {
@@ -2753,7 +2772,7 @@ static foreign_t set_compressor_parameters(compressor_node_t* comp, term_t param
  * Process one sample through the 4-pole ladder filter.
  */
 static void moog_process_one_sample(
-		moog_node_t* moog,
+		moog_node_t *moog,
 		double input_sample,
 		double g,
 		double vt2,
@@ -2792,17 +2811,17 @@ static void moog_process_one_sample(
  * Based on D'Angelo and Valimaki, ICASSP 2013,
  */
 static void moog_process_pcm_frames(
-		ma_node* node,
+		ma_node *node,
 		const float** frames_in,
-		ma_uint32* frame_count_in,
+		ma_uint32 *frame_count_in,
 		float** frames_out,
-		ma_uint32* frame_count_out)
+		ma_uint32 *frame_count_out)
 {
-	moog_node_t* moog;
+	moog_node_t *moog;
 	ma_uint32 channels;
 	ma_uint32 frame_count;
-	const float* input;
-	float* output;
+	const float *input;
+	float *output;
 	ma_uint32 frame, channel;
 	float cutoff_step, res_step;
 	double dv0, dv1, dv2, dv3;
@@ -2873,7 +2892,7 @@ static ma_node_vtable moog_vtable = {
  * moog_node_init()
  * Initialize moog ladder filter node
  */
-static ma_result moog_node_init(moog_node_t* node) 
+static ma_result moog_node_init(moog_node_t *node) 
 {
 	ma_result result;
 	int pole, channel;
@@ -2907,9 +2926,9 @@ static ma_result moog_node_init(moog_node_t* node)
  * attach_moog_effect()
  * Attach moog ladder filter to effect chain.
  */
-static ma_result attach_moog_effect(term_t params, ma_node* source, effect_node_t** chain, ma_node_base** out_node)
+static ma_result attach_moog_effect(term_t params, ma_node *source, effect_node_t** chain, ma_node_base** out_node)
 {
-	moog_node_t* node;
+	moog_node_t *node;
 	ma_result result;
 	float cutoff = 1000.0f;
 	float resonance = 0.0f;
@@ -2957,7 +2976,7 @@ static ma_result attach_moog_effect(term_t params, ma_node* source, effect_node_
  * query_moog_params()
  * Get current moog filter parameters.
  */
-static int query_moog_params(moog_node_t* node, term_t params_list)
+static int query_moog_params(moog_node_t *node, term_t params_list)
 {
 	term_t param_args = PL_new_term_refs(2);
 	functor_t eq_functor = PL_new_functor(PL_new_atom("="), 2);
@@ -3003,7 +3022,7 @@ static int query_moog_params(moog_node_t* node, term_t params_list)
  * set_moog_parameters()
  * Set moog filter parameters from a Prolog list.
  */
-static foreign_t set_moog_parameters(moog_node_t* node, term_t params_list)
+static foreign_t set_moog_parameters(moog_node_t *node, term_t params_list)
 {
 	term_t list = PL_copy_term_ref(params_list);
 	term_t head = PL_new_term_ref();
@@ -3012,7 +3031,7 @@ static foreign_t set_moog_parameters(moog_node_t* node, term_t params_list)
 	while (PL_get_list(list, head, list)) {
 		term_t key_term = PL_new_term_ref();
 		term_t value_term = PL_new_term_ref();
-		char* param_name;
+		char *param_name;
 
 		if (!PL_is_functor(head, eq_functor)) {
 			return PL_type_error("key_value_pair", head);
@@ -3065,11 +3084,11 @@ static foreign_t set_moog_parameters(moog_node_t* node, term_t params_list)
  * Generic effect attachment - dispatches to appropriate effect type.
  * source_type: "sound" or "voice"
  */
-static foreign_t attach_effect_to_node(ma_sound* sound, effect_node_t** effect_chain, const char* source_type, int slot, term_t effect_type, term_t params, term_t effect_handle)
+static foreign_t attach_effect_to_node(ma_sound *sound, effect_node_t** effect_chain, const char *source_type, int slot, term_t effect_type, term_t params, term_t effect_handle)
 {
-	char* type_str;
+	char *type_str;
 	ma_result result;
-	ma_node_base* effect_node;
+	ma_node_base *effect_node;
 	term_t effect_term, source_term, arg;
 	functor_t effect_functor, source_functor;
 
@@ -3172,9 +3191,9 @@ static foreign_t pl_effects(term_t source_handle, term_t effects_list)
 	term_t slot_term = PL_new_term_ref();
 	functor_t f;
 	int slot;
-	effect_node_t* effect_chain;
-	effect_node_t* effect;
-	const char* source_type;
+	effect_node_t *effect_chain;
+	effect_node_t *effect;
+	const char *source_type;
 	int count = 0;
 
 	if (!PL_get_functor(source_handle, &f)) {
@@ -3237,7 +3256,7 @@ static foreign_t pl_effects(term_t source_handle, term_t effects_list)
 		for (i = count - 1; i >= 0; i--) {
 			effect = effects_array[i];
 
-			const char* type_str;
+			const char *type_str;
 			term_t params_list = PL_new_term_ref();
 			PL_put_nil(params_list);
 			int query_result = TRUE;
@@ -3347,16 +3366,16 @@ static foreign_t pl_effects(term_t source_handle, term_t effects_list)
  */
 static foreign_t pl_effect_set_parameters(term_t effect_handle, term_t params_list)
 {
-	ma_sound* source;
+	ma_sound *source;
 	effect_node_t** effect_chain;
-	void* effect_ptr;
+	void *effect_ptr;
 
 	if (!get_effect_info_from_handle(effect_handle, &source, &effect_chain, &effect_ptr)) {
 		return PL_existence_error("effect", effect_handle);
 	}
 
 	/* Find the effect in the chain */
-	effect_node_t* node = *effect_chain;
+	effect_node_t *node = *effect_chain;
 	while (node) {
 		if (node->effect_node == effect_ptr) {
 			break;
@@ -3403,31 +3422,31 @@ static foreign_t pl_effect_set_parameters(term_t effect_handle, term_t params_li
  */
 static foreign_t pl_effect_detach(term_t effect_handle)
 {
-	ma_sound* source;
+	ma_sound *source;
 	effect_node_t** effect_chain;
-	void* effect_ptr;
+	void *effect_ptr;
 
 	if (!get_effect_info_from_handle(effect_handle, &source, &effect_chain, &effect_ptr)) {
 		return PL_existence_error("effect", effect_handle);
 	}
 
 	/* Find and remove the effect from the chain */
-	effect_node_t* node = *effect_chain;
-	effect_node_t* prev = NULL;
+	effect_node_t *node = *effect_chain;
+	effect_node_t *prev = NULL;
 
 	while (node) {
 		if (node->effect_node == effect_ptr) {
 			ma_node_detach_output_bus(node->effect_node, 0);
 
 			if (node->type == EFFECT_BITCRUSH) {
-				bitcrush_node_t* bitcrush = (bitcrush_node_t*)node->effect_node;
+				bitcrush_node_t *bitcrush = (bitcrush_node_t*)node->effect_node;
 				if (bitcrush->hold_samples) {
 					free(bitcrush->hold_samples);
 				}
 			} else if (node->type == EFFECT_REVERB) {
 				free_reverb_node((reverb_node_t*)node->effect_node);
 			} else if (node->type == EFFECT_COMPRESSOR) {
-				compressor_node_t* comp = (compressor_node_t*)node->effect_node;
+				compressor_node_t *comp = (compressor_node_t*)node->effect_node;
 				if (comp->delay_buffer) {
 					free(comp->delay_buffer);
 				}
@@ -3444,10 +3463,10 @@ static foreign_t pl_effect_detach(term_t effect_handle)
 			free(node);
 
 			/* reconnect the chain */
-			effect_node_t* first_effect = *effect_chain;
+			effect_node_t *first_effect = *effect_chain;
 			if (first_effect) {
 				ma_node_attach_output_bus(source, 0, first_effect->effect_node, 0);
-				effect_node_t* current = first_effect;
+				effect_node_t *current = first_effect;
 				while (current->next) {
 					ma_node_attach_output_bus(current->effect_node, 0, current->next->effect_node, 0);
 					current = current->next;

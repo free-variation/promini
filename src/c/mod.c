@@ -97,13 +97,13 @@ install_t uninstall_mod(void)
  * Advances the source state by frame_count frames.
  * Returns a value in [-1, 1] for LFO/noise, [0, 1] for envelope.
  */
-static float read_source_value(mod_source_t* src, ma_uint32 frame_count, ma_uint32 sample_rate)
+static float read_source_value(mod_source_t *src, ma_uint32 frame_count, ma_uint32 sample_rate)
 {
 	float value = 0.0f;
 	float waveform_buf[512];
 	ma_uint64 to_read;
-	data_slot_t* data;
-	float* samples;
+	data_slot_t *data;
+	float *samples;
 	ma_uint64 buf_frames;
 	ma_uint32 channels, pos, i;
 	float stage_frames, increment;
@@ -301,9 +301,9 @@ void process_modulation(ma_uint32 frame_count, ma_uint32 sample_rate)
  * set_oscillator_frequency()
  * Setter for oscillator frequency. Target is synth_oscillator_t*.
  */
-static void set_oscillator_frequency(void* target, float value, ma_uint32 frame_count, mod_route_t* route)
+static void set_oscillator_frequency(void *target, float value, ma_uint32 frame_count, mod_route_t *route)
 {
-	synth_oscillator_t* osc = (synth_oscillator_t*)target;
+	synth_oscillator_t *osc = (synth_oscillator_t*)target;
 	float freq;
 	(void)frame_count;
 
@@ -324,9 +324,9 @@ static void set_oscillator_frequency(void* target, float value, ma_uint32 frame_
  * Setter for oscillator volume. Target is synth_oscillator_t*.
  * Uses fade matching frame_count to avoid clicks.
  */
-static void set_oscillator_volume(void* target, float value, ma_uint32 frame_count, mod_route_t* route)
+static void set_oscillator_volume(void *target, float value, ma_uint32 frame_count, mod_route_t *route)
 {
-	synth_oscillator_t* osc = (synth_oscillator_t*)target;
+	synth_oscillator_t *osc = (synth_oscillator_t*)target;
 	float vol;
 
 	if (route->rate_mode) {
@@ -346,9 +346,9 @@ static void set_oscillator_volume(void* target, float value, ma_uint32 frame_cou
  * Setter for pan effect. Target is pan_node_t*.
  * Sets target_pan which is interpolated at sample rate in the effect callback.
  */
-static void set_effect_pan(void* target, float value, ma_uint32 frame_count, mod_route_t* route)
+static void set_effect_pan(void *target, float value, ma_uint32 frame_count, mod_route_t *route)
 {
-	pan_node_t* node = (pan_node_t*)target;
+	pan_node_t *node = (pan_node_t*)target;
 	float pan;
 	(void)frame_count;
 
@@ -369,9 +369,9 @@ static void set_effect_pan(void* target, float value, ma_uint32 frame_count, mod
  * Setter for Moog cutoff.  Target is moog_node_t*
  * Uses per-sample interpolation so just sets target
  */
-static void set_moog_cutoff(void* target, float value, ma_uint32 frame_count, mod_route_t* route)
+static void set_moog_cutoff(void *target, float value, ma_uint32 frame_count, mod_route_t *route)
 {
-	moog_node_t* moog = (moog_node_t*)target;
+	moog_node_t *moog = (moog_node_t*)target;
 	float cutoff;
 	(void)frame_count;
 
@@ -392,9 +392,9 @@ static void set_moog_cutoff(void* target, float value, ma_uint32 frame_count, mo
  * Setter for Moog resonance. Target is moog_node_t*
  * Uses per-sample interpolation so just sets target
  */
-static void set_moog_resonance(void* target, float value, ma_uint32 frame_count, mod_route_t* route)
+static void set_moog_resonance(void *target, float value, ma_uint32 frame_count, mod_route_t *route)
 {
-	moog_node_t* moog = (moog_node_t*)target;
+	moog_node_t *moog = (moog_node_t*)target;
 	float res;
 	(void)frame_count;
 
@@ -415,9 +415,9 @@ static void set_moog_resonance(void* target, float value, ma_uint32 frame_count,
  * Setter for VCA gain. Target is vca_node_t*
  * Uses per-sample interpolation so just sets target
  */
-static void set_vca_gain(void* target, float value, ma_uint32 frame_count, mod_route_t* route)
+static void set_vca_gain(void *target, float value, ma_uint32 frame_count, mod_route_t *route)
 {
-	vca_node_t* vca = (vca_node_t*)target;
+	vca_node_t *vca = (vca_node_t*)target;
 	float gain;
 	(void)frame_count;
 
@@ -438,9 +438,9 @@ static void set_vca_gain(void* target, float value, ma_uint32 frame_count, mod_r
  * Setter for ping-pong delay time. Target is ping_pong_delay_node_t*
  * Sets target_delay_in_frames for smooth transitions
  */
-static void set_ping_pong_delay(void* target, float value, ma_uint32 frame_count, mod_route_t* route)
+static void set_ping_pong_delay(void *target, float value, ma_uint32 frame_count, mod_route_t *route)
 {
-	ping_pong_delay_node_t* pp = (ping_pong_delay_node_t*)target;
+	ping_pong_delay_node_t *pp = (ping_pong_delay_node_t*)target;
 	float delay;
 	(void)frame_count;
 
@@ -461,14 +461,14 @@ static void set_ping_pong_delay(void* target, float value, ma_uint32 frame_count
  *****************************************************************************/
 
 /*
- * pl_mod_source_unload()
+ * pl_mod_source_uninit()
  * Unloads a modulation source and removes any routes using it.
- * mod_source_unload(+Source)
+ * mod_source_uninit(+Source)
  */
-static foreign_t pl_mod_source_unload(term_t handle_term)
+static foreign_t pl_mod_source_uninit(term_t handle_term)
 {
 	int slot, i;
-	mod_source_t* src;
+	mod_source_t *src;
 
 	if (!get_typed_handle(handle_term, "mod_source", &slot)) {
 		return PL_type_error("mod_source", handle_term);
@@ -504,12 +504,12 @@ static foreign_t pl_mod_source_unload(term_t handle_term)
 }
 
 /*
- * pl_mod_route_create()
+ * pl_mod_route_init()
  * Creates a modulation route from source to target parameter.
- * mod_route_create(+Source, +TargetType, +Target, +Param, +Mode, +Depth, +Offset, +Slew, -Route)
+ * mod_route_init(+Source, +TargetType, +Target, +Param, +Mode, +Depth, +Offset, +Slew, -Route)
  * Returns mod_route(N). Mode is 'absolute' or 'rate'.
  */
-static foreign_t pl_mod_route_create(
+static foreign_t pl_mod_route_init(
 		term_t source_term,
 		term_t type_term,
 		term_t target_term,
@@ -522,13 +522,13 @@ static foreign_t pl_mod_route_create(
 		)
 {
 	int source_slot, target_handle, slot;
-	char* target_type;
-	char* param;
-	char* mode;
+	char *target_type;
+	char *param;
+	char *mode;
 	double depth, offset, slew;
 	ma_bool32 rate_mode;
-	mod_route_t* route;
-	void* target;
+	mod_route_t *route;
+	void *target;
 	mod_setter_t setter;
 
 	if (!get_typed_handle(source_term, "mod_source", &source_slot)) {
@@ -573,7 +573,7 @@ static foreign_t pl_mod_route_create(
 			return PL_domain_error("oscillator_param", param_term);
 		}
 	} else if (strcmp(target_type, "pan") == 0) {
-		void* ptr;
+		void *ptr;
 		if (!PL_get_pointer(target_term, &ptr)) {
 			return PL_type_error("pointer", target_term);
 		}
@@ -584,7 +584,7 @@ static foreign_t pl_mod_route_create(
 			return PL_domain_error("pan_param", param_term);
 		}
 	} else if (strcmp(target_type, "moog") == 0) {
-		void* ptr;
+		void *ptr;
 		if (!PL_get_pointer(target_term, &ptr)) {
 			return PL_type_error("pointer", target_term);
 		}
@@ -597,7 +597,7 @@ static foreign_t pl_mod_route_create(
 			return PL_domain_error("moog_param", param_term);
 		}
 	} else if (strcmp(target_type, "vca") == 0) {
-		void* ptr;
+		void *ptr;
 		if (!PL_get_pointer(target_term, &ptr)) {
 			return PL_type_error("pointer", target_term);
 		}
@@ -608,7 +608,7 @@ static foreign_t pl_mod_route_create(
 			return PL_domain_error("vca_param", param_term);
 		}
 	} else if (strcmp(target_type, "ping_pong_delay") == 0) {
-		void* ptr;
+		void *ptr;
 		if (!PL_get_pointer(target_term, &ptr)) {
 			return PL_type_error("pointer", target_term);
 		}
@@ -650,11 +650,11 @@ static foreign_t pl_mod_route_create(
 }
 
 /*
- * pl_mod_route_unload()
+ * pl_mod_route_uninit()
  * Removes a modulation route.
- * mod_route_unload(+Route)
+ * mod_route_uninit(+Route)
  */
-static foreign_t pl_mod_route_unload(term_t handle_term)
+static foreign_t pl_mod_route_uninit(term_t handle_term)
 {
 	int slot;
 
@@ -681,20 +681,20 @@ static foreign_t pl_mod_route_unload(term_t handle_term)
  *****************************************************************************/
 
 /*
- * pl_mod_lfo_create()
+ * pl_mod_lfo_init()
  * Createas an LFO modulation source.
- * mod_lfo_create(+Type, +Freq, -Source)
+ * mod_lfo_init(+Type, +Freq, -Source)
  * Returns mod_source(N). Type is one of: sine, square, triangle, sawtooth
  */
-static foreign_t pl_mod_lfo_create(term_t type_term, term_t freq_term, term_t handle_term)
+static foreign_t pl_mod_lfo_init(term_t type_term, term_t freq_term, term_t handle_term)
 {
-	char* type_str;
+	char *type_str;
 	double freq;
 	int slot;
 	ma_waveform_type waveform_type;
 	ma_waveform_config config;
 	ma_result result;
-	mod_source_t* src;
+	mod_source_t *src;
 
 	ENSURE_ENGINE_INITIALIZED();
 
@@ -747,9 +747,9 @@ static foreign_t pl_mod_lfo_create(term_t type_term, term_t freq_term, term_t ha
  * set_lfo_frequency()
  * Setter for LFO frequency. Target is mod_source_t*.
  */
-static void set_lfo_frequency(void* target, float value)
+static void set_lfo_frequency(void *target, float value)
 {
-	mod_source_t* src = (mod_source_t*)target;
+	mod_source_t *src = (mod_source_t*)target;
 	ma_waveform_set_frequency(&src->source.waveform, value);
 }
 
@@ -761,7 +761,7 @@ static foreign_t pl_mod_lfo_set_frequency(term_t handle_term, term_t freq_term)
 {
 	int slot;
 	double freq;
-	mod_source_t* src;
+	mod_source_t *src;
 
 	if (!get_typed_handle(handle_term, "mod_source", &slot)) {
 		return PL_type_error("mod_source", handle_term);
@@ -789,7 +789,7 @@ static foreign_t pl_mod_lfo_set_frequency(term_t handle_term, term_t freq_term)
 static foreign_t pl_mod_lfo_get_frequency(term_t handle_term, term_t freq_term)
 {
 	int slot;
-	mod_source_t* src;
+	mod_source_t *src;
 	float freq;
 
 	if (!get_typed_handle(handle_term, "mod_source", &slot)) {
@@ -814,15 +814,15 @@ static foreign_t pl_mod_lfo_get_frequency(term_t handle_term, term_t freq_term)
  *****************************************************************************/
 
 /*
- * pl_mod_envelope_create()
+ * pl_mod_envelope_init()
  * Creates an ADBR envelope modulation source.
- * mod_envelope_create(+Attack, +Decay, +Break, +BreakLevel, +Release, +DurationMs, +Loop, -Source)
+ * mod_envelope_init(+Attack, +Decay, +Break, +BreakLevel, +Release, +DurationMs, +Loop, -Source)
  * Returns mod_source(N). Attack, Decay, Break, Release are proportions (should sum to 1.0)
  * BreakLevel is the level at the break point (0.0-1.0)
  * DurationMs is the total envelope time in milliseconds
  * Loop is true/false
  */
-static foreign_t pl_mod_envelope_create(
+static foreign_t pl_mod_envelope_init(
 		term_t attack_term,
 		term_t decay_term,
 		term_t break_term,
@@ -835,7 +835,7 @@ static foreign_t pl_mod_envelope_create(
 	double attack, decay, brk, break_level, release, duration;
 	int loop_int;
 	int slot;
-	mod_source_t* src;
+	mod_source_t *src;
 
 	if (!PL_get_float(attack_term, &attack)) return FALSE;
 	if (!PL_get_float(decay_term, &decay)) return FALSE;
@@ -876,7 +876,7 @@ static foreign_t pl_mod_envelope_create(
 static foreign_t pl_mod_envelope_trigger(term_t handle_term)
 {
 	int slot;
-	mod_source_t* src;
+	mod_source_t *src;
 
 	if (!get_typed_handle(handle_term, "mod_source", &slot)) {
 		return PL_type_error("mod_source", handle_term);
@@ -902,11 +902,11 @@ static foreign_t pl_mod_envelope_trigger(term_t handle_term)
  *****************************************************************************/
 
 /*
- * pl_mod_gamepad_create()
- * mod_gamepad_create(+Gamepad, +Axis, -Source)
+ * pl_mod_gamepad_init()
+ * mod_gamepad_init(+Gamepad, +Axis, -Source)
  * Creates a modulation source from a gamepad axis. Returns mod_source(N).
  */
-static foreign_t pl_mod_gamepad_create(term_t gamepad_term, term_t axis_term, term_t handle_term)
+static foreign_t pl_mod_gamepad_init(term_t gamepad_term, term_t axis_term, term_t handle_term)
 {
 	SDL_Gamepad *gp;
 	atom_t axis_atom;
@@ -958,13 +958,13 @@ static foreign_t pl_mod_gamepad_create(term_t gamepad_term, term_t axis_term, te
 
 install_t mod_register_predicates(void)
 {
-	PL_register_foreign("mod_lfo_create", 3, pl_mod_lfo_create, 0);
+	PL_register_foreign("mod_lfo_init", 3, pl_mod_lfo_init, 0);
 	PL_register_foreign("mod_lfo_set_frequency", 2, pl_mod_lfo_set_frequency, 0);
 	PL_register_foreign("mod_lfo_get_frequency", 2, pl_mod_lfo_get_frequency, 0);
-	PL_register_foreign("mod_envelope_create", 8, pl_mod_envelope_create, 0);
+	PL_register_foreign("mod_envelope_init", 8, pl_mod_envelope_init, 0);
 	PL_register_foreign("mod_envelope_trigger", 1, pl_mod_envelope_trigger, 0);
-	PL_register_foreign("mod_source_unload", 1, pl_mod_source_unload, 0);
-	PL_register_foreign("mod_route_create", 9, pl_mod_route_create, 0);
-	PL_register_foreign("mod_route_unload", 1, pl_mod_route_unload, 0);
-	PL_register_foreign("mod_gamepad_create", 3, pl_mod_gamepad_create, 0);
+	PL_register_foreign("mod_source_uninit", 1, pl_mod_source_uninit, 0);
+	PL_register_foreign("mod_route_init", 9, pl_mod_route_init, 0);
+	PL_register_foreign("mod_route_uninit", 1, pl_mod_route_uninit, 0);
+	PL_register_foreign("mod_gamepad_init", 3, pl_mod_gamepad_init, 0);
 }

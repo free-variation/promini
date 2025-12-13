@@ -102,7 +102,7 @@ static void free_image_synth_slot(int index)
 	if (index >= 0 && index < MAX_IMAGE_SYNTHS) {
 		pthread_mutex_lock(&g_image_synths_mutex);
 
-		image_synth_node_t* synth = &g_image_synths[index];
+		image_synth_node_t *synth = &g_image_synths[index];
 		if (synth->in_use) {
 			free_effect_chain(synth->effect_chain);
 			synth->effect_chain = NULL;
@@ -125,13 +125,13 @@ static void free_image_slot(int index);
  * Loads an image file into a slot.
  * Returns slot index, or -1 on failure.
  */
-static int load_image(const char* filename)
+static int load_image(const char *filename)
 {
 	int slot;
 	int width, height, channels;
 	int num_bytes;
-	unsigned char* pixels;
-	unsigned char* buffer;
+	unsigned char *pixels;
+	unsigned char *buffer;
 
 	slot = allocate_image_slot();
 	if (slot < 0) {
@@ -169,9 +169,9 @@ static int load_image(const char* filename)
  * Writes an image to tmp/images/<name>.png
  * Returns 0 on success, -1 on failure.
  */
-static int image_write_png(int slot, const char* name)
+static int image_write_png(int slot, const char *name)
 {
-	image_slot_t* img;
+	image_slot_t *img;
 	char path[256];
 	int result;
 
@@ -189,7 +189,7 @@ static int image_write_png(int slot, const char* name)
 		int x, y, c;
 		int block_w = (img->width + img->buf_width - 1) / img->buf_width;
 		int block_h = (img->height + img->buf_height - 1) / img->buf_height;
-		unsigned char* expanded;
+		unsigned char *expanded;
 
 		expanded = (unsigned char*)malloc(img->width * img->height * img->channels);
 		if (expanded == NULL) {
@@ -268,7 +268,7 @@ install_t uninstall_image(void)
  */
 static int image_to_grayscale(int slot)
 {
-	image_slot_t* img;
+	image_slot_t *img;
 	int num_pixels, i;
 	unsigned char *dest;
 
@@ -351,9 +351,9 @@ static int image_to_grayscale(int slot)
  */
 static int image_reset(int slot)
 {
-	image_slot_t* img;
+	image_slot_t *img;
 	int num_bytes;
-	unsigned char* new_buf;
+	unsigned char *new_buf;
 
 	GET_IMAGE_FROM_SLOT(slot, img);
 
@@ -379,7 +379,7 @@ static int image_reset(int slot)
  */
 static int image_quantize(int slot, int bits)
 {
-	image_slot_t* img;
+	image_slot_t *img;
 	int i, num_bytes;
 	int levels, shift;
 
@@ -410,11 +410,11 @@ static int image_quantize(int slot, int bits)
  */
 static int image_downsample(int slot, int block_w, int block_h)
 {
-	image_slot_t* img;
+	image_slot_t *img;
 	int new_w, new_h;
 	int x, y, bx, by, c;
 	int sum, count;
-	unsigned char* new_buf;
+	unsigned char *new_buf;
 
 	GET_IMAGE_FROM_SLOT(slot, img);
 
@@ -466,8 +466,8 @@ static int image_downsample(int slot, int block_w, int block_h)
  */
 static int image_transpose(int slot, int direction)
 {
-	image_slot_t* img;
-	unsigned char* new_buf;
+	image_slot_t *img;
+	unsigned char *new_buf;
 	int new_w, new_h;
 	int x, y, c;
 
@@ -519,7 +519,7 @@ static int image_transpose(int slot, int direction)
  */
 static foreign_t pl_image_load(term_t filename_term, term_t image_term)
 {
-	char* filename;
+	char *filename;
 	int slot;
 	term_t handle;
 	functor_t image_functor;
@@ -726,7 +726,7 @@ static foreign_t pl_image_write_png(term_t image_term, term_t name_term)
 {
 	term_t handle;
 	int slot;
-	char* name;
+	char *name;
 
 	handle = PL_new_term_ref();
 	if (!PL_get_arg(1, image_term, handle) || !PL_get_integer(handle, &slot)) {
@@ -753,7 +753,7 @@ static foreign_t pl_image_transpose(term_t image_term, term_t dir_term)
 {
 	term_t handle;
 	int slot;
-	char* dir_str;
+	char *dir_str;
 	int direction;
 
 	handle = PL_new_term_ref();
@@ -788,7 +788,7 @@ static foreign_t pl_image_transpose(term_t image_term, term_t dir_term)
  * cubic_interpolate_row()
  * Get cubic-interpolated amplitude for a row at fractional column position
  */
-static float cubic_interpolate_row(image_slot_t* img, int channel, int row, float x)
+static float cubic_interpolate_row(image_slot_t *img, int channel, int row, float x)
 {
 	int x0, x1, x2, x3;
 	float t;
@@ -827,15 +827,15 @@ static float cubic_interpolate_row(image_slot_t* img, int channel, int row, floa
  * Generate audio by scanning image and modulating oscillator volumes.
  */
 static void image_synth_process_pcm_frames(
-		ma_node* node,
+		ma_node *node,
 		const float** frames_in,
-		ma_uint32* frame_count_in,
+		ma_uint32 *frame_count_in,
 		float** frames_out,
-		ma_uint32* frame_count_out)
+		ma_uint32 *frame_count_out)
 {
-	image_synth_node_t* synth;
-	image_slot_t* img;
-	float* output;
+	image_synth_node_t *synth;
+	image_slot_t *img;
+	float *output;
 	ma_uint32 channels;
 	ma_uint32 frame_count;
 	ma_uint32 sample_rate;
@@ -948,23 +948,23 @@ static ma_node_vtable image_synth_vtable = {
  *****************************************************************************/
 
 /*
- * pl_image_synth_create()
+ * pl_image_synth_init()
  * Creates an image synth node for a given image, channel, and mode.
- * image_synth_create(+Image, +Channel, +Mode, -ImageSynth)
+ * image_synth_init(+Image, +Channel, +Mode, -ImageSynth)
  * Returns image_synth(N). Mode is 'additive' or 'waveform'.
  */
-static foreign_t pl_image_synth_create(term_t image_term, term_t channel_term, term_t mode_term, term_t synth_term)
+static foreign_t pl_image_synth_init(term_t image_term, term_t channel_term, term_t mode_term, term_t synth_term)
 {
 	term_t image_handle;
 	int image_slot;
 	int channel;
 	int synth_slot;
-	image_synth_node_t* synth;
-	image_slot_t* img;
+	image_synth_node_t *synth;
+	image_slot_t *img;
 	ma_node_config config;
 	ma_uint32 channels;
 	ma_result result;
-	char* mode_str;
+	char *mode_str;
 	image_synth_mode_t mode;
 	int i;
 
@@ -1059,14 +1059,14 @@ static foreign_t pl_image_synth_create(term_t image_term, term_t channel_term, t
 }
 
 /*
- * pl_image_synth_unload()
+ * pl_image_synth_uninit()
  * Destroys an image synth node.
- * image_synth_unload(+ImageSynth)
+ * image_synth_uninit(+ImageSynth)
  */
-static foreign_t pl_image_synth_unload(term_t synth_term)
+static foreign_t pl_image_synth_uninit(term_t synth_term)
 {
 	int synth_slot;
-	image_synth_node_t* synth;
+	image_synth_node_t *synth;
 
 	GET_IMAGE_SYNTH_FROM_HANDLE(synth_term, synth, synth_slot);
 	(void)synth;
@@ -1083,8 +1083,8 @@ static foreign_t pl_image_synth_unload(term_t synth_term)
 static foreign_t pl_image_synth_set_parameters(term_t synth_term, term_t params_list)
 {
 	int synth_slot;
-	image_synth_node_t* synth;
-	image_slot_t* img;
+	image_synth_node_t *synth;
+	image_slot_t *img;
 	term_t list;
 	term_t head;
 	functor_t eq_functor;
@@ -1098,7 +1098,7 @@ static foreign_t pl_image_synth_set_parameters(term_t synth_term, term_t params_
 	while (PL_get_list(list, head, list)) {
 		term_t key_term = PL_new_term_ref();
 		term_t value_term = PL_new_term_ref();
-		char* param_name;
+		char *param_name;
 
 		if (!PL_is_functor(head, eq_functor)) {
 			return PL_type_error("key_value_pair", head);
@@ -1258,8 +1258,8 @@ static foreign_t pl_image_synth_set_parameters(term_t synth_term, term_t params_
 static foreign_t pl_image_synth_get_parameters(term_t synth_term, term_t params_term)
 {
 	int synth_slot;
-	image_synth_node_t* synth;
-	image_slot_t* img;
+	image_synth_node_t *synth;
+	image_slot_t *img;
 	term_t params_list;
 	term_t param_args;
 	functor_t eq_functor;
@@ -1460,7 +1460,7 @@ static foreign_t pl_image_synth_get_parameters(term_t synth_term, term_t params_
 static foreign_t pl_image_synth_start(term_t synth_term)
 {
 	int synth_slot;
-	image_synth_node_t* synth;
+	image_synth_node_t *synth;
 
 	GET_IMAGE_SYNTH_FROM_HANDLE(synth_term, synth, synth_slot);
 	synth->playing = MA_TRUE;
@@ -1475,7 +1475,7 @@ static foreign_t pl_image_synth_start(term_t synth_term)
 static foreign_t pl_image_synth_stop(term_t synth_term)
 {
 	int synth_slot;
-	image_synth_node_t* synth;
+	image_synth_node_t *synth;
 
 	GET_IMAGE_SYNTH_FROM_HANDLE(synth_term, synth, synth_slot);
 	synth->playing = MA_FALSE;
@@ -1504,8 +1504,8 @@ install_t image_register_predicates(void)
 	PL_register_foreign("image_transpose", 2, pl_image_transpose, 0);
 
 	/* Image synth predicates */
-	PL_register_foreign("image_synth_create", 4, pl_image_synth_create, 0);
-	PL_register_foreign("image_synth_unload", 1, pl_image_synth_unload, 0);
+	PL_register_foreign("image_synth_init", 4, pl_image_synth_init, 0);
+	PL_register_foreign("image_synth_uninit", 1, pl_image_synth_uninit, 0);
 	PL_register_foreign("image_synth_set_parameters", 2, pl_image_synth_set_parameters, 0);
 	PL_register_foreign("image_synth_get_parameters", 2, pl_image_synth_get_parameters, 0);
 	PL_register_foreign("image_synth_start", 1, pl_image_synth_start, 0);

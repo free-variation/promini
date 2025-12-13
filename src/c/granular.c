@@ -33,7 +33,7 @@ pthread_mutex_t g_granular_mutex = PTHREAD_MUTEX_INITIALIZER;
  * Find a free grain slot and start a new grain with current parameters.
  * Returns slot index, or -1 if no free slots.
  */
-static int trigger_grain(granular_delay_t *g)
+int trigger_grain(granular_delay_t *g)
 {
 	int i;
 	grain_t *grain;
@@ -183,7 +183,7 @@ static float compute_envelope(float shape, float position)
  * Process a single grain for one frame, return stereo sample.
  * Returns MA_FALSE if grain has finished.
  */
-static ma_bool32 process_grain(granular_delay_t* g, grain_t* grain, float* out_left, float* out_right)
+static ma_bool32 process_grain(granular_delay_t *g, grain_t *grain, float *out_left, float *out_right)
 {
 	float read_pos;
 	float src_left;
@@ -242,16 +242,16 @@ static ma_bool32 process_grain(granular_delay_t* g, grain_t* grain, float* out_l
  * Process audio: record input to ring buffer, generate grains.
  */
 static void granular_process_pcm_frames(
-		ma_node* node,
+		ma_node *node,
 		const float** frames_in,
-		ma_uint32* frame_count_in,
+		ma_uint32 *frame_count_in,
 		float** frames_out,
-		ma_uint32* frame_count_out)
+		ma_uint32 *frame_count_out)
 {
-	granular_delay_t* g = (granular_delay_t*)node;
+	granular_delay_t *g = (granular_delay_t*)node;
 	ma_uint32 frame_count = *frame_count_out;
 	ma_uint32 channels = g->buffer.channels;
-	float* output = frames_out[0];
+	float *output = frames_out[0];
 	int i, j;
 	float left, right;
 	float grains_per_frame;
@@ -396,7 +396,7 @@ static ma_node_vtable granular_vtable = {
   	if (index >= 0 && index < MAX_GRANULAR_DELAYS) {
   		pthread_mutex_lock(&g_granular_mutex);
 
-  		granular_delay_t* g = &g_granular_delays[index];
+  		granular_delay_t *g = &g_granular_delays[index];
   		if (g->in_use) {
   			free_effect_chain(g->effect_chain);
   			g->effect_chain = NULL;
@@ -416,16 +416,16 @@ static ma_node_vtable granular_vtable = {
  *****************************************************************************/
 
 /*
- * pl_granular_create()
+ * pl_granular_init()
  * Creates a granular delay with the specified buffer duration.
- * granular_create(+BufferSeconds, -Granular)
+ * granular_init(+BufferSeconds, -Granular)
  * Returns granular(N).
  */
-static foreign_t pl_granular_create(term_t buffer_term, term_t handle_term)
+static foreign_t pl_granular_init(term_t buffer_term, term_t handle_term)
 {
 	double buffer_seconds;
 	int slot;
-	granular_delay_t* g;
+	granular_delay_t *g;
 	ma_node_config config;
 	ma_uint32 channels;
 	ma_uint32 sample_rate;
@@ -655,11 +655,11 @@ static foreign_t pl_granular_get(term_t handle_term, term_t params_term)
 }
 
 /*
- * pl_granular_unload()
+ * pl_granular_uninit()
  * Unload a granular delay and free resources.
- * granular_unload(+Granular)
+ * granular_uninit(+Granular)
  */
-static foreign_t pl_granular_unload(term_t handle_term)
+static foreign_t pl_granular_uninit(term_t handle_term)
 {
 	int slot;
 	granular_delay_t *g;
@@ -757,8 +757,8 @@ static foreign_t pl_granular_connect(term_t handle_term, term_t source_term)
 
 install_t granular_register_predicates(void)
 {
-	PL_register_foreign("granular_create", 2, pl_granular_create, 0);
-	PL_register_foreign("granular_unload", 1, pl_granular_unload, 0);
+	PL_register_foreign("granular_init", 2, pl_granular_init, 0);
+	PL_register_foreign("granular_uninit", 1, pl_granular_uninit, 0);
 	PL_register_foreign("granular_trigger", 1, pl_granular_trigger, 0);
 	PL_register_foreign("granular_set", 2, pl_granular_set, 0);
 	PL_register_foreign("granular_get", 2, pl_granular_get, 0);

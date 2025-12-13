@@ -52,4 +52,41 @@ test(clock_beat_position_advances, [nondet]) :-
     clock_get_beat_position(Pos2),
     Pos2 > Pos1.
 
+test(clock_route_init_lfo_pulse, [nondet]) :-
+    mod_lfo_init(sine, 1.0, LFO),
+    clock_route_init(lfo, LFO, pulse, 24, Route),
+    clock_route_uninit(Route),
+    mod_source_uninit(LFO).
+
+test(clock_route_init_lfo_sync, [nondet]) :-
+    mod_lfo_init(sine, 1.0, LFO),
+    clock_route_init(lfo, LFO, sync, 24, Route),
+    clock_route_uninit(Route),
+    mod_source_uninit(LFO).
+
+test(clock_route_init_envelope, [nondet]) :-
+    mod_envelope_init(0.1, 0.2, 0.3, 0.4, 0.5, 1000.0, false, Env),
+    clock_route_init(envelope, Env, pulse, 24, Route),
+    clock_route_uninit(Route),
+    mod_source_uninit(Env).
+
+test(clock_route_init_granular, [nondet]) :-
+    granular_init(1.0, G),
+    clock_route_init(granular, G, pulse, 24, Route),
+    clock_route_uninit(Route),
+    granular_uninit(G).
+
+test(clock_route_uninit_invalid, [error(type_error(clock_route, _))]) :-
+    clock_route_uninit(invalid).
+
+test(clock_route_init_invalid_target_type, [error(domain_error(target_type, _))]) :-
+    mod_lfo_init(sine, 1.0, LFO),
+    clock_route_init(invalid, LFO, pulse, 24, _),
+    mod_source_uninit(LFO).
+
+test(clock_route_init_invalid_route_type, [error(domain_error(route_type, _))]) :-
+    mod_lfo_init(sine, 1.0, LFO),
+    clock_route_init(lfo, LFO, invalid, 24, _),
+    mod_source_uninit(LFO).
+
 :- end_tests(clock).

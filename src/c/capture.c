@@ -398,10 +398,10 @@ static foreign_t pl_capture_extract(term_t capture_handle, term_t offset_term, t
 	/* copy data */
 	ring_buffer_read(&capture->buffer, extracted_data, (ma_uint64)(-offset), length);
 
-	slot = create_data_buffer_from_pcm(extracted_data, format, channels, length, sample_rate);
+	slot = create_audio_buffer_from_pcm(extracted_data, format, channels, length, sample_rate);
 	if (slot < 0) {
 		free(extracted_data);
-		return PL_resource_error("data_buffer_slots");
+		return PL_resource_error("audio_buffer_slots");
 	}
 
 	return unify_typed_handle(data_handle, "audio", slot);

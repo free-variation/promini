@@ -155,11 +155,11 @@ static void free_oscillator_slot(int index)
  *****************************************************************************/
 
 /*
- * pl_synth_voice_create()
- * synth_voice_create(-Voice)
+ * pl_synth_voice_init()
+ * synth_voice_init(-Voice)
  * Creates a new empty voice group. Returns voice(N).
  */
-static foreign_t pl_synth_voice_create(term_t handle)
+static foreign_t pl_synth_voice_init(term_t handle)
 {
 	int slot;
 	ma_result result;
@@ -212,7 +212,7 @@ static foreign_t pl_synth_voice_start(term_t handle)
 {
 	int slot;
 	int i;
-	synth_voice_t* voice;
+	synth_voice_t *voice;
 
 	GET_VOICE_FROM_HANDLE(handle, voice, slot);
 
@@ -240,7 +240,7 @@ static foreign_t pl_synth_voice_stop(term_t handle)
 {
 	int slot;
 	int i;
-	synth_voice_t* voice;
+	synth_voice_t *voice;
 
 	GET_VOICE_FROM_HANDLE(handle, voice, slot);
 
@@ -261,11 +261,11 @@ static foreign_t pl_synth_voice_stop(term_t handle)
 
 
 /*
- * pl_synth_voice_unload()
- * synth_voice_unload(+Voice)
+ * pl_synth_voice_uninit()
+ * synth_voice_uninit(+Voice)
  * Unloads a voice and frees its resources.
  */
-static foreign_t pl_synth_voice_unload(term_t handle)
+static foreign_t pl_synth_voice_uninit(term_t handle)
 {
 	int slot;
 
@@ -294,7 +294,7 @@ static foreign_t pl_synth_oscillator_add(term_t voice_handle, term_t freq_term,
                                          term_t phase_term, term_t osc_handle)
 {
 	int voice_slot, osc_slot;
-	synth_voice_t* voice;
+	synth_voice_t *voice;
 	double frequency, phase;
 	ma_waveform_config waveform_config;
 	ma_format format;
@@ -374,7 +374,7 @@ static foreign_t pl_synth_oscillator_add(term_t voice_handle, term_t freq_term,
 static foreign_t pl_synth_oscillator_remove(term_t osc_handle)
 {
 	int osc_slot, voice_slot, i;
-	synth_oscillator_t* osc;
+	synth_oscillator_t *osc;
 	ma_bool32 has_oscillators;
 
 	GET_OSCILLATOR_FROM_HANDLE(osc_handle, osc, osc_slot);
@@ -415,8 +415,8 @@ static foreign_t pl_synth_oscillator_remove(term_t osc_handle)
 static foreign_t pl_synth_noise_add(term_t voice_handle, term_t type_term, term_t noise_handle)
 {
 	int voice_slot, osc_slot;
-	synth_voice_t* voice;
-	char* type_str;
+	synth_voice_t *voice;
+	char *type_str;
 	ma_noise_type noise_type;
 	ma_noise_config noise_config;
 	ma_format format;
@@ -495,7 +495,7 @@ static foreign_t pl_synth_noise_add(term_t voice_handle, term_t type_term, term_
 static foreign_t pl_synth_oscillator_fade(term_t osc_handle, term_t volume_term, term_t ms_term)
 {
 	int osc_slot;
-	synth_oscillator_t* osc;
+	synth_oscillator_t *osc;
 	double volume;
 	int ms;
 
@@ -526,7 +526,7 @@ static foreign_t pl_synth_oscillator_fade(term_t osc_handle, term_t volume_term,
 static foreign_t pl_synth_oscillator_set_volume(term_t osc_handle, term_t volume_term)
 {
 	int osc_slot;
-	synth_oscillator_t* osc;
+	synth_oscillator_t *osc;
 	double volume;
 
 	GET_OSCILLATOR_FROM_HANDLE(osc_handle, osc, osc_slot);
@@ -548,7 +548,7 @@ static foreign_t pl_synth_oscillator_set_volume(term_t osc_handle, term_t volume
 static foreign_t pl_synth_oscillator_get_volume(term_t osc_handle, term_t volume_term)
 {
 	int osc_slot;
-	synth_oscillator_t* osc;
+	synth_oscillator_t *osc;
 
 	GET_OSCILLATOR_FROM_HANDLE(osc_handle, osc, osc_slot);
 
@@ -563,7 +563,7 @@ static foreign_t pl_synth_oscillator_get_volume(term_t osc_handle, term_t volume
 static foreign_t pl_synth_oscillator_set_frequency(term_t osc_handle, term_t freq_term)
 {
 	int osc_slot;
-	synth_oscillator_t* osc;
+	synth_oscillator_t *osc;
 	double frequency;
 
 	GET_OSCILLATOR_FROM_HANDLE(osc_handle, osc, osc_slot);
@@ -588,7 +588,7 @@ static foreign_t pl_synth_oscillator_set_frequency(term_t osc_handle, term_t fre
 static foreign_t pl_synth_oscillator_get_frequency(term_t osc_handle, term_t freq_term)
 {
 	int osc_slot;
-	synth_oscillator_t* osc;
+	synth_oscillator_t *osc;
 
 	GET_OSCILLATOR_FROM_HANDLE(osc_handle, osc, osc_slot);
 
@@ -603,7 +603,7 @@ static foreign_t pl_synth_oscillator_get_frequency(term_t osc_handle, term_t fre
 static foreign_t pl_synth_oscillator_set_phase(term_t osc_handle, term_t phase_term)
 {
 	int osc_slot;
-	synth_oscillator_t* osc;
+	synth_oscillator_t *osc;
 	double phase;
 	ma_uint32 sample_rate;
 
@@ -628,7 +628,7 @@ static foreign_t pl_synth_oscillator_set_phase(term_t osc_handle, term_t phase_t
 static foreign_t pl_synth_oscillator_get_phase(term_t osc_handle, term_t phase_term)
 {
 	int osc_slot;
-	synth_oscillator_t* osc;
+	synth_oscillator_t *osc;
 	double phase;
 
 	GET_OSCILLATOR_FROM_HANDLE(osc_handle, osc, osc_slot);
@@ -651,10 +651,10 @@ static foreign_t pl_synth_oscillator_get_phase(term_t osc_handle, term_t phase_t
 install_t synth_register_predicates(void)
 {
 	PL_register_foreign("synth_voices_in_use", 1, pl_synth_voices_in_use, 0);
-	PL_register_foreign("synth_voice_create", 1, pl_synth_voice_create, 0);
+	PL_register_foreign("synth_voice_init", 1, pl_synth_voice_init, 0);
 	PL_register_foreign("synth_voice_start", 1, pl_synth_voice_start, 0);
 	PL_register_foreign("synth_voice_stop", 1, pl_synth_voice_stop, 0);
-	PL_register_foreign("synth_voice_unload", 1, pl_synth_voice_unload, 0);
+	PL_register_foreign("synth_voice_uninit", 1, pl_synth_voice_uninit, 0);
 	PL_register_foreign("synth_oscillator_add", 4, pl_synth_oscillator_add, 0);
 	PL_register_foreign("synth_oscillator_remove", 1, pl_synth_oscillator_remove, 0);
 	PL_register_foreign("synth_noise_add", 3, pl_synth_noise_add, 0);

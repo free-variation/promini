@@ -42,11 +42,11 @@ static void free_summing_slot(int index)
  *****************************************************************************/
 
 static void summing_process_pcm_frames(
-		ma_node* node,
+		ma_node *node,
 		const float** frames_in,
-		ma_uint32* frame_count_in,
+		ma_uint32 *frame_count_in,
 		float** frames_out,
-		ma_uint32* frame_count_out)
+		ma_uint32 *frame_count_out)
 {
 	(void)node;
 	(void)frames_in;
@@ -68,15 +68,15 @@ static ma_node_vtable summing_vtable = {
 };
 
 /*
- * pl_summing_node_create()
+ * pl_summing_node_init()
  * Creates a summing node. Multiple sources can connect to it.
- * summing_node_create(-SummingNode)
+ * summing_node_init(-SummingNode)
  * Returns summing_node(N).
  */
-static foreign_t pl_summing_node_create(term_t handle_term)
+static foreign_t pl_summing_node_init(term_t handle_term)
 {
 	int slot;
-	summing_node_t* node;
+	summing_node_t *node;
 	ma_node_config config;
 	ma_uint32 channels;
 	ma_result result;
@@ -123,14 +123,14 @@ static foreign_t pl_summing_node_create(term_t handle_term)
 }
 
 /*
- * pl_summing_node_unload()
+ * pl_summing_node_uninit()
  * Destroys a summing node.
- * summing_node_unload(+SummingNode)
+ * summing_node_uninit(+SummingNode)
  */
-static foreign_t pl_summing_node_unload(term_t handle_term)
+static foreign_t pl_summing_node_uninit(term_t handle_term)
 {
 	int slot;
-	summing_node_t* node;
+	summing_node_t *node;
 
 	if (!get_typed_handle(handle_term, "summing_node", &slot)) {
 		return PL_type_error("summing_node", handle_term);
@@ -163,10 +163,10 @@ static foreign_t pl_summing_node_unload(term_t handle_term)
 static foreign_t pl_summing_node_connect(term_t handle_term, term_t source_term)
 {
 	int slot;
-	summing_node_t* node;
-	ma_node* source_node;
-	ma_node* output_node;
-	effect_node_t* chain;
+	summing_node_t *node;
+	ma_node *source_node;
+	ma_node *output_node;
+	effect_node_t *chain;
 	ma_result result;
 
 	if (!get_typed_handle(handle_term, "summing_node", &slot)) {
@@ -209,9 +209,9 @@ static foreign_t pl_summing_node_connect(term_t handle_term, term_t source_term)
  */
 static foreign_t pl_summing_node_disconnect(term_t source_term)
 {
-	ma_node* source_node;
-	ma_node* output_node;
-	effect_node_t* chain;
+	ma_node *source_node;
+	ma_node *output_node;
+	effect_node_t *chain;
 	ma_result result;
 
 	if (!get_source_from_term(source_term, &source_node, &chain)) {
@@ -238,8 +238,8 @@ static foreign_t pl_summing_node_disconnect(term_t source_term)
 
 install_t mixer_register_predicates(void)
 {
-	PL_register_foreign("summing_node_create", 1, pl_summing_node_create, 0);
-	PL_register_foreign("summing_node_unload", 1, pl_summing_node_unload, 0);
+	PL_register_foreign("summing_node_init", 1, pl_summing_node_init, 0);
+	PL_register_foreign("summing_node_uninit", 1, pl_summing_node_uninit, 0);
 	PL_register_foreign("summing_node_connect", 2, pl_summing_node_connect, 0);
   	PL_register_foreign("summing_node_disconnect", 1, pl_summing_node_disconnect, 0);
 }

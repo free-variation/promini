@@ -67,64 +67,64 @@ test(sound_detach_effect, [nondet]) :-
 
 % Voice effect tests
 
-test(voice_attach_bitcrush, [nondet, cleanup(synth_voice_unload(Voice))]) :-
-    synth_voice_create(Voice),
+test(voice_attach_bitcrush, [nondet, cleanup(synth_voice_uninit(Voice))]) :-
+    synth_voice_init(Voice),
     synth_oscillator_add(Voice, 440.0, 0.0, _),
     voice_attach_effect(Voice, bitcrush, [bits=8, sample_rate=8000], Effect),
     Effect = effect(Voice, _).
 
-test(voice_attach_lpf, [nondet, cleanup(synth_voice_unload(Voice))]) :-
-    synth_voice_create(Voice),
+test(voice_attach_lpf, [nondet, cleanup(synth_voice_uninit(Voice))]) :-
+    synth_voice_init(Voice),
     synth_oscillator_add(Voice, 440.0, 0.0, _),
     voice_attach_effect(Voice, lpf, [cutoff=1000.0], Effect),
     Effect = effect(Voice, _).
 
-test(voice_attach_hpf, [nondet, cleanup(synth_voice_unload(Voice))]) :-
-    synth_voice_create(Voice),
+test(voice_attach_hpf, [nondet, cleanup(synth_voice_uninit(Voice))]) :-
+    synth_voice_init(Voice),
     synth_oscillator_add(Voice, 440.0, 0.0, _),
     voice_attach_effect(Voice, hpf, [cutoff=500.0], Effect),
     Effect = effect(Voice, _).
 
-test(voice_attach_bpf, [nondet, cleanup(synth_voice_unload(Voice))]) :-
-    synth_voice_create(Voice),
+test(voice_attach_bpf, [nondet, cleanup(synth_voice_uninit(Voice))]) :-
+    synth_voice_init(Voice),
     synth_oscillator_add(Voice, 440.0, 0.0, _),
     voice_attach_effect(Voice, bpf, [cutoff=1000.0, order=2], Effect),
     Effect = effect(Voice, _).
 
-test(voice_attach_delay, [nondet, cleanup(synth_voice_unload(Voice))]) :-
-    synth_voice_create(Voice),
+test(voice_attach_delay, [nondet, cleanup(synth_voice_uninit(Voice))]) :-
+    synth_voice_init(Voice),
     synth_oscillator_add(Voice, 440.0, 0.0, _),
     voice_attach_effect(Voice, delay, [delay_in_frames=22050, decay=0.5, wet=0.8], Effect),
     Effect = effect(Voice, _).
 
-test(voice_attach_ping_pong_delay, [nondet, cleanup(synth_voice_unload(Voice))]) :-
-    synth_voice_create(Voice),
+test(voice_attach_ping_pong_delay, [nondet, cleanup(synth_voice_uninit(Voice))]) :-
+    synth_voice_init(Voice),
     synth_oscillator_add(Voice, 440.0, 0.0, _),
     voice_attach_effect(Voice, ping_pong_delay, [max_delay_in_frames=44100, delay_in_frames=22050, feedback=0.5, wet=0.8], Effect),
     Effect = effect(Voice, _).
 
-test(voice_attach_reverb, [nondet, cleanup(synth_voice_unload(Voice))]) :-
-    synth_voice_create(Voice),
+test(voice_attach_reverb, [nondet, cleanup(synth_voice_uninit(Voice))]) :-
+    synth_voice_init(Voice),
     synth_oscillator_add(Voice, 440.0, 0.0, _),
     voice_attach_effect(Voice, reverb, [decay=0.8, wet=0.3], Effect),
     Effect = effect(Voice, _).
 
-test(voice_set_parameters, [nondet, cleanup(synth_voice_unload(Voice))]) :-
-    synth_voice_create(Voice),
+test(voice_set_parameters, [nondet, cleanup(synth_voice_uninit(Voice))]) :-
+    synth_voice_init(Voice),
     synth_oscillator_add(Voice, 440.0, 0.0, _),
     voice_attach_effect(Voice, lpf, [cutoff=1000.0], Effect),
     effect_set_parameters(Effect, [cutoff=2000.0]).
 
-test(voice_detach_effect, [nondet, cleanup(synth_voice_unload(Voice))]) :-
-    synth_voice_create(Voice),
+test(voice_detach_effect, [nondet, cleanup(synth_voice_uninit(Voice))]) :-
+    synth_voice_init(Voice),
     synth_oscillator_add(Voice, 440.0, 0.0, _),
     voice_attach_effect(Voice, bitcrush, [bits=8, sample_rate=8000], Effect),
     effect_detach(Effect).
 
 % Multiple effects on voice
 
-test(voice_multiple_effects, [nondet, cleanup(synth_voice_unload(Voice))]) :-
-    synth_voice_create(Voice),
+test(voice_multiple_effects, [nondet, cleanup(synth_voice_uninit(Voice))]) :-
+    synth_voice_init(Voice),
     synth_oscillator_add(Voice, 440.0, 0.0, _),
     voice_attach_effect(Voice, lpf, [cutoff=2000.0], _E1),
     voice_attach_effect(Voice, reverb, [decay=0.7, wet=0.3], _E2).
@@ -137,8 +137,8 @@ test(sound_attach_pan, [nondet]) :-
     Effect = effect(Sound, _),
     sound_unload(Sound).
 
-test(voice_attach_pan, [nondet, cleanup(synth_voice_unload(Voice))]) :-
-    synth_voice_create(Voice),
+test(voice_attach_pan, [nondet, cleanup(synth_voice_uninit(Voice))]) :-
+    synth_voice_init(Voice),
     synth_oscillator_add(Voice, 440.0, 0.0, _),
     voice_attach_effect(Voice, pan, [pan=(-0.5)], Effect),
     Effect = effect(Voice, _).
@@ -151,8 +151,8 @@ test(sound_attach_moog, [nondet]) :-
     Effect = effect(Sound, _),
     sound_unload(Sound).
 
-test(voice_attach_moog, [nondet, cleanup(synth_voice_unload(Voice))]) :-
-    synth_voice_create(Voice),
+test(voice_attach_moog, [nondet, cleanup(synth_voice_uninit(Voice))]) :-
+    synth_voice_init(Voice),
     synth_oscillator_add(Voice, 440.0, 0.0, _),
     voice_attach_effect(Voice, moog, [cutoff=500.0, resonance=2.0, drive=1.5], Effect),
     Effect = effect(Voice, _).
@@ -251,8 +251,8 @@ test(sound_attach_vca_default_gain, [nondet]) :-
     abs(Gain - 1.0) < 0.001,
     sound_unload(Sound).
 
-test(voice_attach_vca, [nondet, cleanup(synth_voice_unload(Voice))]) :-
-    synth_voice_create(Voice),
+test(voice_attach_vca, [nondet, cleanup(synth_voice_uninit(Voice))]) :-
+    synth_voice_init(Voice),
     synth_oscillator_add(Voice, 440.0, 0.0, _),
     voice_attach_effect(Voice, vca, [gain=0.8], Effect),
     Effect = effect(Voice, _).
@@ -301,8 +301,8 @@ test(sound_attach_compressor_defaults, [nondet]) :-
     abs(Makeup - 1.0) < 0.001,
     sound_unload(Sound).
 
-test(voice_attach_compressor, [nondet, cleanup(synth_voice_unload(Voice))]) :-
-    synth_voice_create(Voice),
+test(voice_attach_compressor, [nondet, cleanup(synth_voice_uninit(Voice))]) :-
+    synth_voice_init(Voice),
     synth_oscillator_add(Voice, 440.0, 0.0, _),
     voice_attach_effect(Voice, compressor, [threshold=0.5, ratio=8.0, attack_ms=0.5, release_ms=50.0], Effect),
     Effect = effect(Voice, _).

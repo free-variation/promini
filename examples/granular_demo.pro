@@ -23,7 +23,7 @@ demo_granular_file :-
     sound_loop(Sound),
 
     format('Creating granular delay (4 second buffer)...~n'),
-    granular_create(4.0, G),
+    granular_init(4.0, G),
     granular_connect(G, Sound),
     granular_set(G, [recording=true, normalize=true]),
 
@@ -85,7 +85,7 @@ demo_granular_file :-
 
     format('~nCleaning up...~n'),
     sound_stop(Sound),
-    granular_unload(G),
+    granular_uninit(G),
     sound_unload(Sound),
     format('Granular file demo complete.~n~n').
 
@@ -110,7 +110,7 @@ demo_granular_live_reverb :-
     format('Buffer: ~w frames~n', [BufferFrames]),
 
     format('Creating granular delay...~n'),
-    granular_create(6.0, G),
+    granular_init(6.0, G),
     granular_connect(G, Capture),
     granular_set(G, [recording=true, normalize=true, density=0.0]),
 
@@ -152,7 +152,7 @@ demo_granular_live_reverb :-
     ),
 
     format('~nCleaning up...~n'),
-    granular_unload(G),
+    granular_uninit(G),
     capture_stop(Capture),
     format('Live reverb demo complete.~n~n').
 
@@ -176,7 +176,7 @@ demo_granular_live :-
     format('Buffer: ~w frames~n', [BufferFrames]),
 
     format('Creating granular delay...~n'),
-    granular_create(4.0, G),
+    granular_init(4.0, G),
     granular_connect(G, Capture),
     granular_set(G, [recording=true, normalize=true]),
 
@@ -221,7 +221,7 @@ demo_granular_live :-
     sleep(5.0),
 
     format('~nCleaning up...~n'),
-    granular_unload(G),
+    granular_uninit(G),
     capture_stop(Capture),
     format('Granular live demo complete.~n~n').
 
@@ -232,7 +232,7 @@ demo_granular_texture :-
     format('Loading gong.wav for sustained texture...~n'),
     sound_load('audio/gong.wav', Sound),
 
-    granular_create(6.0, G),
+    granular_init(6.0, G),
     granular_connect(G, Sound),
     granular_set(G, [recording=true, normalize=true]),
 
@@ -282,7 +282,7 @@ demo_granular_texture :-
     sleep(5.0),
 
     format('~nCleaning up...~n'),
-    granular_unload(G),
+    granular_uninit(G),
     sound_unload(Sound),
     format('Granular texture demo complete.~n~n').
 
@@ -293,7 +293,7 @@ demo_granular_freeze :-
     format('Loading counting.wav...~n'),
     sound_load('audio/counting.wav', Sound),
 
-    granular_create(2.0, G),
+    granular_init(2.0, G),
     granular_connect(G, Sound),
     granular_set(G, [recording=true, density=0.0, normalize=true]),
 
@@ -328,7 +328,7 @@ demo_granular_freeze :-
     pitch_cascade(G),
 
     format('~nCleaning up...~n'),
-    granular_unload(G),
+    granular_uninit(G),
     sound_unload(Sound),
     format('Granular freeze demo complete.~n~n').
 
@@ -382,7 +382,7 @@ demo_granular_normalization :-
     sound_load('audio/guitar.wav', Sound),
     sound_loop(Sound),
 
-    granular_create(4.0, G),
+    granular_init(4.0, G),
     granular_connect(G, Sound),
     granular_set(G, [recording=true]),
 
@@ -470,7 +470,7 @@ demo_granular_normalization :-
     sleep(3.0),
 
     format('~nCleaning up...~n'),
-    granular_unload(G),
+    granular_uninit(G),
     sound_unload(Sound),
     format('Normalization demo complete.~n~n').
 
@@ -480,7 +480,7 @@ demo_granular_trigger :-
     format('~n=== Manual Grain Trigger Demo ===~n~n'),
 
     sound_load('audio/gong.wav', Sound),
-    granular_create(3.0, G),
+    granular_init(3.0, G),
     granular_connect(G, Sound),
     granular_set(G, [
         recording=true,
@@ -509,7 +509,7 @@ demo_granular_trigger :-
     rhythmic_triggers(G, 16),
 
     format('~nCleaning up...~n'),
-    granular_unload(G),
+    granular_uninit(G),
     sound_unload(Sound),
     format('Manual trigger demo complete.~n~n').
 
@@ -545,7 +545,7 @@ demo_granular_partial_buffer :-
     format('Loading guitar.wav...~n'),
     sound_load('audio/guitar.wav', Sound),
 
-    granular_create(8.0, G),
+    granular_init(8.0, G),
     granular_connect(G, Sound),
     granular_set(G, [recording=true, normalize=true, density=0.0]),
     granular_attach_effect(G, reverb, [wet=0.3, decay=0.8, shimmer1_shift=12.0, shimmer1_mix=0.15], _),
@@ -582,7 +582,7 @@ demo_granular_partial_buffer :-
     sleep(4.0),
 
     format('~nCleaning up...~n'),
-    granular_unload(G),
+    granular_uninit(G),
     sound_unload(Sound),
     format('Partial buffer demo complete.~n~n').
 
@@ -596,7 +596,7 @@ demo_dminor_gong :-
     format('~n=== D Minor Gong Meditation ===~n~n'),
 
     sound_load('audio/gong.wav', Sound),
-    granular_create(3.0, G),
+    granular_init(3.0, G),
     granular_connect(G, Sound),
     granular_set(G, [recording=true, normalize=true, density=0.0]),
 
@@ -626,6 +626,7 @@ demo_dminor_gong :-
     ], _),
 
     format('~n--- D minor arpeggios ---~n'),
+    granular_set_mode(G, [0.0, 2.0, 3.0, 5.0, 7.0, 8.0, 10.0], 0, 7),
     granular_set(G, [
         density=6.0,
         size=180.0,
@@ -633,7 +634,7 @@ demo_dminor_gong :-
         position_spray=0.25,
         envelope=0.5,
         pan_spray=0.8,
-        pitch=2.0
+        pitch=0.0
     ]),
     sleep(8.0),
 
@@ -671,7 +672,7 @@ demo_dminor_gong :-
     sleep(4.0),
 
     format('~nCleaning up...~n'),
-    granular_unload(G),
+    granular_uninit(G),
     sound_unload(Sound),
     format('D Minor meditation complete.~n~n').
 
@@ -696,7 +697,7 @@ demo_granular_mode :-
     format('Loading gong.wav...~n'),
     sound_load('audio/gong.wav', Sound),
 
-    granular_create(4.0, G),
+    granular_init(4.0, G),
     granular_connect(G, Sound),
     granular_set(G, [recording=true, normalize=true, density=0.0]),
 
@@ -763,6 +764,6 @@ demo_granular_mode :-
     sleep(3.0),
 
     format('~nCleaning up...~n'),
-    granular_unload(G),
+    granular_uninit(G),
     sound_unload(Sound),
     format('Mode demo complete.~n~n').
