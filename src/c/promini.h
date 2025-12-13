@@ -472,13 +472,18 @@ typedef enum {
 	CLOCK_TARGET_DELAY
 } clock_target_type_t;
 
+typedef enum {
+	CLOCK_ROUTE_PULSE,
+	CLOCK_ROUTE_SYNC
+} clock_route_type_t;
+
 typedef struct {
 	ma_bool32 in_use;
+	clock_route_type_t route_type;
 	void *target_slot;
 	clock_target_type_t target_type;
 	float division;
 	float phase_offset;
-	double last_trigger_beat;
 } clock_route_t;
 
 /* modulaation arrays and mutex */
@@ -498,7 +503,7 @@ extern void clock_init(ma_uint32 sample_rate);
 extern void clock_uninit(void);
 extern install_t clock_register_predicates(void);
 extern install_t uninstall_clock(void);
-
+extern void update_clock_routes(clock_route_type_t);
 
 /* image slot type */
 

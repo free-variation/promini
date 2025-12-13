@@ -34,6 +34,13 @@ test(clock_stop, [fail]) :-
     clock_stop,
     clock_is_running.
 
+test(clock_stop_resets_position, [nondet]) :-
+    clock_start,
+    sleep(0.5),
+    clock_stop,
+    clock_get_beat_position(Pos),
+    Pos < 0.1.
+
 test(clock_get_beat_position, [nondet]) :-
     clock_get_beat_position(Pos),
     number(Pos).

@@ -107,6 +107,33 @@ static int trigger_grain(granular_delay_t *g)
 		grain->envelope_phase = 1.0f;
 	}
 
+	/* For frozen buffers, ensure grain doesn't cross the write head seam */
+	if (!g->recording && g->frames_recorded >= g->buffer.capacity_frames) {
+		ma_uint64 grain_samples = (ma_uint64)(grain->size * grain->pitch_ratio) + 4;
+		ma_int64 dist_to_write;
+
+		if (grain->direction == 1) {
+			/* Forward grain: check distance from grain end to write pos */
+			ma_uint64 grain_end = (grain->position + grain_samples) % g->buffer.capacity_frames;
+			dist_to_write = (ma_int64)g->buffer.write_pos - (ma_int64)grain->position;
+			if (dist_to_write < 0) dist_to_write += g->buffer.capacity_frames;
+
+			if ((ma_uint64)dist_to_write < grain_samples) {
+				/* Grain would cross seam, push back */
+				grain->position = (g->buffer.write_pos + g->buffer.capacity_frames - grain_samples) % g->buffer.capacity_frames;
+			}
+		} else {
+			/* Reverse grain: check distance from grain start to write pos */
+			dist_to_write = (ma_int64)grain->position - (ma_int64)g->buffer.write_pos;
+			if (dist_to_write < 0) dist_to_write += g->buffer.capacity_frames;
+
+			if ((ma_uint64)dist_to_write < grain_samples) {
+				/* Grain would cross seam, push forward */
+				grain->position = (g->buffer.write_pos + grain_samples) % g->buffer.capacity_frames;
+			}
+		}
+	}
+
 	return i;
 }
 
@@ -324,9 +351,9 @@ static void granular_process_pcm_frames(
 				output[i * channels + c] *= g->gain_normalization;
 			}
 		}
+
 	}
 }
-
 
 static ma_node_vtable granular_vtable = {
 	granular_process_pcm_frames,

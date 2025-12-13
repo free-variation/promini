@@ -228,16 +228,12 @@ void process_modulation(ma_uint32 frame_count, ma_uint32 sample_rate)
 	mod_source_t *src;
 	mod_route_t *route;
 	float raw_value, target_value, max_change, diff;
-	ma_waveform *wf;
 
 	pthread_mutex_lock(&g_mod_mutex);
 
-	/* check clock for beat */
+	/* process clock pulse routes */
 	if (g_clock.running) {
-		wf = (ma_waveform *)ma_sound_get_data_source(&g_clock.sound);
-		if (floor(wf->time) > floor(g_clock.last_time)) {
-		}
-		g_clock.last_time = wf->time;
+		update_clock_routes(CLOCK_ROUTE_PULSE);
 	}
 
 	/* update all active sources */

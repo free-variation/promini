@@ -11,6 +11,7 @@
  * demo_granular_normalization - Compare normalization vs compression
  * demo_granular_trigger       - Manual grain triggering
  * demo_granular_partial_buffer - Demonstrate click-free partial buffer granulation
+ * demo_dminor_gong            - Melodic D minor piece with ping-pong and shimmer
  * demo_granular_mode          - Pitch quantization to musical scales
  */
 
@@ -584,6 +585,105 @@ demo_granular_partial_buffer :-
     granular_unload(G),
     sound_unload(Sound),
     format('Partial buffer demo complete.~n~n').
+
+
+/*
+ * demo_dminor_gong
+ * Melodic granular piece in D minor using gong.wav
+ * with ping-pong delay and shimmer reverb.
+ */
+demo_dminor_gong :-
+    format('~n=== D Minor Gong Meditation ===~n~n'),
+
+    sound_load('audio/gong.wav', Sound),
+    granular_create(3.0, G),
+    granular_connect(G, Sound),
+    granular_set(G, [recording=true, normalize=true, density=0.0]),
+
+    format('Recording gong...~n'),
+    sound_start(Sound),
+    sleep(3.0),
+    sound_stop(Sound),
+    granular_set(G, [recording=false]),
+
+    % Add ping-pong delay for stereo width
+    granular_attach_effect(G, ping_pong_delay, [
+        max_delay_in_frames=48000,
+        delay_in_frames=19200,
+        feedback=0.45,
+        wet=0.35,
+        dry=0.7
+    ], _),
+
+    % Add shimmer reverb
+    granular_attach_effect(G, reverb, [
+        wet=0.3,
+        decay=0.8,
+        damping=0.3,
+        width=1.5,
+        shimmer1_shift=12.0,
+        shimmer1_mix=0.15
+    ], _),
+
+    format('~n--- D minor arpeggios ---~n'),
+    granular_set(G, [
+        density=6.0,
+        size=180.0,
+        position=0.3,
+        position_spray=0.25,
+        envelope=0.5,
+        pan_spray=0.8,
+        pitch=2.0
+    ]),
+    sleep(8.0),
+
+    format('~n--- Rising intensity ---~n'),
+    granular_set(G, [
+        density=12.0,
+        size=120.0,
+        position_spray=0.35,
+        pitch=7.0
+    ]),
+    sleep(8.0),
+
+    format('~n--- Sparse low register ---~n'),
+    granular_set(G, [
+        density=4.0,
+        size=250.0,
+        pitch=(-5.0),
+        pan_spray=0.5
+    ]),
+    sleep(8.0),
+
+    format('~n--- Dense shimmer cloud ---~n'),
+    granular_set(G, [
+        density=20.0,
+        size=80.0,
+        pitch=12.0,
+        position=0.4,
+        position_spray=0.3,
+        pan_spray=1.0
+    ]),
+    sleep(8.0),
+
+    format('~n--- Fade to stillness ---~n'),
+    fade_density(G, 20.0, 2.0, 20),
+    sleep(4.0),
+
+    format('~nCleaning up...~n'),
+    granular_unload(G),
+    sound_unload(Sound),
+    format('D Minor meditation complete.~n~n').
+
+fade_density(_, _, _, 0) :- !.
+fade_density(G, Current, Target, Steps) :-
+    Steps > 0,
+    granular_set(G, [density=Current]),
+    sleep(0.3),
+    Step is (Target - Current) / Steps,
+    Next is Current + Step,
+    S1 is Steps - 1,
+    fade_density(G, Next, Target, S1).
 
 
 /*

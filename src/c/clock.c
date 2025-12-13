@@ -106,13 +106,74 @@ void clock_uninit(void)
 	free(wf);
 }
 
+/*
+ * update_clock_routes()
+ * Updates clock routes of the specified type.
+ * For CLOCK_ROUTE_SYNC: sets LFO frequency or delay time from BPM.
+ * For CLOCK_ROUTE_PULSE: triggers targets on beat.
+ */
+void update_clock_routes(clock_route_type_t route_type)
+{
+	int i;
+	clock_route_t *route;
+	ma_waveform *wf;
+	float freq;
+	ma_uint32 delay_frames;
+	ma_uint32 sample_rate;
 
+	wf = (ma_waveform *)ma_sound_get_data_source(&g_clock.sound);
+	sample_rate = ma_engine_get_sample_rate(g_engine);
+
+	for (i = 0; i < MAX_CLOCK_ROUTES; i++) {
+		route = &g_clock_routes[i];
+		if (!route->in_use || route->route_type != route_type) continue;
+
+		if (route_type == CLOCK_ROUTE_SYNC) {
+			switch (route->target_type) {
+				case CLOCK_TARGET_LFO:
+					freq = (g_clock.bpm / 60.0f) * (CLOCK_PPQN / route->division);
+					ma_waveform_set_frequency(&((mod_source_t *)route->target_slot)->source.waveform, freq);
+					break;
+				case CLOCK_TARGET_DELAY:
+				case CLOCK_TARGET_PING_PONG_DELAY:
+					delay_frames = (ma_uint32)((60.0f / g_clock.bm * (route->division / CLOCK_PPQN) * sample_rate);
+					((ping_pong_delay_node_t *)route->target_slot)->target_delay_in_frames = delay_frames;
+					break;
+				default:
+					break;
+			}
+		} else {
+			if (floor(wf->time / route->division) > floor(g_clock.last_time / route->division)) {
+				switch (route->target_type) {
+					case CLOCK_TARGET_LFO:
+						ma_waveform_seek_to_pcm_frame(&((mod_source_t *)route->target_slot)->source.waveform, 0);
+					case CLOCK_TARGET_ENVELOPE:
+						((mod_source_t *)route->target_slot)->source.envelope.stage = 0;
+						((mod_source_t *)route->target_slot)->source.envelope.stage_progress = 0.0f;
+						break;
+					case CLOCK_TARGET_GRANULAR:
+						/* TODO: spawn grain */
+						break;
+					default:
+						break;
+				}
+			}
+		}
+	}
+
+	if (route_type == CLOCK_ROUTE_PULSE) {
+		g_clock.last_time = wf->time;
+	}
+}
+
+
+				
 /******************************************************************************
  * HELPERS
  *****************************************************************************/
 
 /*
- * set_bmp_from_term()
+ * set_bpm_from_term()
  * Extracts BPM from term, validates positive, sets on global clock.
  * Returns TRUE on success, raises appropriate error on failure.
  */
@@ -137,13 +198,14 @@ static foreign_t set_bpm_from_term(term_t term)
 	wf = (ma_waveform*)ma_sound_get_data_source(&g_clock.sound);
 	ma_waveform_set_frequency(wf, (bpm * CLOCK_PPQN) / 60.0);
 
+	update_clock_routes(CLOCk_ROUTE_SYNC);
+
 	return TRUE;
 }
 
 /******************************************************************************
  * PROLOG INTERFACE
  *****************************************************************************/
-
 
 
 /*
@@ -185,7 +247,10 @@ static foreign_t pl_clock_start(void)
  */
 static foreign_t pl_clock_stop(void)
 {
+	ma_waveform *wf = (ma_waveform *)ma_sound_get_data_source(&g_clock.sound);
 	g_clock.running = MA_FALSE;
+	ma_waveform_seek_to_pcm_frame(wf, 0);
+	g_clock.last_time = 0.0;
 	return TRUE;
 }
 
