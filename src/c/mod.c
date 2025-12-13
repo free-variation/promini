@@ -225,12 +225,20 @@ static float read_source_value(mod_source_t* src, ma_uint32 frame_count, ma_uint
 void process_modulation(ma_uint32 frame_count, ma_uint32 sample_rate)
 {
 	int i;
-	mod_source_t* src;
-	mod_route_t* route;
+	mod_source_t *src;
+	mod_route_t *route;
 	float raw_value, target_value, max_change, diff;
-
+	ma_waveform *wf;
 
 	pthread_mutex_lock(&g_mod_mutex);
+
+	/* check clock for beat */
+	if (g_clock.running) {
+		wf = (ma_waveform *)ma_sound_get_data_source(&g_clock.sound);
+		if (floor(wf->time) > floor(g_clock.last_time)) {
+		}
+		g_clock.last_time = wf->time;
+	}
 
 	/* update all active sources */
 	for (i = 0; i < MAX_MOD_SOURCES; i++) {

@@ -628,11 +628,11 @@ static foreign_t pl_granular_get(term_t handle_term, term_t params_term)
 }
 
 /*
- * pl_granular_destroy()
- * Destroy a granular delay and free resources.
- * granular_destroy(+Granular)
+ * pl_granular_unload()
+ * Unload a granular delay and free resources.
+ * granular_unload(+Granular)
  */
-static foreign_t pl_granular_destroy(term_t handle_term)
+static foreign_t pl_granular_unload(term_t handle_term)
 {
 	int slot;
 	granular_delay_t *g;
@@ -731,7 +731,7 @@ static foreign_t pl_granular_connect(term_t handle_term, term_t source_term)
 install_t granular_register_predicates(void)
 {
 	PL_register_foreign("granular_create", 2, pl_granular_create, 0);
-	PL_register_foreign("granular_destroy", 1, pl_granular_destroy, 0);
+	PL_register_foreign("granular_unload", 1, pl_granular_unload, 0);
 	PL_register_foreign("granular_trigger", 1, pl_granular_trigger, 0);
 	PL_register_foreign("granular_set", 2, pl_granular_set, 0);
 	PL_register_foreign("granular_get", 2, pl_granular_get, 0);

@@ -100,13 +100,19 @@
     control_pump/0,
     control_axis/3,
     granular_create/2,
-    granular_destroy/1,
+    granular_unload/1,
     granular_trigger/1,
     granular_set/2,
     granular_get/2,
     granular_set_mode/4,
     granular_connect/2,
-    granular_attach_effect/4
+    granular_attach_effect/4,
+    clock_set_bpm/1,
+    clock_get_bpm/1,
+    clock_start/0,
+    clock_stop/0,
+    clock_is_running/0,
+    clock_get_beat_position/1
   ]).
 
 :- use_foreign_library('../../lib/promini').

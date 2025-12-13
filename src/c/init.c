@@ -23,6 +23,7 @@ install_t install(void)
     control_register_predicates();
     capture_register_predicates();
     granular_register_predicates();
+	clock_register_predicates();
 }
 
 /*
@@ -32,6 +33,7 @@ install_t install(void)
  */
 install_t uninstall(void)
 {
+	uninstall_clock();
 	uninstall_control();
 	uninstall_image();
 	uninstall_mixer();

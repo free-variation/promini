@@ -451,15 +451,17 @@ struct mod_route {
 	ma_bool32 rate_mode;
 };
 
-/* clocks */
-#define MAX_CLOCKS 8
-#define MAX_CLOCK_ROUTES 128
+/* master clock */
+
+#define CLOCK_DEFAULT_BPM 128
+#define CLOCK_PPQN 24
+#define MAX_CLOCK_ROUTES 256
 
 typedef struct {
+	ma_sound sound;
 	float bpm;
 	ma_bool32 running;
-	double beat_position;
-	ma_bool32 in_use;
+	double last_time;
 } promini_clock_t;
 
 typedef enum {
@@ -472,7 +474,6 @@ typedef enum {
 
 typedef struct {
 	ma_bool32 in_use;
-	int clock_slot;
 	void *target_slot;
 	clock_target_type_t target_type;
 	float division;
@@ -485,7 +486,7 @@ extern mod_source_t g_mod_sources[MAX_MOD_SOURCES];
 extern mod_route_t g_mod_routes[MAX_MOD_ROUTES];
 extern pthread_mutex_t g_mod_mutex;
 
-extern promini_clock_t g_clocks[MAX_CLOCKS];
+extern promini_clock_t g_clock;
 extern clock_route_t g_clock_routes[MAX_CLOCK_ROUTES];
 
 /* modulation functions in mod.c */
@@ -493,8 +494,11 @@ extern void process_modulation(ma_uint32 frame_count, ma_uint32 sample_rate);
 extern install_t mod_register_predicates(void);
 extern install_t uninstall_mod(void);
 
+extern void clock_init(ma_uint32 sample_rate);
+extern void clock_uninit(void);
 extern install_t clock_register_predicates(void);
 extern install_t uninstall_clock(void);
+
 
 /* image slot type */
 

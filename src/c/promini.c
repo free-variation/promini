@@ -967,6 +967,8 @@ foreign_t pl_promini_init(void)
         return FALSE;
     }
 
+    clock_init(ma_engine_get_sample_rate(g_engine));
+
     return TRUE;
 }
 

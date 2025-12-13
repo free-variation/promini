@@ -84,7 +84,7 @@ demo_granular_file :-
 
     format('~nCleaning up...~n'),
     sound_stop(Sound),
-    granular_destroy(G),
+    granular_unload(G),
     sound_unload(Sound),
     format('Granular file demo complete.~n~n').
 
@@ -151,7 +151,7 @@ demo_granular_live_reverb :-
     ),
 
     format('~nCleaning up...~n'),
-    granular_destroy(G),
+    granular_unload(G),
     capture_stop(Capture),
     format('Live reverb demo complete.~n~n').
 
@@ -220,7 +220,7 @@ demo_granular_live :-
     sleep(5.0),
 
     format('~nCleaning up...~n'),
-    granular_destroy(G),
+    granular_unload(G),
     capture_stop(Capture),
     format('Granular live demo complete.~n~n').
 
@@ -281,7 +281,7 @@ demo_granular_texture :-
     sleep(5.0),
 
     format('~nCleaning up...~n'),
-    granular_destroy(G),
+    granular_unload(G),
     sound_unload(Sound),
     format('Granular texture demo complete.~n~n').
 
@@ -327,7 +327,7 @@ demo_granular_freeze :-
     pitch_cascade(G),
 
     format('~nCleaning up...~n'),
-    granular_destroy(G),
+    granular_unload(G),
     sound_unload(Sound),
     format('Granular freeze demo complete.~n~n').
 
@@ -469,7 +469,7 @@ demo_granular_normalization :-
     sleep(3.0),
 
     format('~nCleaning up...~n'),
-    granular_destroy(G),
+    granular_unload(G),
     sound_unload(Sound),
     format('Normalization demo complete.~n~n').
 
@@ -508,7 +508,7 @@ demo_granular_trigger :-
     rhythmic_triggers(G, 16),
 
     format('~nCleaning up...~n'),
-    granular_destroy(G),
+    granular_unload(G),
     sound_unload(Sound),
     format('Manual trigger demo complete.~n~n').
 
@@ -581,7 +581,7 @@ demo_granular_partial_buffer :-
     sleep(4.0),
 
     format('~nCleaning up...~n'),
-    granular_destroy(G),
+    granular_unload(G),
     sound_unload(Sound),
     format('Partial buffer demo complete.~n~n').
 
@@ -599,6 +599,16 @@ demo_granular_mode :-
     granular_create(4.0, G),
     granular_connect(G, Sound),
     granular_set(G, [recording=true, normalize=true, density=0.0]),
+
+    % Add reverb with shimmer
+    granular_attach_effect(G, reverb, [
+        wet=0.25,
+        decay=0.7,
+        damping=0.4,
+        width=1.2,
+        shimmer1_shift=12.0,
+        shimmer1_mix=0.1
+    ], _),
 
     format('Recording source...~n'),
     sound_start(Sound),
@@ -653,6 +663,6 @@ demo_granular_mode :-
     sleep(3.0),
 
     format('~nCleaning up...~n'),
-    granular_destroy(G),
+    granular_unload(G),
     sound_unload(Sound),
     format('Mode demo complete.~n~n').
