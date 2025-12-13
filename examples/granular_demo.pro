@@ -767,3 +767,61 @@ demo_granular_mode :-
     granular_uninit(G),
     sound_unload(Sound),
     format('Mode demo complete.~n~n').
+
+
+/*
+ * demo_granular_density_test
+ * Matches clock demo settings but uses density triggering.
+ * For comparing click behavior between clock and density triggering.
+ */
+demo_granular_density_test :-
+    format('~n=== Granular Density Test (matching clock demo) ===~n~n'),
+
+    format('Loading and recording source...~n'),
+    sound_load('audio/gong.wav', Sound),
+
+    granular_init(4.0, G),
+    granular_connect(G, Sound),
+    granular_set(G, [
+        recording=true,
+        normalize=true,
+        density=0.0,
+        size=150.0,
+        envelope=0.5,
+        pan_spray=0.6,
+        position=0.3,
+        position_spray=0.2
+    ]),
+
+    granular_attach_effect(G, reverb, [wet=0.25, decay=0.7], _),
+
+    format('Recording gong...~n'),
+    sound_start(Sound),
+    sleep(3.0),
+    sound_stop(Sound),
+    granular_set(G, [recording=false]),
+
+    format('~n--- Quarter notes at 120 BPM = 2 grains/sec ---~n'),
+    granular_set(G, [density=2.0]),
+    sleep(6.0),
+
+    format('~n--- 8th notes at 120 BPM = 4 grains/sec ---~n'),
+    granular_set(G, [density=4.0]),
+    sleep(6.0),
+
+    format('~n--- 16th notes at 120 BPM = 8 grains/sec ---~n'),
+    granular_set(G, [density=8.0]),
+    sleep(6.0),
+
+    format('~n--- Adding pitch variation (same as clock demo) ---~n'),
+    granular_set_mode(G, [0.0, 3.0, 7.0, 10.0], 0, 12),
+    sleep(6.0),
+
+    format('~n--- Triplets at 160 BPM = 10 grains/sec ---~n'),
+    granular_set(G, [density=10.0]),
+    sleep(6.0),
+
+    format('~nCleaning up...~n'),
+    granular_uninit(G),
+    sound_unload(Sound),
+    format('Density test complete.~n~n').

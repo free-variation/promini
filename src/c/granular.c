@@ -44,7 +44,8 @@ int trigger_grain(granular_delay_t *g)
 	ma_format format;
 	ma_uint32 channels;
 	ma_uint64 offset;
-	float max_position;
+	ma_uint64 frames_consumed;
+	ma_uint64 available;
 	int range, degree, octave, index;
 	float semitone;
 
@@ -66,34 +67,45 @@ int trigger_grain(granular_delay_t *g)
 	rand_size = g->size_spray * (2.0f * ((float)rand() / RAND_MAX) - 1.0f);
 	rand_pan = g->pan_spray * (2.0f * ((float)rand() / RAND_MAX) - 1.0f);
 
-	max_position = (g->buffer.capacity_frames > 0 && g->frames_recorded > 0)
-		? (float)g->frames_recorded / (float)g->buffer.capacity_frames
-		: 0.0f;
-	if (max_position < 0.01f) {
+	if (g->frames_recorded < sample_rate / 100) {
 		return -1; /* not enough recorded */
 	}
 
 	/* set grain parameters */
 	grain->source_type = GRAIN_SOURCE_RING_BUFFER;
 	grain->source_index = 0;
-
-	/* position is relative to write head: 0 = newest, 1 = oldest */
-	offset = (ma_uint64)(CLAMP(g->position + rand_pos, 0.0f, max_position * 0.99f) * g->buffer.capacity_frames);
-	grain->position = (g->buffer.write_pos + g->buffer.capacity_frames - offset) % g->buffer.capacity_frames;
 	grain->size = (ma_uint64)(fmaxf(g->size_ms + rand_size, 1.0f) * sample_rate / 1000.0f);
-	grain->cursor = 0.0f;
 
-	/* calculate pitch from mode if enabled */
+	/* calculate pitch first so we know how many frames will be consumed */
 	if (g->mode_length > 0) {
-       range = g->deviation_up + g->deviation_down + 1;
-       degree = (rand() % range) - g->deviation_down;
-       octave = (degree >= 0) ? degree / g->mode_length : -1 + (degree + 1) / g->mode_length;
-       index = degree - octave * g->mode_length;
-       semitone = g->pitch + octave * 12.0f + g->mode[index];
-	   grain->pitch_ratio = SEMITONES_TO_RATIO(semitone);
+		range = g->deviation_up + g->deviation_down + 1;
+		degree = (rand() % range) - g->deviation_down;
+		octave = (degree >= 0) ? degree / g->mode_length : -1 + (degree + 1) / g->mode_length;
+		index = degree - octave * g->mode_length;
+		semitone = g->pitch + octave * 12.0f + g->mode[index];
+		grain->pitch_ratio = SEMITONES_TO_RATIO(semitone);
 	} else {
 		grain->pitch_ratio = SEMITONES_TO_RATIO(g->pitch);
 	}
+
+	/* calculate how many frames the grain will read through */
+	frames_consumed = (ma_uint64)(grain->size * grain->pitch_ratio) + 4;
+
+	/* calculate available buffer space accounting for playhead consumption */
+	if (g->frames_recorded > frames_consumed) {
+		available = g->frames_recorded - frames_consumed;
+	} else {
+		available = 0;
+	}
+
+	if (available < sample_rate / 100) {
+		return -1; /* not enough buffer for this grain */
+	}
+
+	/* position grain within available space */
+	offset = (ma_uint64)(CLAMP(g->position + rand_pos, 0.0f, 0.99f) * available);
+	grain->position = (g->buffer.write_pos + g->buffer.capacity_frames - offset - frames_consumed) % g->buffer.capacity_frames;
+	grain->cursor = 0.0f;
 
 	grain->envelope = g->envelope;
 	grain->pan = CLAMP(g->pan + rand_pan, -1.0f, 1.0f);
@@ -105,33 +117,6 @@ int trigger_grain(granular_delay_t *g)
 	if (grain->direction == -1) {
 		grain->cursor = (float)(grain->size - 1);
 		grain->envelope_phase = 1.0f;
-	}
-
-	/* For frozen buffers, ensure grain doesn't cross the write head seam */
-	if (!g->recording && g->frames_recorded >= g->buffer.capacity_frames) {
-		ma_uint64 grain_samples = (ma_uint64)(grain->size * grain->pitch_ratio) + 4;
-		ma_int64 dist_to_write;
-
-		if (grain->direction == 1) {
-			/* Forward grain: check distance from grain end to write pos */
-			ma_uint64 grain_end = (grain->position + grain_samples) % g->buffer.capacity_frames;
-			dist_to_write = (ma_int64)g->buffer.write_pos - (ma_int64)grain->position;
-			if (dist_to_write < 0) dist_to_write += g->buffer.capacity_frames;
-
-			if ((ma_uint64)dist_to_write < grain_samples) {
-				/* Grain would cross seam, push back */
-				grain->position = (g->buffer.write_pos + g->buffer.capacity_frames - grain_samples) % g->buffer.capacity_frames;
-			}
-		} else {
-			/* Reverse grain: check distance from grain start to write pos */
-			dist_to_write = (ma_int64)grain->position - (ma_int64)g->buffer.write_pos;
-			if (dist_to_write < 0) dist_to_write += g->buffer.capacity_frames;
-
-			if ((ma_uint64)dist_to_write < grain_samples) {
-				/* Grain would cross seam, push forward */
-				grain->position = (g->buffer.write_pos + grain_samples) % g->buffer.capacity_frames;
-			}
-		}
 	}
 
 	return i;
