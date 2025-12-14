@@ -24,6 +24,9 @@ Live granular sampler + concatenative synthesis + additive synth + effects + mod
 | Modulation routing | osc freq/vol, moog cutoff, VCA gain, pan, ping-pong delay |
 | Control interface | SDL3 gamepad input with dispatch hook for REPL integration |
 | Summing node | multiple sources to single output with effect chain |
+| Clock system | BPM-based clock with routes to LFO, envelope, granular, delays |
+| Granular delay | Beads-style with ring buffer, tempo sync, sound buffer loading |
+| Image-to-audio | additive, waveform, RGB stereo modes |
 
 ### Next Steps
 
@@ -32,30 +35,11 @@ Live granular sampler + concatenative synthesis + additive synth + effects + mod
 3. **Route depth/center get/set predicates** - with per-sample interpolation
 4. **Route as modulation target** - modulate depth/center from LFO/envelope
 5. **Output device selection** - `promini_init/1` with device name for routing to BlackHole, etc.
-6. **Tap node** - passthrough node that copies audio to ring buffer for live granulation
-   - Fixed size ring buffer (overwrites oldest)
-   - Exposes write position for grain scheduling
-   - Attaches to any source (synth, sound, summing node, image synth)
-
-7. **Grain engine (hybrid C/Prolog)**
-   - Voice pool (30-60 concurrent grains)
-   - Sample-accurate playback from ring buffer or loaded audio
-   - Per-grain: position, size, pitch, envelope shape, pan
-   - Trigger queue for Prolog → C scheduling
-
-8. **Corpus analyzer** - for concatenative synthesis
+6. **Corpus analyzer** - for concatenative synthesis
    - Segmenter: fixed interval or onset detection (envelope follower)
    - Analyzer: RMS (loudness), ZCR (brightness), optional pitch
    - Metadata array parallel to ring buffer
    - Query interface: expose grain features to Prolog
-
-9. **Clock system**
-   - Internal clock generator (BPM-based trigger stream)
-   - Clock as mod source for tempo-synced LFOs, delays
-   - Division/multiplication
-   - Tap tempo support
-
-10. ~~**Image-to-audio synthesis**~~ ✓ complete (additive, waveform, RGB stereo)
 
 ### Known Issues
 

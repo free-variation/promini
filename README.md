@@ -5,14 +5,19 @@ Still in very early development.
 The intention is to make it easy to reason about patches and sounds. 
 
 Existing or planned features (all in stereo):
-- real-time or sample granulation *(planned)*
-  - live audio capture ✓
-  - sound/sample playback ✓
+- granular synthesis ✓
+  - Beads-style position-based granulation ✓
+  - live recording to ring buffer ✓
+  - sound/sample loading ✓
+  - tempo-synced grain triggering ✓
+  - pitch quantization to scales/modes ✓
+  - concatenative synthesis *(planned)*
 - additive synthesis (including noise oscillators) ✓
+- live audio capture ✓
 - essential audio processors:
   - bitcrush ✓
   - ping-pong delay ✓
-  - reverb (Dattorro) ✓
+  - reverb (Dattorro with shimmer) ✓
   - panning ✓
   - VCA ✓
   - summing node ✓
@@ -26,6 +31,10 @@ Existing or planned features (all in stereo):
   - additive mode (rows as oscillators) ✓
   - waveform mode (row as wavetable) ✓
   - RGB stereo (R=left, G=center, B=right) ✓
+- clock system ✓
+  - BPM-based master clock ✓
+  - routes to LFO, envelope, granular, delays ✓
+  - pulse (trigger) and sync (tempo-lock) modes ✓
 - comprehensive modulation system *(in progress)*
   - sources:
     - LFO ✓
@@ -33,7 +42,6 @@ Existing or planned features (all in stereo):
     - gamepad (axes, triggers, d-pad) ✓
     - noise *(planned)*
     - audio buffers *(planned)*
-    - images *(planned)*
   - targets: many parameters across the system, with S&H *(in progress)*
 - control interface using gamepad ✓, keyboard *(planned)*, trackpad *(planned)*
 - patches, presets, and setups saved as transparent prolog clauses ✓

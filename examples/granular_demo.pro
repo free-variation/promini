@@ -857,7 +857,9 @@ demo_granular_sound :-
         dry=0.5,
         wet=0.6,
         room_size=0.9,
-        damping=0.2
+        damping=0.2,
+        shimmer=0.3,
+        shimmer_pitch=12.0
     ], _),
     summing_node_init(Sum),
     summing_node_connect(Sum, G1),
@@ -955,13 +957,10 @@ demo_granular_freeze_buffer :-
     granular_set(G, [density=6.0, size=100.0, envelope=0.5]),
     sleep(4.0),
 
-    format('~n--- Now switching to frozen audio buffer ---~n'),
-    granular_set_audio_buffer(G, Audio),
-    sleep(4.0),
-
-    format('~n--- Creating second granular using same frozen buffer ---~n'),
-    granular_init(1.0, G2),
-    granular_set_audio_buffer(G2, Audio),
+    format('~n--- Creating second granular from frozen buffer ---~n'),
+    sound_create(Audio, FrozenSound),
+    granular_init(3.0, G2),
+    granular_connect(G2, FrozenSound),
     granular_set(G2, [
         density=4.0,
         size=200.0,
@@ -975,6 +974,7 @@ demo_granular_freeze_buffer :-
     format('~nCleaning up...~n'),
     granular_uninit(G),
     granular_uninit(G2),
+    sound_unload(FrozenSound),
     audio_unload(Audio),
     sound_unload(Sound),
     format('Freeze demo complete.~n~n').
