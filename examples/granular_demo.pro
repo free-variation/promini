@@ -13,6 +13,8 @@
  * demo_granular_partial_buffer - Demonstrate click-free partial buffer granulation
  * demo_dminor_gong            - Melodic D minor piece with ping-pong and shimmer
  * demo_granular_mode          - Pitch quantization to musical scales
+ * demo_granular_sound         - Granulate from sound (copies to ring buffer)
+ * demo_granular_freeze_buffer - Freeze ring buffer to audio buffer
  */
 
 demo_granular_file :-
@@ -825,3 +827,154 @@ demo_granular_density_test :-
     granular_uninit(G),
     sound_unload(Sound),
     format('Density test complete.~n~n').
+
+
+/*
+ * demo_granular_sound
+ * Two granulars from different sounds, tempo-synced with effects.
+ */
+demo_granular_sound :-
+    format('~n=== Granular Sound Demo ===~n~n'),
+
+    format('Loading sounds...~n'),
+    sound_load('audio/gong.wav', Gong),
+    sound_load('audio/guitar.wav', Guitar),
+
+    format('Creating granulars...~n'),
+    granular_init(4.0, G1),
+    granular_init(4.0, G2),
+    granular_connect(G1, Gong),
+    granular_connect(G2, Guitar),
+
+    format('Adding effects and summing node...~n'),
+    granular_attach_effect(G1, reverb, [
+        dry=0.7,
+        wet=0.4,
+        room_size=0.5,
+        damping=0.6
+    ], _),
+    granular_attach_effect(G2, reverb, [
+        dry=0.5,
+        wet=0.6,
+        room_size=0.9,
+        damping=0.2
+    ], _),
+    summing_node_init(Sum),
+    summing_node_connect(Sum, G1),
+    summing_node_connect(Sum, G2),
+    summing_node_attach_effect(Sum, ping_pong_delay, [
+        max_delay_in_frames=88200,
+        delay_in_frames=22050,
+        feedback=0.4,
+        wet=0.5
+    ], Delay),
+
+    format('Setting up parameters...~n'),
+    granular_set(G1, [
+        density=0.0,
+        size=200.0,
+        envelope=0.5,
+        pan=(-0.6),
+        position=0.3,
+        position_spray=0.2
+    ]),
+    granular_set_mode(G1, [0.0, 7.0, 12.0], 1, 2),
+
+    granular_set(G2, [
+        density=0.0,
+        size=80.0,
+        envelope=0.7,
+        pan=0.6,
+        position=0.5,
+        position_spray=0.4
+    ]),
+    granular_set_mode(G2, [0.0, 7.0, 12.0], 1, 2),
+
+    format('Starting clock at 90 BPM...~n'),
+    clock_set_bpm(90.0),
+    clock_route_init(granular, G1, pulse, 12, R1),
+    clock_route_init(granular, G2, pulse, 6, R2),
+    clock_route_init(ping_pong_delay, Delay, sync, 24, R3),
+    clock_start,
+
+    format('~n--- Two granulars, tempo-synced ---~n'),
+    sleep(8.0),
+
+    format('~n--- Faster tempo, tighter grains ---~n'),
+    clock_set_bpm(120.0),
+    granular_set(G1, [size=100.0]),
+    granular_set(G2, [size=40.0]),
+    sleep(8.0),
+
+    format('~n--- Slower, wider spread ---~n'),
+    clock_set_bpm(60.0),
+    granular_set(G1, [size=300.0, position_spray=0.5]),
+    granular_set(G2, [size=150.0, position_spray=0.6]),
+    sleep(8.0),
+
+    format('~nCleaning up...~n'),
+    clock_stop,
+    clock_route_uninit(R1),
+    clock_route_uninit(R2),
+    clock_route_uninit(R3),
+    summing_node_uninit(Sum),
+    granular_uninit(G1),
+    granular_uninit(G2),
+    sound_unload(Gong),
+    sound_unload(Guitar),
+    format('Sound demo complete.~n~n').
+
+
+/*
+ * demo_granular_freeze_buffer
+ * Demonstrates freezing a ring buffer to an audio buffer.
+ */
+demo_granular_freeze_buffer :-
+    format('~n=== Granular Freeze Demo ===~n~n'),
+
+    format('Setting up granular with live recording...~n'),
+    sound_load('audio/counting.wav', Sound),
+    granular_init(3.0, G),
+    granular_connect(G, Sound),
+    granular_set(G, [recording=true, density=0.0]),
+
+    format('Recording for 2 seconds...~n'),
+    sound_start(Sound),
+    sleep(2.0),
+    sound_stop(Sound),
+    granular_set(G, [recording=false]),
+
+    granular_get_frames_recorded(G, Frames),
+    format('Recorded ~d frames~n', [Frames]),
+
+    format('~nFreezing buffer to audio...~n'),
+    granular_freeze(G, Audio),
+    format('Created frozen audio buffer: ~w~n', [Audio]),
+
+    format('~n--- Granulating from ring buffer ---~n'),
+    granular_set(G, [density=6.0, size=100.0, envelope=0.5]),
+    sleep(4.0),
+
+    format('~n--- Now switching to frozen audio buffer ---~n'),
+    granular_set_audio_buffer(G, Audio),
+    sleep(4.0),
+
+    format('~n--- Creating second granular using same frozen buffer ---~n'),
+    granular_init(1.0, G2),
+    granular_set_audio_buffer(G2, Audio),
+    granular_set(G2, [
+        density=4.0,
+        size=200.0,
+        pitch=(-12.0),
+        envelope=0.5,
+        pan=(-0.7)
+    ]),
+    granular_set(G, [pan=0.7]),
+    sleep(6.0),
+
+    format('~nCleaning up...~n'),
+    granular_uninit(G),
+    granular_uninit(G2),
+    audio_unload(Audio),
+    sound_unload(Sound),
+    format('Freeze demo complete.~n~n').

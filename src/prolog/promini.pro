@@ -106,6 +106,8 @@
     granular_get/2,
     granular_set_mode/4,
     granular_connect/2,
+    granular_get_frames_recorded/2,
+    granular_freeze/2,
     granular_attach_effect/4,
     clock_set_bpm/1,
     clock_get_bpm/1,
@@ -143,6 +145,10 @@ sound_load(Path, SoundHandle) :-
     audio_load(Path, DataHandle),
     sound_create(DataHandle, SoundHandle),
     audio_unload(DataHandle).
+
+granular_freeze(Granular, Audio) :-
+    granular_get_frames_recorded(Granular, Frames),
+    audio_extract(Granular, 0, Frames, Audio).
 
 sound_attach_bitcrush(Sound, Bits, SampleRate, Effect) :-
     sound_attach_effect(Sound, bitcrush, [bits=Bits, sample_rate=SampleRate], Effect).

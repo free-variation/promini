@@ -524,6 +524,53 @@ float ring_buffer_read_interpolated(ring_buffer_t *rb, float position, ma_uint32
 	return ((c3 * frac + c2) * frac + c1) * frac + c0;
 }
 
+/*
+ * audio_buffer_read_interpolated()
+ * Read from audio buffer with cubic interpolation.
+ * Position is in frames, channel selects L/R.
+ * Clamps at boundaries (no wraparound).
+ */
+float audio_buffer_read_interpolated(data_slot_t *slot, float position, ma_uint32 channel, ma_uint64 size_in_frames, ma_uint32 channels)
+{
+	ma_int64 i0, i1, i2, i3;
+	float frac;
+	float y0, y1, y2, y3;
+	float c0, c1, c2, c3;
+	float *samples;
+
+	samples = (float *)slot->pData;
+
+	/* Fractional position between samples */
+	frac = position - floorf(position);
+
+	/* Four adjacent sample positions with clamping */
+	i1 = (ma_int64)position;
+	i0 = i1 - 1;
+	i2 = i1 + 1;
+	i3 = i1 + 2;
+
+	/* Clamp to valid range */
+	if (i0 < 0) i0 = 0;
+	if (i1 < 0) i1 = 0;
+	if (i2 >= (ma_int64)size_in_frames) i2 = size_in_frames - 1;
+	if (i3 >= (ma_int64)size_in_frames) i3 = size_in_frames - 1;
+
+	/* Get four adjacent samples */
+	y0 = samples[i0 * channels + channel];
+	y1 = samples[i1 * channels + channel];
+	y2 = samples[i2 * channels + channel];
+	y3 = samples[i3 * channels + channel];
+
+	/* Catmull-Rom spline coefficients */
+	c0 = y1;
+	c1 = 0.5f * (y2 - y0);
+	c2 = y0 - 2.5f * y1 + 2.0f * y2 - 0.5f * y3;
+	c3 = 0.5f * (y3 - y0) + 1.5f * (y1 - y2);
+
+	/* Evaluate cubic polynomial */
+	return ((c3 * frac + c2) * frac + c1) * frac + c0;
+}
+
 
 /******************************************************************************
  * AUDIO BUFFER MANAGEMENT

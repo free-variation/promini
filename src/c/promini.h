@@ -570,14 +570,7 @@ extern pthread_mutex_t g_image_synths_mutex;
 #define MAX_MODE_INTERVAL 24
 
 
-typedef enum {
-	GRAIN_SOURCE_RING_BUFFER,
-	GRAIN_SOURCE_AUDIO_BUFFER
-} grain_source_type_t;
-
 typedef struct {
-	grain_source_type_t source_type;
-	int source_index;
 	ma_uint64 position;
 	ma_uint64 size;
 	float cursor;
@@ -638,6 +631,7 @@ extern void get_engine_format_info(ma_format *format, ma_uint32 *channels, ma_ui
 extern void free_effect_chain(effect_node_t *effect);
 extern data_slot_t *get_data_slot(int index);
 extern ma_bool32 get_source_from_term(term_t source_term, ma_node** source_node, effect_node_t** chain);
+extern float audio_buffer_read_interpolated(data_slot_t *slot, float position, ma_uint32 channel, ma_uint64 size_in_frames, ma_uint32 channels);
 
 /* Typed handle helpers (implemented in promini.c) */
 extern int unify_typed_handle(term_t term, const char *type, int slot);

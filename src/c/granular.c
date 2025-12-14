@@ -46,6 +46,7 @@ int trigger_grain(granular_delay_t *g)
 	ma_uint64 offset;
 	ma_uint64 frames_consumed;
 	ma_uint64 available;
+	ma_uint64 total_frames;
 	int range, degree, octave, index;
 	float semitone;
 
@@ -67,13 +68,9 @@ int trigger_grain(granular_delay_t *g)
 	rand_size = g->size_spray * (2.0f * ((float)rand() / RAND_MAX) - 1.0f);
 	rand_pan = g->pan_spray * (2.0f * ((float)rand() / RAND_MAX) - 1.0f);
 
-	if (g->frames_recorded < sample_rate / 100) {
-		return -1; /* not enough recorded */
-	}
+	/* grains always read from ring buffer */
+	total_frames = g->frames_recorded;
 
-	/* set grain parameters */
-	grain->source_type = GRAIN_SOURCE_RING_BUFFER;
-	grain->source_index = 0;
 	grain->size = (ma_uint64)(fmaxf(g->size_ms + rand_size, 1.0f) * sample_rate / 1000.0f);
 
 	/* calculate pitch first so we know how many frames will be consumed */
@@ -92,8 +89,8 @@ int trigger_grain(granular_delay_t *g)
 	frames_consumed = (ma_uint64)(grain->size * grain->pitch_ratio) + 4;
 
 	/* calculate available buffer space accounting for playhead consumption */
-	if (g->frames_recorded > frames_consumed) {
-		available = g->frames_recorded - frames_consumed;
+	if (total_frames > frames_consumed) {
+		available = total_frames - frames_consumed;
 	} else {
 		available = 0;
 	}
@@ -185,18 +182,12 @@ static ma_bool32 process_grain(granular_delay_t *g, grain_t *grain, float *out_l
 	/* calculate envelope from phase (independent of pitch) */
 	env = compute_envelope(grain->envelope, grain->envelope_phase);
 
-	/* get read position */
-	if (grain->source_type == GRAIN_SOURCE_RING_BUFFER) {
-		read_pos = (float)grain->position + grain->cursor;
-
-		src_left = ring_buffer_read_interpolated(&g->buffer, read_pos, 0);
-		src_right = (g->buffer.channels > 1)
-			? ring_buffer_read_interpolated(&g->buffer, read_pos, 1)
-			: src_left;
-	}  else {
-		/*TODO data buffer source */
-		return MA_FALSE;
-	}
+	/* read from ring buffer */
+	read_pos = (float)grain->position + grain->cursor;
+	src_left = ring_buffer_read_interpolated(&g->buffer, read_pos, 0);
+	src_right = (g->buffer.channels > 1)
+		? ring_buffer_read_interpolated(&g->buffer, read_pos, 1)
+		: src_left;
 
 	/* apply envelope */
 	src_left *= env;
@@ -640,6 +631,21 @@ static foreign_t pl_granular_get(term_t handle_term, term_t params_term)
 }
 
 /*
+ * pl_granular_get_frames_recorded()
+ * Get number of frames recorded in granular buffer.
+ * granular_get_frames_recorded(+Granular, -Frames)
+ */
+static foreign_t pl_granular_get_frames_recorded(term_t handle_term, term_t frames_term)
+{
+	int slot;
+	granular_delay_t *g;
+
+	GET_GRANULAR_FROM_HANDLE(handle_term, g, slot);
+
+	return PL_unify_int64(frames_term, (int64_t)g->frames_recorded);
+}
+
+/*
  * pl_granular_uninit()
  * Unload a granular delay and free resources.
  * granular_uninit(+Granular)
@@ -712,20 +718,41 @@ static foreign_t pl_granular_set_mode(term_t handle_term, term_t mode_term,
  * Connect a source to the granular delay input.
  * granular_connect(+Granular, +Source)
  * Source is sound(N), voice(N), image_synth(N), or capture(N).
+ * If source is a sound, copies its audio data into the ring buffer.
  */
 static foreign_t pl_granular_connect(term_t handle_term, term_t source_term)
 {
 	int slot;
+	int sound_slot;
+	int data_slot;
 	granular_delay_t *g;
 	ma_node *source_node;
 	ma_node *output_node;
 	effect_node_t *chain;
 	ma_result result;
+	data_slot_t *data;
+	ma_uint64 frames_to_copy;
+	float *src;
 
 	GET_GRANULAR_FROM_HANDLE(handle_term, g, slot);
 
 	if (!get_source_from_term(source_term, &source_node, &chain)) {
 		return PL_existence_error("source", source_term);
+	}
+
+	/* if source is a sound, copy its audio data into ring buffer */
+	if (get_typed_handle(source_term, "sound", &sound_slot)) {
+		data_slot = g_sounds[sound_slot].audio_buffer_index;
+		data = get_data_slot(data_slot);
+		if (data != NULL && data->buffer != NULL) {
+			frames_to_copy = data->buffer->ref.sizeInFrames;
+			if (frames_to_copy > g->buffer.capacity_frames) {
+				frames_to_copy = g->buffer.capacity_frames;
+			}
+			src = (float *)data->pData;
+			ring_buffer_write(&g->buffer, src, frames_to_copy);
+			g->frames_recorded = frames_to_copy;
+		}
 	}
 
 	/* find output node: end of effect chain, or source itself */
@@ -749,6 +776,7 @@ install_t granular_register_predicates(void)
 	PL_register_foreign("granular_get", 2, pl_granular_get, 0);
 	PL_register_foreign("granular_set_mode", 4, pl_granular_set_mode, 0);
 	PL_register_foreign("granular_connect", 2, pl_granular_connect, 0);
+	PL_register_foreign("granular_get_frames_recorded", 2, pl_granular_get_frames_recorded, 0);
 }
 
 install_t uninstall_granular(void)

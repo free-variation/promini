@@ -219,4 +219,60 @@ test(granular_set_mode_with_deviation_down, [nondet, cleanup(granular_uninit(G))
 test(granular_set_mode_invalid_handle, [error(existence_error(granular_delay, _))]) :-
     granular_set_mode(granular(999), [0.0, 2.0, 4.0], 0, 2).
 
+% Frames recorded tests
+
+test(granular_get_frames_recorded_zero, [nondet, cleanup(granular_uninit(G))]) :-
+    granular_init(2.0, G),
+    granular_get_frames_recorded(G, Frames),
+    Frames == 0.
+
+test(granular_get_frames_recorded_after_recording, [nondet, cleanup((granular_uninit(G), sound_unload(S)))]) :-
+    granular_init(2.0, G),
+    sound_load('audio/counting.wav', S),
+    granular_connect(G, S),
+    granular_set(G, [recording=true]),
+    sound_start(S),
+    sleep(0.5),
+    sound_stop(S),
+    granular_set(G, [recording=false]),
+    granular_get_frames_recorded(G, Frames),
+    Frames > 0.
+
+test(granular_get_frames_recorded_invalid_handle, [error(existence_error(granular_delay, _))]) :-
+    granular_get_frames_recorded(granular(999), _).
+
+% Sound buffer copy tests
+
+test(granular_connect_sound_copies_buffer, [nondet, cleanup((granular_uninit(G), sound_unload(S)))]) :-
+    granular_init(2.0, G),
+    sound_load('audio/counting.wav', S),
+    granular_connect(G, S),
+    granular_get_frames_recorded(G, Frames),
+    Frames > 0.
+
+test(granular_sound_buffer_playback, [nondet, cleanup((granular_uninit(G), sound_unload(S)))]) :-
+    granular_init(2.0, G),
+    sound_load('audio/counting.wav', S),
+    granular_connect(G, S),
+    granular_set(G, [density=10.0, position=0.5, size=100.0]),
+    granular_trigger(G),
+    sleep(0.5),
+    granular_get(G, Params),
+    memberchk(density=D, Params),
+    abs(D - 10.0) < 0.001.
+
+% Freeze tests
+
+test(granular_freeze, [nondet, cleanup((granular_uninit(G), sound_unload(S), audio_unload(A)))]) :-
+    granular_init(2.0, G),
+    sound_load('audio/counting.wav', S),
+    granular_connect(G, S),
+    granular_set(G, [recording=true]),
+    sound_start(S),
+    sleep(0.5),
+    sound_stop(S),
+    granular_set(G, [recording=false]),
+    granular_freeze(G, A),
+    A = audio(_).
+
 :- end_tests(granular).
