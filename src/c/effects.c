@@ -3451,6 +3451,14 @@ static foreign_t pl_effect_detach(term_t effect_handle)
 				if (comp->delay_buffer) {
 					free(comp->delay_buffer);
 				}
+			} else if (node->type == EFFECT_PING_PONG_DELAY) {
+				ping_pong_delay_node_t *pp = (ping_pong_delay_node_t*)node->effect_node;
+				if (pp->buffer_l != NULL) {
+					free(pp->buffer_l);
+				}
+				if (pp->buffer_r != NULL) {
+					free(pp->buffer_r);
+				}
 			}
 			ma_node_uninit(node->effect_node, NULL);
 			free(node->effect_node);
