@@ -15,8 +15,9 @@ ifeq ($(UNAME_S),Darwin)
     # macOS
     SOEXT := dylib
     SDL3_PREFIX := $(shell brew --prefix sdl3)
-    CFLAGS += -I$(SDL3_PREFIX)/include
-    LDFLAGS := -L$(SDL3_PREFIX)/lib -lSDL3
+    SDL3_TTF_PREFIX := $(shell brew --prefix sdl3_ttf)
+    CFLAGS += -I$(SDL3_PREFIX)/include -I$(SDL3_TTF_PREFIX)/include
+    LDFLAGS := -L$(SDL3_PREFIX)/lib -L$(SDL3_TTF_PREFIX)/lib -lSDL3 -lSDL3_ttf
 else ifeq ($(UNAME_S),Linux)
     # Linux
     SOEXT := so

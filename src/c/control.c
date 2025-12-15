@@ -7,6 +7,7 @@
 #include "promini.h"
 #include <poll.h>
 #include <unistd.h>
+#include <SDL3_ttf/SDL_ttf.h>
 
 /******************************************************************************
  * GLOBAL VARIABLES
@@ -14,6 +15,7 @@
 
 static ma_bool32 g_control_initialized = MA_FALSE;
 static PL_dispatch_hook_t g_old_dispatch_hook = NULL;
+static TTF_Font *g_font = NULL;
 
 keyboard_state_t g_keyboard = {0};
 
@@ -24,6 +26,7 @@ keyboard_state_t g_keyboard = {0};
 /*
  * keyboard_render()
  * Draw the 4x10 key grid plus mod key row.
+ * When a key is pressed, display the semitone value.
  */
 static void keyboard_render(void)
 {
@@ -33,6 +36,14 @@ static void keyboard_render(void)
 	float mod_widths[5];
 	float mod_x;
 	SDL_FRect rect;
+	keyboard_row_t *kr;
+	int degree, octave;
+	float semitones;
+	char text[16];
+	SDL_Surface *surface;
+	SDL_Texture *texture;
+	SDL_FRect text_rect;
+	SDL_Color text_color = {255, 255, 255, 255};
 
 	if (!g_keyboard.active) return;
 
@@ -57,6 +68,31 @@ static void keyboard_render(void)
 			rect.w = cell_w - 4;
 			rect.h = cell_h - 4;
 			SDL_RenderFillRect(g_keyboard.renderer, &rect);
+
+			/* draw semitone value if key is pressed */
+			if (g_keyboard.keys_pressed[row][col] && g_font != NULL) {
+				kr = &g_keyboard.rows[row];
+				if (kr->mode_length > 0) {
+					degree = col % kr->mode_length;
+					octave = col / kr->mode_length;
+					semitones = octave * 12.0f + kr->mode[degree];
+					snprintf(text, sizeof(text), "%.1f", semitones);
+
+					surface = TTF_RenderText_Blended(g_font, text, 0, text_color);
+					if (surface != NULL) {
+						texture = SDL_CreateTextureFromSurface(g_keyboard.renderer, surface);
+						if (texture != NULL) {
+							text_rect.w = (float)surface->w;
+							text_rect.h = (float)surface->h;
+							text_rect.x = rect.x + (rect.w - text_rect.w) / 2;
+							text_rect.y = rect.y + (rect.h - text_rect.h) / 2;
+							SDL_RenderTexture(g_keyboard.renderer, texture, NULL, &text_rect);
+							SDL_DestroyTexture(texture);
+						}
+						SDL_DestroySurface(surface);
+					}
+				}
+			}
 		}
 	}
 
@@ -362,7 +398,19 @@ static foreign_t pl_control_init(void)
         SDL_Delay(10);
     }
 
-    /* 4. Install dispatch hook to pump events while REPL waits */
+    /* 4. Initialize SDL_ttf and load font */
+    if (!TTF_Init()) {
+        SDL_Quit();
+        return FALSE;
+    }
+    g_font = TTF_OpenFont("fonts/Game Of Squids.ttf", 24);
+    if (g_font == NULL) {
+        TTF_Quit();
+        SDL_Quit();
+        return FALSE;
+    }
+
+    /* 5. Install dispatch hook to pump events while REPL waits */
     g_old_dispatch_hook = PL_dispatch_hook(dispatch_sdl_events);
 
 	g_control_initialized = MA_TRUE;
@@ -381,6 +429,12 @@ static foreign_t pl_control_shutdown(void)
 	PL_dispatch_hook(g_old_dispatch_hook);
 	g_old_dispatch_hook = NULL;
 
+	/* Clean up font and TTF */
+	if (g_font != NULL) {
+		TTF_CloseFont(g_font);
+		g_font = NULL;
+	}
+	TTF_Quit();
 	SDL_Quit();
 
 	g_control_initialized = MA_FALSE;
@@ -676,6 +730,11 @@ install_t control_register_predicates(void)
 install_t uninstall_control(void)
 {
 	if (g_control_initialized) {
+		if (g_font != NULL) {
+			TTF_CloseFont(g_font);
+			g_font = NULL;
+		}
+		TTF_Quit();
 		SDL_Quit();
 		g_control_initialized = MA_FALSE;
 	}
