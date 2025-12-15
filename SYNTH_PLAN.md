@@ -30,18 +30,34 @@ Live granular sampler + concatenative synthesis + additive synth + effects + mod
 
 ### Next Steps
 
-1. **Additional modulation targets** - sound pitch, delay params, reverb params, bitcrush
-2. **Additional modulation sources** - noise, sampler (audio buffer as control signal)
-3. **Route depth/center get/set predicates** - with per-sample interpolation
-4. **Route as modulation target** - modulate depth/center from LFO/envelope
-5. **Output device selection** - `promini_init/1` with device name for routing to BlackHole, etc.
-6. **Corpus analyzer** - for concatenative synthesis
+1. **Polyphonic keyboard support** - keyboard rows trigger synth voices, not just granular
+   - Route keyboard rows to synth voices with ADSR envelopes
+   - Voice allocation: round-robin or least-recently-used
+   - Per-row: voice pool, mode/scale, octave offset
+   - Key down triggers attack, key up triggers release
+2. **SDL visualizer** - attach waveform/spectrogram display to any audio source
+   - Passthrough node taps audio, copies to ring buffer
+   - Per-source windows, multiple can run simultaneously
+   - Keyboard controls: mode toggle, zoom, smoothing, log/linear freq, dB/linear amp, pause
+   - See `docs/visualizer-plan.md` for full design
+3. **Additional modulation targets** - sound pitch, delay params, reverb params, bitcrush
+4. **Additional modulation sources** - noise, sampler (audio buffer as control signal)
+5. **Route depth/center get/set predicates** - with per-sample interpolation
+6. **Route as modulation target** - modulate depth/center from LFO/envelope
+7. **Output device selection** - `promini_init/1` with device name for routing to BlackHole, etc.
+8. **Corpus analyzer** - for concatenative synthesis
    - Segmenter: fixed interval or onset detection (envelope follower)
    - Analyzer: RMS (loudness), ZCR (brightness), optional pitch
    - Metadata array parallel to ring buffer
    - Query interface: expose grain features to Prolog
-7. **Ping pong delay feedback filter** - lowpass/highpass on feedback path for tape-style darkening or thinning
-8. **Reverb highpass in tank** - prevent low-frequency buildup, complement existing damping (lowpass)
+9. **Reverb variable room size** - scale all delay times together with single parameter (Oliverb-style)
+10. **Reverb highpass in tank** - prevent low-frequency buildup, complement existing damping (lowpass)
+11. **Reverb extended modulation** - random oscillators (not sine), apply to all diffusers not just decay diffusers
+12. **Reverb freeze mode** - decay=1.0 with stable limiting for infinite sustain
+13. **Reverb early reflections** - multitap delay stage before input diffusers, separate mix control
+14. **Reverb in-loop pitch shift** - option to move shimmer into feedback path (builds up vs post-process)
+15. **Reverb reverse shimmer** - reversed grain playback for smoother pitch shift buildup
+16. **Ping pong delay feedback filter** - lowpass/highpass on feedback path for tape-style darkening or thinning
 
 ### Known Issues
 
