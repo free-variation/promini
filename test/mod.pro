@@ -125,9 +125,9 @@ test(route_voice_pan_effect, [nondet, cleanup((
 ))]) :-
     synth_voice_init(V),
     synth_oscillator_add(V, 440.0, 0.5, _O),
-    voice_attach_effect(V, pan, [pan=0.0], effect(_Source, PanPtr)),
+    voice_attach_effect(V, pan, [pan=0.0], Pan),
     mod_lfo_init(sine, 1.0, L),
-    mod_route_init(L, pan, PanPtr, pan, absolute, 1.0, 0.0, 0.0, R),
+    mod_route_init(L, pan, Pan, pan, absolute, 1.0, 0.0, 0.0, R),
     R = mod_route(_).
 
 test(route_sound_pan_effect, [nondet, cleanup((
@@ -136,9 +136,9 @@ test(route_sound_pan_effect, [nondet, cleanup((
     sound_unload(S)
 ))]) :-
     sound_load('audio/guitar.wav', S),
-    sound_attach_effect(S, pan, [pan=0.0], effect(_Source, PanPtr)),
+    sound_attach_effect(S, pan, [pan=0.0], Pan),
     mod_lfo_init(sine, 1.0, L),
-    mod_route_init(L, pan, PanPtr, pan, absolute, 1.0, 0.0, 0.0, R),
+    mod_route_init(L, pan, Pan, pan, absolute, 1.0, 0.0, 0.0, R),
     R = mod_route(_).
 
 test(pan_effect_set_parameters, [nondet, cleanup(synth_voice_uninit(V))]) :-
@@ -155,9 +155,9 @@ test(route_sound_moog_cutoff, [nondet, cleanup((
     sound_unload(S)
 ))]) :-
     sound_load('audio/guitar.wav', S),
-    sound_attach_effect(S, moog, [cutoff=1000.0], effect(_Source, MoogPtr)),
+    sound_attach_effect(S, moog, [cutoff=1000.0], Moog),
     mod_lfo_init(sine, 1.0, L),
-    mod_route_init(L, moog, MoogPtr, cutoff, absolute, 500.0, 1000.0, 0.0, R),
+    mod_route_init(L, moog, Moog, cutoff, absolute, 500.0, 1000.0, 0.0, R),
     R = mod_route(_).
 
 test(route_voice_moog_cutoff, [nondet, cleanup((
@@ -167,9 +167,9 @@ test(route_voice_moog_cutoff, [nondet, cleanup((
 ))]) :-
     synth_voice_init(V),
     synth_oscillator_add(V, 440.0, 0.5, _O),
-    voice_attach_effect(V, moog, [cutoff=2000.0], effect(_Source, MoogPtr)),
+    voice_attach_effect(V, moog, [cutoff=2000.0], Moog),
     mod_lfo_init(sine, 1.0, L),
-    mod_route_init(L, moog, MoogPtr, cutoff, absolute, 1000.0, 1500.0, 0.0, R),
+    mod_route_init(L, moog, Moog, cutoff, absolute, 1000.0, 1500.0, 0.0, R),
     R = mod_route(_).
 
 % VCA gain routing tests
@@ -180,9 +180,9 @@ test(route_sound_vca_gain, [nondet, cleanup((
     sound_unload(S)
 ))]) :-
     sound_load('audio/guitar.wav', S),
-    sound_attach_effect(S, vca, [gain=1.0], effect(_Source, VcaPtr)),
+    sound_attach_effect(S, vca, [gain=1.0], Vca),
     mod_lfo_init(sine, 4.0, L),
-    mod_route_init(L, vca, VcaPtr, gain, absolute, 0.4, 0.6, 0.0, R),
+    mod_route_init(L, vca, Vca, gain, absolute, 0.4, 0.6, 0.0, R),
     R = mod_route(_).
 
 test(route_voice_vca_gain, [nondet, cleanup((
@@ -192,9 +192,9 @@ test(route_voice_vca_gain, [nondet, cleanup((
 ))]) :-
     synth_voice_init(V),
     synth_oscillator_add(V, 440.0, 0.5, _O),
-    voice_attach_effect(V, vca, [gain=1.0], effect(_Source, VcaPtr)),
+    voice_attach_effect(V, vca, [gain=1.0], Vca),
     mod_lfo_init(sine, 4.0, L),
-    mod_route_init(L, vca, VcaPtr, gain, absolute, 0.5, 0.5, 0.0, R),
+    mod_route_init(L, vca, Vca, gain, absolute, 0.5, 0.5, 0.0, R),
     R = mod_route(_).
 
 test(envelope_route_vca_gain, [nondet, cleanup((
@@ -203,9 +203,9 @@ test(envelope_route_vca_gain, [nondet, cleanup((
     sound_unload(S)
 ))]) :-
     sound_load('audio/guitar.wav', S),
-    sound_attach_effect(S, vca, [gain=0.0], effect(_Source, VcaPtr)),
+    sound_attach_effect(S, vca, [gain=0.0], Vca),
     mod_envelope_init(0.1, 0.2, 0.5, 0.7, 0.2, 100.0, false, E),
-    mod_route_init(E, vca, VcaPtr, gain, absolute, 1.0, 0.0, 0.0, R),
+    mod_route_init(E, vca, Vca, gain, absolute, 1.0, 0.0, 0.0, R),
     R = mod_route(_).
 
 % D-pad gamepad mod source tests
@@ -250,9 +250,9 @@ test(route_sound_ping_pong_delay, [nondet, cleanup((
     sound_load('audio/guitar.wav', S),
     sound_attach_effect(S, ping_pong_delay,
         [max_delay_in_frames=48000, delay_in_frames=12000, feedback=0.5, wet=0.3],
-        effect(_Source, DelayPtr)),
+        Delay),
     mod_lfo_init(sine, 0.5, L),
-    mod_route_init(L, ping_pong_delay, DelayPtr, delay, absolute, 24000.0, 24000.0, 0.0, R),
+    mod_route_init(L, ping_pong_delay, Delay, delay, absolute, 24000.0, 24000.0, 0.0, R),
     R = mod_route(_).
 
 test(route_voice_ping_pong_delay, [nondet, cleanup((
@@ -264,9 +264,9 @@ test(route_voice_ping_pong_delay, [nondet, cleanup((
     synth_oscillator_add(V, 440.0, 0.5, _O),
     voice_attach_effect(V, ping_pong_delay,
         [max_delay_in_frames=48000, delay_in_frames=12000, feedback=0.5, wet=0.3],
-        effect(_Source, DelayPtr)),
+        Delay),
     mod_lfo_init(sine, 0.5, L),
-    mod_route_init(L, ping_pong_delay, DelayPtr, delay, absolute, 24000.0, 24000.0, 0.0, R),
+    mod_route_init(L, ping_pong_delay, Delay, delay, absolute, 24000.0, 24000.0, 0.0, R),
     R = mod_route(_).
 
 test(envelope_route_ping_pong_delay, [nondet, cleanup((
@@ -277,9 +277,53 @@ test(envelope_route_ping_pong_delay, [nondet, cleanup((
     sound_load('audio/guitar.wav', S),
     sound_attach_effect(S, ping_pong_delay,
         [max_delay_in_frames=48000, delay_in_frames=12000, feedback=0.5, wet=0.3],
-        effect(_Source, DelayPtr)),
+        Delay),
     mod_envelope_init(0.1, 0.2, 0.5, 0.7, 0.2, 500.0, false, E),
-    mod_route_init(E, ping_pong_delay, DelayPtr, delay, absolute, 24000.0, 12000.0, 0.0, R),
+    mod_route_init(E, ping_pong_delay, Delay, delay, absolute, 24000.0, 12000.0, 0.0, R),
+    R = mod_route(_).
+
+% Granular routing tests
+
+test(route_granular_density, [nondet, cleanup((
+    mod_route_uninit(R),
+    mod_source_uninit(L),
+    granular_uninit(G)
+))]) :-
+    granular_init(2.0, G),
+    mod_lfo_init(sine, 1.0, L),
+    mod_route_init(L, granular, G, density, absolute, 10.0, 5.0, 0.0, R),
+    R = mod_route(_).
+
+test(route_granular_pitch, [nondet, cleanup((
+    mod_route_uninit(R),
+    mod_source_uninit(L),
+    granular_uninit(G)
+))]) :-
+    granular_init(2.0, G),
+    mod_lfo_init(sine, 0.5, L),
+    mod_route_init(L, granular, G, pitch, absolute, 12.0, 0.0, 0.0, R),
+    R = mod_route(_).
+
+test(keyboard_route_granular_density, [nondet, setup(control_init), cleanup((
+    mod_route_uninit(R),
+    mod_source_uninit(K),
+    granular_uninit(G),
+    control_shutdown
+))]) :-
+    granular_init(2.0, G),
+    mod_keyboard_init(space, [attack=100, release=200], K),
+    mod_route_init(K, granular, G, density, absolute, 15.0, 0.0, 0.0, R),
+    R = mod_route(_).
+
+test(keyboard_route_granular_pitch, [nondet, setup(control_init), cleanup((
+    mod_route_uninit(R),
+    mod_source_uninit(K),
+    granular_uninit(G),
+    control_shutdown
+))]) :-
+    granular_init(2.0, G),
+    mod_keyboard_init(up, [attack=50, release=300], K),
+    mod_route_init(K, granular, G, pitch, absolute, 12.0, 0.0, 0.0, R),
     R = mod_route(_).
 
 :- end_tests(mod).

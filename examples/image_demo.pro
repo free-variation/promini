@@ -314,22 +314,22 @@ demo_image_synth_rgb_stereo :-
     image_synth_create(Img, 2, waveform, SynthB),
 
     format('Attaching pan effects with LFO auto-pan on R and B...~n'),
-    image_synth_attach_effect(SynthR, pan, [pan=(-1.0)], effect(_, PanPtrR)),
+    image_synth_attach_effect(SynthR, pan, [pan=(-1.0)], PanR),
     image_synth_attach_effect(SynthG, pan, [pan=0.0], _),
-    image_synth_attach_effect(SynthB, pan, [pan=1.0], effect(_, PanPtrB)),
+    image_synth_attach_effect(SynthB, pan, [pan=1.0], PanB),
 
     format('Creating LFOs for auto-pan (R: 0.2 Hz, B: 0.15 Hz opposite phase)...~n'),
     mod_lfo_create(sine, 0.2, LfoPanR),
     mod_lfo_create(sine, 0.15, LfoPanB),
-    mod_route_create(LfoPanR, pan, PanPtrR, pan, absolute, 1.0, 0.0, 0.0, RoutePanR),
-    mod_route_create(LfoPanB, pan, PanPtrB, pan, absolute, -1.0, 0.0, 0.0, RoutePanB),
+    mod_route_create(LfoPanR, pan, PanR, pan, absolute, 1.0, 0.0, 0.0, RoutePanR),
+    mod_route_create(LfoPanB, pan, PanB, pan, absolute, -1.0, 0.0, 0.0, RoutePanB),
 
     format('Creating summing node with Moog filter and blackhole reverb...~n'),
     summing_node_create(Bus),
     summing_node_connect(Bus, image_synth(SynthR)),
     summing_node_connect(Bus, image_synth(SynthG)),
     summing_node_connect(Bus, image_synth(SynthB)),
-    summing_node_attach_effect(Bus, moog, [cutoff=2000.0, resonance=1.5], effect(_, MoogPtr)),
+    summing_node_attach_effect(Bus, moog, [cutoff=2000.0, resonance=1.5], Moog),
     summing_node_attach_effect(Bus, reverb, [
         predelay_ms=100.0, decay=0.99, damping=0.1, bandwidth=0.5,
         shimmer1_shift=12.0, shimmer1_mix=0.15,
@@ -339,7 +339,7 @@ demo_image_synth_rgb_stereo :-
 
     format('Creating LFO for filter cutoff modulation (0.1 Hz)...~n'),
     mod_lfo_create(sine, 0.1, LfoMoog),
-    mod_route_create(LfoMoog, moog, MoogPtr, cutoff, absolute, 1500.0, 2000.0, 0.0, RouteMoog),
+    mod_route_create(LfoMoog, moog, Moog, cutoff, absolute, 1500.0, 2000.0, 0.0, RouteMoog),
 
     format('Setting frequencies: R=220Hz, G=277Hz, B=330Hz (A minor triad)~n'),
     image_synth_set_parameters(SynthR, [frequency=220.0, amplitude=0.8]),
@@ -406,22 +406,22 @@ demo_image_synth_rgb_additive :-
     image_synth_create(Img, 2, additive, SynthB),
 
     format('Attaching pan effects with LFO auto-pan on R and B...~n'),
-    image_synth_attach_effect(SynthR, pan, [pan=(-1.0)], effect(_, PanPtrR)),
+    image_synth_attach_effect(SynthR, pan, [pan=(-1.0)], PanR),
     image_synth_attach_effect(SynthG, pan, [pan=0.0], _),
-    image_synth_attach_effect(SynthB, pan, [pan=1.0], effect(_, PanPtrB)),
+    image_synth_attach_effect(SynthB, pan, [pan=1.0], PanB),
 
     format('Creating LFOs for auto-pan (R: 0.2 Hz, B: 0.15 Hz opposite phase)...~n'),
     mod_lfo_create(sine, 0.2, LfoPanR),
     mod_lfo_create(sine, 0.15, LfoPanB),
-    mod_route_create(LfoPanR, pan, PanPtrR, pan, absolute, 1.0, 0.0, 0.0, RoutePanR),
-    mod_route_create(LfoPanB, pan, PanPtrB, pan, absolute, -1.0, 0.0, 0.0, RoutePanB),
+    mod_route_create(LfoPanR, pan, PanR, pan, absolute, 1.0, 0.0, 0.0, RoutePanR),
+    mod_route_create(LfoPanB, pan, PanB, pan, absolute, -1.0, 0.0, 0.0, RoutePanB),
 
     format('Creating summing node with Moog filter and reverb...~n'),
     summing_node_create(Bus),
     summing_node_connect(Bus, image_synth(SynthR)),
     summing_node_connect(Bus, image_synth(SynthG)),
     summing_node_connect(Bus, image_synth(SynthB)),
-    summing_node_attach_effect(Bus, moog, [cutoff=2000.0, resonance=1.5], effect(_, MoogPtr)),
+    summing_node_attach_effect(Bus, moog, [cutoff=2000.0, resonance=1.5], Moog),
     summing_node_attach_effect(Bus, reverb, [
         predelay_ms=100.0, decay=0.99, damping=0.1, bandwidth=0.5,
         shimmer1_shift=12.0, shimmer1_mix=0.4,
@@ -431,7 +431,7 @@ demo_image_synth_rgb_additive :-
 
     format('Creating LFO for filter cutoff modulation (0.1 Hz)...~n'),
     mod_lfo_create(sine, 0.1, LfoMoog),
-    mod_route_create(LfoMoog, moog, MoogPtr, cutoff, absolute, 1500.0, 2000.0, 0.0, RouteMoog),
+    mod_route_create(LfoMoog, moog, Moog, cutoff, absolute, 1500.0, 2000.0, 0.0, RouteMoog),
 
     format('Setting up separated harmonic frequencies (odd/even/thirds)...~n'),
     Fundamental = 110.0,

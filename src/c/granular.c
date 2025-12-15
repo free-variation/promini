@@ -29,11 +29,11 @@ pthread_mutex_t g_granular_mutex = PTHREAD_MUTEX_INITIALIZER;
  *****************************************************************************/
 
 /*
- * trigger_grain()
- * Find a free grain slot and start a new grain with current parameters.
+ * setup_grain()
+ * Common grain initialization with specified pitch ratio.
  * Returns slot index, or -1 if no free slots.
  */
-int trigger_grain(granular_delay_t *g)
+static int setup_grain(granular_delay_t *g, float pitch_ratio)
 {
 	int i;
 	grain_t *grain;
@@ -47,8 +47,6 @@ int trigger_grain(granular_delay_t *g)
 	ma_uint64 frames_consumed;
 	ma_uint64 available;
 	ma_uint64 total_frames;
-	int range, degree, octave, index;
-	float semitone;
 
 	/* find a free slot */
 	for (i = 0; i < MAX_GRAINS; i++) {
@@ -72,18 +70,7 @@ int trigger_grain(granular_delay_t *g)
 	total_frames = g->frames_recorded;
 
 	grain->size = (ma_uint64)(fmaxf(g->size_ms + rand_size, 1.0f) * sample_rate / 1000.0f);
-
-	/* calculate pitch first so we know how many frames will be consumed */
-	if (g->mode_length > 0) {
-		range = g->deviation_up + g->deviation_down + 1;
-		degree = (rand() % range) - g->deviation_down;
-		octave = (degree >= 0) ? degree / g->mode_length : -1 + (degree + 1) / g->mode_length;
-		index = degree - octave * g->mode_length;
-		semitone = g->pitch + octave * 12.0f + g->mode[index];
-		grain->pitch_ratio = SEMITONES_TO_RATIO(semitone);
-	} else {
-		grain->pitch_ratio = SEMITONES_TO_RATIO(g->pitch);
-	}
+	grain->pitch_ratio = pitch_ratio;
 
 	/* calculate how many frames the grain will read through */
 	frames_consumed = (ma_uint64)(grain->size * grain->pitch_ratio) + 4;
@@ -117,6 +104,43 @@ int trigger_grain(granular_delay_t *g)
 	}
 
 	return i;
+}
+
+/*
+ * trigger_grain()
+ * Find a free grain slot and start a new grain with current parameters.
+ * Uses granulator's mode/deviation to calculate pitch.
+ * Returns slot index, or -1 if no free slots.
+ */
+int trigger_grain(granular_delay_t *g)
+{
+	float pitch_ratio;
+	int range, degree, octave, index;
+	float semitone;
+
+	if (g->mode_length > 0) {
+		range = g->deviation_up + g->deviation_down + 1;
+		degree = (rand() % range) - g->deviation_down;
+		octave = (degree >= 0) ? degree / g->mode_length : -1 + (degree + 1) / g->mode_length;
+		index = degree - octave * g->mode_length;
+		semitone = g->pitch + octave * 12.0f + g->mode[index];
+		pitch_ratio = SEMITONES_TO_RATIO(semitone);
+	} else {
+		pitch_ratio = SEMITONES_TO_RATIO(g->pitch);
+	}
+
+	return setup_grain(g, pitch_ratio);
+}
+
+/*
+ * trigger_grain_pitched()
+ * Trigger a grain with a specific pitch in semitones.
+ * Bypasses the granulator's mode/deviation.
+ * Returns slot index, or -1 if no free slots.
+ */
+int trigger_grain_pitched(granular_delay_t *g, float semitones)
+{
+	return setup_grain(g, SEMITONES_TO_RATIO(semitones));
 }
 
 /* compute_envelope()

@@ -15,6 +15,8 @@
  * demo_granular_mode          - Pitch quantization to musical scales
  * demo_granular_sound         - Granulate from sound (copies to ring buffer)
  * demo_granular_freeze_buffer - Freeze ring buffer to audio buffer
+ * demo_granular_voice         - Granulate from synth voice (live recording)
+ * demo_granular_mixed         - Two granulars: one from sound, one from voice
  */
 
 demo_granular_file :-
@@ -978,3 +980,191 @@ demo_granular_freeze_buffer :-
     audio_unload(Audio),
     sound_unload(Sound),
     format('Freeze demo complete.~n~n').
+
+
+/*
+ * demo_granular_voice
+ * Granulate from a synth voice (live recording from oscillators).
+ */
+demo_granular_voice :-
+    format('~n=== Granular Voice Demo ===~n~n'),
+
+    format('Creating synth voice with detuned oscillators...~n'),
+    synth_voice_init(V),
+    synth_oscillator_add(V, 220.0, 0.4, _),
+    synth_oscillator_add(V, 223.0, 0.4, _),
+    synth_oscillator_add(V, 330.0, 0.2, _),
+
+    format('Creating granular and connecting to voice...~n'),
+    granular_init(4.0, G),
+    granular_connect(G, V),
+    granular_set(G, [recording=true, normalize=true, density=0.0]),
+
+    granular_attach_effect(G, reverb, [
+        wet=0.3,
+        decay=0.75,
+        damping=0.4,
+        shimmer=0.2,
+        shimmer_pitch=12.0
+    ], _),
+
+    format('Starting voice and recording...~n'),
+    synth_voice_start(V),
+    sleep(3.0),
+
+    format('~n--- Granulating live voice ---~n'),
+    granular_set(G, [
+        density=8.0,
+        size=150.0,
+        envelope=0.5,
+        position=0.3,
+        position_spray=0.2,
+        pan_spray=0.7
+    ]),
+    sleep(6.0),
+
+    format('~n--- Stopping voice, granulating buffer ---~n'),
+    synth_voice_stop(V),
+    granular_set(G, [recording=false]),
+    sleep(4.0),
+
+    format('~n--- Pitch shifted textures ---~n'),
+    granular_set_mode(G, [0.0, 7.0, 12.0], 0, 12),
+    granular_set(G, [density=12.0, size=80.0]),
+    sleep(6.0),
+
+    format('~n--- Sub-bass drone ---~n'),
+    granular_set_mode(G, [], 0, 0),
+    granular_set(G, [
+        density=4.0,
+        size=400.0,
+        pitch=(-24.0),
+        pan_spray=0.3
+    ]),
+    sleep(6.0),
+
+    format('~nCleaning up...~n'),
+    granular_uninit(G),
+    synth_voice_uninit(V),
+    format('Voice demo complete.~n~n').
+
+
+/*
+ * demo_granular_mixed
+ * Two granulars: one from a sound file, one from a synth voice.
+ * Demonstrates mixing different source types.
+ */
+demo_granular_mixed :-
+    format('~n=== Granular Mixed Sources Demo ===~n~n'),
+
+    % Sound source: counting
+    format('Loading counting.wav...~n'),
+    sound_load('audio/counting.wav', Counting),
+
+    % Voice source: rich pad
+    format('Creating synth voice (rich pad)...~n'),
+    synth_voice_init(V),
+    synth_oscillator_add(V, 110.0, 0.3, _),
+    synth_oscillator_add(V, 220.0, 0.25, _),
+    synth_oscillator_add(V, 221.5, 0.25, _),
+    synth_oscillator_add(V, 330.0, 0.15, _),
+
+    % Granular from sound
+    format('Creating granular from sound...~n'),
+    granular_init(4.0, G1),
+    granular_connect(G1, Counting),
+    granular_set(G1, [
+        density=0.0,
+        size=180.0,
+        envelope=0.5,
+        pan=(-0.5),
+        position=0.4,
+        position_spray=0.2
+    ]),
+    granular_set_mode(G1, [0.0, 7.0, 12.0], 0, 7),
+
+    % Granular from voice
+    format('Creating granular from voice...~n'),
+    granular_init(4.0, G2),
+    granular_connect(G2, V),
+    granular_set(G2, [
+        recording=true,
+        normalize=true,
+        density=0.0,
+        size=120.0,
+        envelope=0.6,
+        pan=0.5,
+        position=0.3,
+        position_spray=0.3
+    ]),
+    granular_set_mode(G2, [0.0, 7.0, 12.0], 0, 7),
+    granular_attach_effect(G2, vca, [gain=0.4], _),
+
+    % Noise percussion voice
+    format('Creating noise percussion...~n'),
+    synth_voice_init(Perc),
+    synth_noise_add(Perc, white, _),
+    voice_attach_effect(Perc, vca, [gain=0.0], PercVCA),
+    mod_envelope_init(0.02, 0.3, 0.0, 0.0, 0.68, 80.0, false, PercEnv),
+    mod_route_init(PercEnv, vca, PercVCA, gain, absolute, 0.5, 0.0, 0.0, _),
+    synth_voice_start(Perc),
+
+    % Summing with shared reverb
+    summing_node_init(Sum),
+    summing_node_connect(Sum, G1),
+    summing_node_connect(Sum, G2),
+    summing_node_connect(Sum, Perc),
+    summing_node_attach_effect(Sum, reverb, [
+        wet=0.35,
+        decay=0.8,
+        damping=0.3,
+        shimmer=0.15,
+        shimmer_pitch=12.0
+    ], _),
+    summing_node_attach_effect(Sum, compressor, [
+        threshold=0.5,
+        ratio=4.0,
+        attack=10.0,
+        release=100.0
+    ], _),
+
+    format('~nStarting voice to fill buffer...~n'),
+    synth_voice_start(V),
+    sleep(3.0),
+
+    format('~n--- Both granulars playing with percussion ---~n'),
+    clock_set_bpm(72.0),
+    clock_route_init(granular, G1, pulse, 8, R1),
+    clock_route_init(granular, G2, pulse, 12, R2),
+    clock_route_init(envelope, PercEnv, pulse, 12, R3),
+    clock_start,
+    sleep(8.0),
+
+    format('~n--- Stopping voice, granulating frozen buffer ---~n'),
+    synth_voice_stop(V),
+    granular_set(G2, [recording=false]),
+    sleep(6.0),
+
+    format('~n--- Faster tempo ---~n'),
+    clock_set_bpm(100.0),
+    granular_set(G1, [size=100.0]),
+    granular_set(G2, [size=60.0]),
+    sleep(6.0),
+
+    format('~n--- Pitch variations ---~n'),
+    granular_set(G1, [pitch=(-12.0)]),
+    granular_set(G2, [pitch=12.0]),
+    sleep(6.0),
+
+    format('~nCleaning up...~n'),
+    clock_stop,
+    clock_route_uninit(R1),
+    clock_route_uninit(R2),
+    clock_route_uninit(R3),
+    summing_node_uninit(Sum),
+    granular_uninit(G1),
+    granular_uninit(G2),
+    synth_voice_uninit(V),
+    synth_voice_uninit(Perc),
+    sound_unload(Counting),
+    format('Mixed sources demo complete.~n~n').

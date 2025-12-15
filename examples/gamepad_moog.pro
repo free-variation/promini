@@ -19,12 +19,12 @@ demo :-
     % Load a sound and attach effects
     sound_load('audio/guitar.wav', Sound),
     sound_loop(Sound),
-    sound_attach_effect(Sound, moog, [cutoff=500.0, resonance=1.0], effect(_, MoogPtr)),
-    sound_attach_effect(Sound, pan, [pan=0.0], effect(_, PanPtr)),
-    sound_attach_effect(Sound, vca, [gain=0.5], effect(_, VcaPtr)),
+    sound_attach_effect(Sound, moog, [cutoff=500.0, resonance=1.0], Moog),
+    sound_attach_effect(Sound, pan, [pan=0.0], Pan),
+    sound_attach_effect(Sound, vca, [gain=0.5], Vca),
     sound_attach_effect(Sound, ping_pong_delay,
         [max_delay_in_frames=48000, delay_in_frames=12000, feedback=0.5, wet=0.3],
-        effect(_, DelayPtr)),
+        Delay),
 
     % Left stick mod sources
     mod_gamepad_create(Gamepad, left_x, LeftXSource),
@@ -39,18 +39,18 @@ demo :-
     mod_gamepad_create(Gamepad, right_trigger, RTSource),
 
     % Left stick -> moog (rate mode)
-    mod_route_create(LeftXSource, moog, MoogPtr, cutoff, rate, 500.0, 0.0, 0.0, _),
-    mod_route_create(LeftYSource, moog, MoogPtr, resonance, rate, -0.5, 0.0, 0.0, _),
+    mod_route_create(LeftXSource, moog, Moog, cutoff, rate, 500.0, 0.0, 0.0, _),
+    mod_route_create(LeftYSource, moog, Moog, resonance, rate, -0.5, 0.0, 0.0, _),
 
     % D-pad -> pan and VCA (rate mode, discrete steps)
-    mod_route_create(DpadXSource, pan, PanPtr, pan, rate, 0.5, 0.0, 0.0, _),
-    mod_route_create(DpadYSource, vca, VcaPtr, gain, rate, -0.5, 0.0, 0.0, _),
+    mod_route_create(DpadXSource, pan, Pan, pan, rate, 0.5, 0.0, 0.0, _),
+    mod_route_create(DpadYSource, vca, Vca, gain, rate, -0.5, 0.0, 0.0, _),
 
     % Left trigger -> filter opener (rate: adds to cutoff when pressed)
-    mod_route_create(LTSource, moog, MoogPtr, cutoff, rate, 500.0, 0.0, 0.0, _),
+    mod_route_create(LTSource, moog, Moog, cutoff, rate, 500.0, 0.0, 0.0, _),
 
     % Right trigger -> delay time increase (absolute: 0=12000, 1=36000 frames)
-    mod_route_create(RTSource, ping_pong_delay, DelayPtr, delay, absolute, 24000.0, 12000.0, 0.0, _),
+    mod_route_create(RTSource, ping_pong_delay, Delay, delay, absolute, 24000.0, 12000.0, 0.0, _),
 
     % Start playing
     format('Left stick: filter cutoff/resonance (rate)~n'),

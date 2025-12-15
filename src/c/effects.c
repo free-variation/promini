@@ -48,18 +48,19 @@ ma_node *get_effect_chain_tail(effect_node_t *chain)
 /*
  * get_effect_pointer()
  * Extracts pointer from effect(Source, Pointer) term.
- * Returns pointer on success, NULL if term is not valid effect handle.
+ * Source is the node the effect is attached to (e.g., sound(N), voice(N)).
+ * Returns pointer on success, NULL on failure.
  */
 void *get_effect_pointer(term_t term)
 {
-	term_t arg = PL_new_term_ref();
+	term_t ptr_arg = PL_new_term_ref();
 	functor_t f;
 	void *p;
 
 	if (!PL_get_functor(term, &f)) return NULL;
 	if (f != PL_new_functor(PL_new_atom("effect"), 2)) return NULL;
-	if (!PL_get_arg(2, term, arg)) return NULL;
-	if (!PL_get_pointer(arg, &p)) return NULL;
+	if (!PL_get_arg(2, term, ptr_arg)) return NULL;
+	if (!PL_get_pointer(ptr_arg, &p)) return NULL;
 	return p;
 }
 

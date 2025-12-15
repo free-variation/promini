@@ -6,6 +6,9 @@
 
 #include "promini.h"
 
+#define APPLY_MOD_VALUE(current, value, route) \
+	((route)->rate_mode ? (current) + (value) : (value))
+
 /******************************************************************************
  * GLOBAL VARIABLES
  *****************************************************************************/
@@ -13,6 +16,25 @@
 mod_source_t g_mod_sources[MAX_MOD_SOURCES] = {{0}};
 mod_route_t g_mod_routes[MAX_MOD_ROUTES] = {{0}};
 pthread_mutex_t g_mod_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+static struct {
+	const char *name;
+	SDL_Scancode scancode;
+} key_map[] = {
+	{"space", SDL_SCANCODE_SPACE},
+	{"left_control", SDL_SCANCODE_LCTRL},
+	{"right_control", SDL_SCANCODE_RCTRL},
+	{"left_shift", SDL_SCANCODE_LSHIFT},
+	{"right_shift", SDL_SCANCODE_RSHIFT},
+	{"up", SDL_SCANCODE_UP},
+	{"down", SDL_SCANCODE_DOWN},
+	{"left", SDL_SCANCODE_LEFT},
+	{"right", SDL_SCANCODE_RIGHT},
+	{"tab", SDL_SCANCODE_TAB},
+	{"return", SDL_SCANCODE_RETURN},
+	{"backspace", SDL_SCANCODE_BACKSPACE},
+	{NULL, 0}
+};
 
 
 /******************************************************************************
@@ -88,6 +110,30 @@ install_t uninstall_mod(void)
 }
 
 /******************************************************************************
+ * HELPER FUNCTIONS
+ *****************************************************************************/
+
+/*
+ * get_scancode_from_atom()
+ * Convert key atom to SDL_Scancode
+ * Returns 1 on soccess, 0 on failure.
+ */
+static int get_scancode_from_atom(atom_t atom, SDL_Scancode *scancode)
+{
+	const char *name;
+	int i;
+
+	name = PL_atom_chars(atom);
+	for (i = 0; key_map[i].name != NULL; i++) {
+		if (strcmp(name, key_map[i].name) == 0) {
+			*scancode = key_map[i].scancode;
+			return 1;
+		}
+	}
+	return 0;
+}
+
+/******************************************************************************
  * MODULATION READING
  *****************************************************************************/
 
@@ -107,6 +153,9 @@ static float read_source_value(mod_source_t *src, ma_uint32 frame_count, ma_uint
 	ma_uint64 buf_frames;
 	ma_uint32 channels, pos, i;
 	float stage_frames, increment;
+	const bool *keys;
+	ma_bool32 pressed;
+	float target, rate;
 
 	switch(src->type) {
 		case MOD_SOURCE_WAVEFORM:
@@ -210,6 +259,33 @@ static float read_source_value(mod_source_t *src, ma_uint32 frame_count, ma_uint
 				}
 			}
 			break;
+		
+		case MOD_SOURCE_KEYBOARD:
+			keys = SDL_GetKeyboardState(NULL);
+			pressed = keys[src->source.keyboard.scancode];
+			target = pressed ? 1.0f : 0.0f;
+
+			if (src->source.keyboard.invert) {
+				target = 1.0f - target;
+			}
+
+			if (src->source.keyboard.value < target) {
+				/* attack */
+				rate = (src->source.keyboard.attack_ms > 0)
+					? (1000.0f / src->source.keyboard.attack_ms) * frame_count / sample_rate
+					: 1.0f;
+				src->source.keyboard.value = CLAMP(src->source.keyboard.value + rate, 0.0f, target);
+			} else if (src->source.keyboard.value > target) {
+				/* release */
+				rate = (src->source.keyboard.release_ms > 0)
+					? (1000.0f / src->source.keyboard.release_ms) * frame_count / sample_rate
+					: 1.0f;
+				src->source.keyboard.value = CLAMP(src->source.keyboard.value - rate, 0.0f, target);
+			}
+
+			value = src->source.keyboard.value;
+			break;
+
 		default:
 			break;
 	}
@@ -303,19 +379,12 @@ void process_modulation(ma_uint32 frame_count, ma_uint32 sample_rate)
  */
 static void set_oscillator_frequency(void *target, float value, ma_uint32 frame_count, mod_route_t *route)
 {
-	synth_oscillator_t *osc = (synth_oscillator_t*)target;
+	synth_oscillator_t *osc = (synth_oscillator_t *)target;
 	float freq;
 	(void)frame_count;
 
-	if (route->rate_mode) {
-		freq = osc->source.waveform.config.frequency + value;
-	} else {
-		freq = value;
-	}
-
-	if (freq < 20.0f) freq = 20.0f;
-	if (freq > 20000.0f) freq = 20000.0f;
-
+	freq = APPLY_MOD_VALUE(osc->source.waveform.config.frequency, value, route);
+	freq = CLAMP(freq, 20.0f, 20000.0f);
 	ma_waveform_set_frequency(&osc->source.waveform, freq);
 }
 
@@ -326,18 +395,11 @@ static void set_oscillator_frequency(void *target, float value, ma_uint32 frame_
  */
 static void set_oscillator_volume(void *target, float value, ma_uint32 frame_count, mod_route_t *route)
 {
-	synth_oscillator_t *osc = (synth_oscillator_t*)target;
+	synth_oscillator_t *osc = (synth_oscillator_t *)target;
 	float vol;
 
-	if (route->rate_mode) {
-		vol = ma_sound_get_volume(&osc->sound) + value;
-	} else {
-		vol = value;
-	}
-
-	if (vol < 0.0f) vol = 0.0f;
-	if (vol > 1.0f) vol = 1.0f;
-
+	vol = APPLY_MOD_VALUE(ma_sound_get_volume(&osc->sound), value, route);
+	vol = CLAMP(vol, 0.0f, 1.0f);
 	ma_sound_set_fade_in_pcm_frames(&osc->sound, -1, vol, frame_count);
 }
 
@@ -348,19 +410,12 @@ static void set_oscillator_volume(void *target, float value, ma_uint32 frame_cou
  */
 static void set_effect_pan(void *target, float value, ma_uint32 frame_count, mod_route_t *route)
 {
-	pan_node_t *node = (pan_node_t*)target;
+	pan_node_t *node = (pan_node_t *)target;
 	float pan;
 	(void)frame_count;
 
-	if (route->rate_mode) {
-		pan = node->target_pan + value;
-	} else {
-		pan = value;
-	}
-
-	if (pan < -1.0f) pan = -1.0f;
-	if (pan > 1.0f) pan = 1.0f;
-
+	pan = APPLY_MOD_VALUE(node->target_pan, value, route);
+	pan = CLAMP(pan, -1.0f, 1.0f);
 	node->target_pan = pan;
 }
 
@@ -371,19 +426,12 @@ static void set_effect_pan(void *target, float value, ma_uint32 frame_count, mod
  */
 static void set_moog_cutoff(void *target, float value, ma_uint32 frame_count, mod_route_t *route)
 {
-	moog_node_t *moog = (moog_node_t*)target;
+	moog_node_t *moog = (moog_node_t *)target;
 	float cutoff;
 	(void)frame_count;
 
-	if (route->rate_mode) {
-		cutoff = moog->target_cutoff + value;
-	} else {
-		cutoff = value;
-	}
-
-	if (cutoff < 20.0f) cutoff = 20.0f;
-	if (cutoff > 20000.0f) cutoff = 20000.0f;
-
+	cutoff = APPLY_MOD_VALUE(moog->target_cutoff, value, route);
+	cutoff = CLAMP(cutoff, 20.0f, 20000.0f);
 	moog->target_cutoff = cutoff;
 }
 
@@ -394,19 +442,12 @@ static void set_moog_cutoff(void *target, float value, ma_uint32 frame_count, mo
  */
 static void set_moog_resonance(void *target, float value, ma_uint32 frame_count, mod_route_t *route)
 {
-	moog_node_t *moog = (moog_node_t*)target;
+	moog_node_t *moog = (moog_node_t *)target;
 	float res;
 	(void)frame_count;
 
-	if (route->rate_mode) {
-		res = moog->target_resonance + value;
-	} else {
-		res = value;
-	}
-
-	if (res < 0.0f) res = 0.0f;
-	if (res > 4.0f) res = 4.0f;
-
+	res = APPLY_MOD_VALUE(moog->target_resonance, value, route);
+	res = CLAMP(res, 0.0f, 4.0f);
 	moog->target_resonance = res;
 }
 
@@ -417,19 +458,12 @@ static void set_moog_resonance(void *target, float value, ma_uint32 frame_count,
  */
 static void set_vca_gain(void *target, float value, ma_uint32 frame_count, mod_route_t *route)
 {
-	vca_node_t *vca = (vca_node_t*)target;
+	vca_node_t *vca = (vca_node_t *)target;
 	float gain;
 	(void)frame_count;
 
-	if (route->rate_mode) {
-		gain = vca->target_gain + value;
-	} else {
-		gain = value;
-	}
-
-	if (gain < 0.0f) gain = 0.0f;
-	if (gain > 1.0f) gain = 1.0f;
-
+	gain = APPLY_MOD_VALUE(vca->target_gain, value, route);
+	gain = CLAMP(gain, 0.0f, 1.0f);
 	vca->target_gain = gain;
 }
 
@@ -440,20 +474,40 @@ static void set_vca_gain(void *target, float value, ma_uint32 frame_count, mod_r
  */
 static void set_ping_pong_delay(void *target, float value, ma_uint32 frame_count, mod_route_t *route)
 {
-	ping_pong_delay_node_t *pp = (ping_pong_delay_node_t*)target;
+	ping_pong_delay_node_t *pp = (ping_pong_delay_node_t *)target;
 	float delay;
 	(void)frame_count;
 
-	if (route->rate_mode) {
-		delay = (float)pp->target_delay_in_frames + value;
-	} else {
-		delay = value;
-	}
-
-	if (delay < 1.0f) delay = 1.0f;
-	if (delay > (float)pp->buffer_size) delay = (float)pp->buffer_size;
-
+	delay = APPLY_MOD_VALUE((float)pp->target_delay_in_frames, value, route);
+	delay = CLAMP(delay, 1.0f, (float)pp->buffer_size);
 	pp->target_delay_in_frames = (ma_uint32)delay;
+}
+
+/*
+ * set_granular_density()
+ * Setter for granular density. Target is granular_delay_t*.
+ */
+static void set_granular_density(void *target, float value, ma_uint32 frame_count, mod_route_t *route)
+{
+	granular_delay_t *g = (granular_delay_t *)target;
+	float density;
+	(void)frame_count;
+
+	density = APPLY_MOD_VALUE(g->density, value, route);
+	if (density < 0.0f) density = 0.0f;
+	g->density = density;
+}
+
+/*
+ * set_granular_pitch()
+ * Setter for granular pitch. Target is granular_delay_t*.
+ */
+static void set_granular_pitch(void *target, float value, ma_uint32 frame_count, mod_route_t *route)
+{
+	granular_delay_t *g = (granular_delay_t *)target;
+	(void)frame_count;
+
+	g->pitch = APPLY_MOD_VALUE(g->pitch, value, route);
 }
 
 /******************************************************************************
@@ -573,22 +627,20 @@ static foreign_t pl_mod_route_init(
 			return PL_domain_error("oscillator_param", param_term);
 		}
 	} else if (strcmp(target_type, "pan") == 0) {
-		void *ptr;
-		if (!PL_get_pointer(target_term, &ptr)) {
-			return PL_type_error("pointer", target_term);
+		target = get_effect_pointer(target_term);
+		if (target == NULL) {
+			return PL_type_error("effect", target_term);
 		}
-		target = ptr;
 		if (strcmp(param, "pan") == 0) {
 			setter = set_effect_pan;
 		} else {
 			return PL_domain_error("pan_param", param_term);
 		}
 	} else if (strcmp(target_type, "moog") == 0) {
-		void *ptr;
-		if (!PL_get_pointer(target_term, &ptr)) {
-			return PL_type_error("pointer", target_term);
+		target = get_effect_pointer(target_term);
+		if (target == NULL) {
+			return PL_type_error("effect", target_term);
 		}
-		target = ptr;
 		if (strcmp(param, "cutoff") == 0) {
 			setter = set_moog_cutoff;
 		} else if (strcmp(param, "resonance") == 0) {
@@ -597,26 +649,39 @@ static foreign_t pl_mod_route_init(
 			return PL_domain_error("moog_param", param_term);
 		}
 	} else if (strcmp(target_type, "vca") == 0) {
-		void *ptr;
-		if (!PL_get_pointer(target_term, &ptr)) {
-			return PL_type_error("pointer", target_term);
+		target = get_effect_pointer(target_term);
+		if (target == NULL) {
+			return PL_type_error("effect", target_term);
 		}
-		target = ptr;
 		if (strcmp(param, "gain") == 0) {
 			setter = set_vca_gain;
 		} else {
 			return PL_domain_error("vca_param", param_term);
 		}
 	} else if (strcmp(target_type, "ping_pong_delay") == 0) {
-		void *ptr;
-		if (!PL_get_pointer(target_term, &ptr)) {
-			return PL_type_error("pointer", target_term);
+		target = get_effect_pointer(target_term);
+		if (target == NULL) {
+			return PL_type_error("effect", target_term);
 		}
-		target = ptr;
 		if (strcmp(param, "delay") == 0) {
 			setter = set_ping_pong_delay;
 		} else {
 			return PL_domain_error("ping_pong_delay_param", param_term);
+		}
+	} else if (strcmp(target_type, "granular") == 0) {
+		if (!get_typed_handle(target_term, "granular", &target_handle)) {
+			return PL_type_error("granular", target_term);
+		}
+		if (target_handle < 0 || target_handle >= MAX_GRANULAR_DELAYS || !g_granular_delays[target_handle].in_use) {
+			return PL_existence_error("granular", target_term);
+		}
+		target = &g_granular_delays[target_handle];
+		if (strcmp(param, "density") == 0) {
+			setter = set_granular_density;
+		} else if (strcmp(param, "pitch") == 0) {
+			setter = set_granular_pitch;
+		} else {
+			return PL_domain_error("granular_param", param_term);
 		}
 	} else {
 		return PL_domain_error("target_type", type_term);
@@ -953,6 +1018,60 @@ static foreign_t pl_mod_gamepad_init(term_t gamepad_term, term_t axis_term, term
 }
 
 /******************************************************************************
+ * KEYBOARD*CONTRL 
+ *****************************************************************************/
+
+/*
+ * pl_mod_keyboard_init()
+ * mod_keyboard_init(+Key, +Options, -Source)
+ * Creates a keyboard modulation source.
+ * Key is atom: space, up, down, left, right, etc.
+ * Options: attack=Ms, release=Ms, invert=Bool
+ */
+
+static foreign_t pl_mod_keyboard_init(term_t key_term, term_t opts_term, term_t handle_term)
+{
+	atom_t key_atom;
+	SDL_Scancode scancode;
+	int slot;
+	mod_source_t *src;
+	float attack_ms = 100.0f;
+	float release_ms = 100.0f;
+	ma_bool32 invert = MA_FALSE;
+
+	if (!PL_get_atom(key_term, &key_atom)) return FALSE;
+	if (!get_scancode_from_atom(key_atom, &scancode)) {
+		return PL_domain_error("key_name", key_term);
+	}
+
+	get_param_float(opts_term, "attack", &attack_ms);
+	get_param_float(opts_term, "release", &release_ms);
+	get_param_bool(opts_term, "invert", &invert);
+
+	pthread_mutex_lock(&g_mod_mutex);
+	slot = allocate_source_slot();
+	if (slot < 0) {
+		pthread_mutex_unlock(&g_mod_mutex);
+		return PL_resource_error("mod_source_slots");
+	}
+
+	src = &g_mod_sources[slot];
+	src->type = MOD_SOURCE_KEYBOARD;
+	src->source.keyboard.scancode = scancode;
+	src->source.keyboard.attack_ms = attack_ms;
+	src->source.keyboard.release_ms = release_ms;
+	src->source.keyboard.value = 0.0f;
+	src->source.keyboard.invert = invert;
+	src->current_value = invert ? 1.0f : 0.0f;
+
+	pthread_mutex_unlock(&g_mod_mutex);
+
+	return PL_unify_term(handle_term,
+			PL_FUNCTOR, PL_new_functor(PL_new_atom("mod_source"), 1),
+			PL_INT, slot);
+}
+
+/******************************************************************************
  * REGISTRATION
  *****************************************************************************/
 
@@ -967,4 +1086,5 @@ install_t mod_register_predicates(void)
 	PL_register_foreign("mod_route_init", 9, pl_mod_route_init, 0);
 	PL_register_foreign("mod_route_uninit", 1, pl_mod_route_uninit, 0);
 	PL_register_foreign("mod_gamepad_init", 3, pl_mod_gamepad_init, 0);
+	PL_register_foreign("mod_keyboard_init", 3, pl_mod_keyboard_init, 0);
 }

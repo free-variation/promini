@@ -205,6 +205,55 @@ DEFINE_GET_PARAM(double, double, {
 		})
 
 /*
+ * get_param_float_list()
+ * Extract a float list from options. Copies values into array.
+ * Returns number of elements copied, 0 if key not found.
+ */
+int get_param_float_list(term_t params, const char *key, float *out, int max_len)
+{
+	term_t head = PL_new_term_ref();
+	term_t tail = PL_new_term_ref();
+	term_t tmp = PL_new_term_ref();
+	term_t list_head = PL_new_term_ref();
+	term_t list_tail = PL_new_term_ref();
+	functor_t equals_functor = PL_new_functor(PL_new_atom("="), 2);
+	int count;
+	double dval;
+
+	if (!PL_put_term(tmp, params))
+		return 0;
+
+	while (PL_get_list(tmp, head, tail)) {
+		term_t arg1 = PL_new_term_ref();
+		term_t arg2 = PL_new_term_ref();
+		functor_t f;
+		char *key_str;
+
+		if (PL_get_functor(head, &f) && f == equals_functor) {
+			if (!PL_get_arg(1, head, arg1) || !PL_get_arg(2, head, arg2))
+				return 0;
+
+			if (PL_get_atom_chars(arg1, &key_str) && strcmp(key_str, key) == 0) {
+				/* found key, parse the list value */
+				count = 0;
+				if (!PL_put_term(list_tail, arg2))
+					return 0;
+				while (PL_get_list(list_tail, list_head, list_tail) && count < max_len) {
+					if (!PL_get_float(list_head, &dval))
+						return 0;
+					out[count] = (float)dval;
+					count++;
+				}
+				return count;
+			}
+		}
+		if (!PL_put_term(tmp, tail))
+			return 0;
+	}
+	return 0;
+}
+
+/*
  * allocate_audio_slot()
  * Finds a free audio slot and marks it as in use.
  * Returns slot index, or -1 if all slots are full.

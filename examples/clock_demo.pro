@@ -69,11 +69,11 @@ demo_lfo_sync :-
     synth_voice_init(Voice),
     synth_oscillator_add(Voice, 220.0, 0.6, _),
     synth_noise_add(Voice, white, 0.15, _),
-    voice_attach_effect(Voice, moog, [cutoff=800.0, resonance=0.7], effect(_, FilterPtr)),
+    voice_attach_effect(Voice, moog, [cutoff=800.0, resonance=0.7], Filter),
 
     format('Creating LFO for filter modulation...~n'),
     mod_lfo_init(sine, 1.0, LFO),
-    mod_route_init(LFO, moog, FilterPtr, cutoff, absolute, 400.0, 800.0, 0.0, _Route),
+    mod_route_init(LFO, moog, Filter, cutoff, absolute, 400.0, 800.0, 0.0, _Route),
 
     format('Setting clock to 120 BPM...~n'),
     clock_set_bpm(120),
@@ -172,13 +172,13 @@ demo_envelope_pulse :-
     synth_voice_init(Voice),
     synth_oscillator_add(Voice, 440.0, 1.0, _),
     synth_oscillator_add(Voice, 880.0, 0.5, _),
-    voice_attach_effect(Voice, vca, [gain=0.0], effect(_, VCAPtr)),
+    voice_attach_effect(Voice, vca, [gain=0.0], VCA),
     voice_attach_effect(Voice, reverb, [wet=0.3, decay=0.6], _),
 
     format('Creating ADBR envelope (fast attack, medium decay)...~n'),
     % mod_envelope_init(Attack, Decay, Break, BreakLevel, Release, Duration, Loop, Env)
     mod_envelope_init(0.05, 0.2, 0.35, 0.4, 0.4, 400.0, false, Env),
-    mod_route_init(Env, vca, VCAPtr, gain, absolute, 0.8, 0.0, 0.0, _Route),
+    mod_route_init(Env, vca, VCA, gain, absolute, 0.8, 0.0, 0.0, _Route),
 
     clock_set_bpm(120),
 
@@ -349,14 +349,14 @@ demo_polyrhythm :-
     % Voice 1: Low drone, triggered on whole notes
     synth_voice_init(Voice1),
     synth_oscillator_add(Voice1, 55.0, 1.0, _),
-    voice_attach_effect(Voice1, vca, [gain=0.0], effect(_, VCA1)),
+    voice_attach_effect(Voice1, vca, [gain=0.0], VCA1),
     mod_envelope_init(0.1, 0.2, 0.4, 0.5, 0.3, 2000.0, false, Env1),
     mod_route_init(Env1, vca, VCA1, gain, absolute, 0.6, 0.0, 0.0, _),
 
     % Voice 2: Mid tone, triggered on quarter notes
     synth_voice_init(Voice2),
     synth_oscillator_add(Voice2, 220.0, 1.0, _),
-    voice_attach_effect(Voice2, vca, [gain=0.0], effect(_, VCA2)),
+    voice_attach_effect(Voice2, vca, [gain=0.0], VCA2),
     voice_attach_effect(Voice2, lpf, [cutoff=1500.0], _),
     mod_envelope_init(0.05, 0.15, 0.4, 0.3, 0.4, 400.0, false, Env2),
     mod_route_init(Env2, vca, VCA2, gain, absolute, 0.4, 0.0, 0.0, _),
@@ -364,7 +364,7 @@ demo_polyrhythm :-
     % Voice 3: High ping, triggered on dotted 8ths (3 against 4)
     synth_voice_init(Voice3),
     synth_oscillator_add(Voice3, 880.0, 1.0, _),
-    voice_attach_effect(Voice3, vca, [gain=0.0], effect(_, VCA3)),
+    voice_attach_effect(Voice3, vca, [gain=0.0], VCA3),
     mod_envelope_init(0.02, 0.1, 0.4, 0.0, 0.48, 200.0, false, Env3),
     mod_route_init(Env3, vca, VCA3, gain, absolute, 0.25, 0.0, 0.0, _),
 
@@ -430,8 +430,8 @@ demo_tempo_change :-
     synth_voice_init(Voice),
     synth_oscillator_add(Voice, 110.0, 1.0, _),
     synth_oscillator_add(Voice, 111.0, 0.6, _),  % Slight detune
-    voice_attach_effect(Voice, moog, [cutoff=600.0, resonance=0.6], effect(_, FilterPtr)),
-    voice_attach_effect(Voice, vca, [gain=0.0], effect(_, VCAPtr)),
+    voice_attach_effect(Voice, moog, [cutoff=600.0, resonance=0.6], Filter),
+    voice_attach_effect(Voice, vca, [gain=0.0], VCA),
     voice_attach_effect(Voice, ping_pong_delay, [
         max_delay_in_frames=96000,
         delay_in_frames=22050,
@@ -442,11 +442,11 @@ demo_tempo_change :-
 
     % LFO for filter (synced to 8th notes)
     mod_lfo_init(triangle, 1.0, LFO),
-    mod_route_init(LFO, moog, FilterPtr, cutoff, absolute, 1000.0, 600.0, 0.0, _),
+    mod_route_init(LFO, moog, Filter, cutoff, absolute, 1000.0, 600.0, 0.0, _),
 
     % Envelope for VCA (triggered on quarter notes)
     mod_envelope_init(0.05, 0.2, 0.35, 0.4, 0.4, 600.0, false, Env),
-    mod_route_init(Env, vca, VCAPtr, gain, absolute, 0.7, 0.0, 0.0, _),
+    mod_route_init(Env, vca, VCA, gain, absolute, 0.7, 0.0, 0.0, _),
 
     % Clock routes
     clock_route_init(lfo, LFO, sync, 12, LFORoute),        % 8th notes
@@ -537,17 +537,17 @@ demo_full_composition :-
     synth_oscillator_add(Bass, 55.0, 1.0, _),
     synth_oscillator_add(Bass, 110.0, 0.5, _),
     voice_attach_effect(Bass, lpf, [cutoff=400.0, order=2], _),
-    voice_attach_effect(Bass, vca, [gain=0.0], effect(_, BassVCAPtr)),
+    voice_attach_effect(Bass, vca, [gain=0.0], BassVCA),
 
     mod_envelope_init(0.1, 0.2, 0.3, 0.4, 0.4, 1500.0, false, BassEnv),
-    mod_route_init(BassEnv, vca, BassVCAPtr, gain, absolute, 0.5, 0.0, 0.0, _),
+    mod_route_init(BassEnv, vca, BassVCA, gain, absolute, 0.5, 0.0, 0.0, _),
 
     % --- Pad synth with filter modulation ---
     synth_voice_init(Pad),
     synth_oscillator_add(Pad, 220.0, 0.4, _),
     synth_oscillator_add(Pad, 330.0, 0.3, _),
     synth_oscillator_add(Pad, 440.0, 0.2, _),
-    voice_attach_effect(Pad, moog, [cutoff=800.0, resonance=0.5], effect(_, PadFilterPtr)),
+    voice_attach_effect(Pad, moog, [cutoff=800.0, resonance=0.5], PadFilter),
     voice_attach_effect(Pad, vca, [gain=0.3], _),
     voice_attach_effect(Pad, ping_pong_delay, [
         max_delay_in_frames=96000,
@@ -557,16 +557,16 @@ demo_full_composition :-
     ], PadDelay),
 
     mod_lfo_init(sine, 1.0, PadLFO),
-    mod_route_init(PadLFO, moog, PadFilterPtr, cutoff, absolute, 800.0, 600.0, 0.0, _),
+    mod_route_init(PadLFO, moog, PadFilter, cutoff, absolute, 800.0, 600.0, 0.0, _),
 
     % --- High pluck synth ---
     synth_voice_init(Pluck),
     synth_oscillator_add(Pluck, 880.0, 1.0, _),
     voice_attach_effect(Pluck, hpf, [cutoff=500.0], _),
-    voice_attach_effect(Pluck, vca, [gain=0.0], effect(_, PluckVCAPtr)),
+    voice_attach_effect(Pluck, vca, [gain=0.0], PluckVCA),
 
     mod_envelope_init(0.02, 0.15, 0.4, 0.0, 0.43, 250.0, false, PluckEnv),
-    mod_route_init(PluckEnv, vca, PluckVCAPtr, gain, absolute, 0.2, 0.0, 0.0, _),
+    mod_route_init(PluckEnv, vca, PluckVCA, gain, absolute, 0.2, 0.0, 0.0, _),
 
     % --- Master bus ---
     summing_node_init(Master),

@@ -40,6 +40,8 @@ Live granular sampler + concatenative synthesis + additive synth + effects + mod
    - Analyzer: RMS (loudness), ZCR (brightness), optional pitch
    - Metadata array parallel to ring buffer
    - Query interface: expose grain features to Prolog
+7. **Ping pong delay feedback filter** - lowpass/highpass on feedback path for tape-style darkening or thinning
+8. **Reverb highpass in tank** - prevent low-frequency buildup, complement existing damping (lowpass)
 
 ### Known Issues
 

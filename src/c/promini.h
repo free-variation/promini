@@ -392,7 +392,8 @@ typedef enum {
 	MOD_SOURCE_NOISE,
 	MOD_SOURCE_SAMPLER,
 	MOD_SOURCE_ENVELOPE,
-	MOD_SOURCE_GAMEPAD
+	MOD_SOURCE_GAMEPAD,
+	MOD_SOURCE_KEYBOARD
 } mod_source_type_t;
 
 /* modulation source */
@@ -424,6 +425,13 @@ typedef struct {
 			float dead_zone;
 			int dpad_axis;  /* 0=normal, 1=dpad_x, 2=dpad_y */
 		} gamepad;
+		struct {
+			SDL_Scancode scancode;
+			float attack_ms;
+			float release_ms;
+			float value;
+			ma_bool32 invert;
+		} keyboard;
 	} source;
 	ma_bool32 sh_enabled;
 	ma_uint32 sh_interval;
@@ -616,6 +624,35 @@ typedef struct {
 	ma_uint64 frames_recorded; 
 } granular_delay_t;
 
+/* keyboard state */
+
+#define KEYBOARD_ROWS 4
+#define KEYBOARD_KEYS_PER_ROW 10
+#define MAX_MODE_INTERVALS 12
+
+typedef enum {
+	KEYBOARD_TARGET_NONE,
+	KEYBOARD_TARGET_GRANULAR
+} keyboard_target_type_t;
+
+typedef struct {
+	float mode[MAX_MODE_INTERVALS];
+	int mode_length;
+	int octave_offset;
+	keyboard_target_type_t target_type;
+	int granular_slot;
+} keyboard_row_t;
+
+typedef struct {
+	ma_bool32 active;
+	SDL_Window *window;
+	SDL_Renderer *renderer;
+	ma_bool32 keys_pressed[KEYBOARD_ROWS][KEYBOARD_KEYS_PER_ROW];
+	keyboard_row_t rows[KEYBOARD_ROWS];
+	ma_bool32 mod_keys[5];  /* l_shift, l_option, space, r_option, r_shift */
+} keyboard_state_t;
+
+extern keyboard_state_t g_keyboard;
 
 /* Shared arrays */
 extern sound_slot_t g_sounds[MAX_SOUNDS];
@@ -642,6 +679,7 @@ extern ma_bool32 get_param_int(term_t params, const char *key, int *value);
 extern ma_bool32 get_param_float(term_t params, const char *key, float *value);
 extern ma_bool32 get_param_bool(term_t params, const char *key, ma_bool32 *value);
 extern ma_bool32 get_param_double(term_t params, const char *key, double *value);
+extern int get_param_float_list(term_t params, const char *key, float *out, int max_len);
 
 /* Ring buffer */
 extern ma_result ring_buffer_init(ring_buffer_t *rb, ma_uint64 capacity_frames, ma_uint32 channels, ma_format format);
@@ -660,9 +698,10 @@ extern ma_node_vtable reverb_vtable;
 extern ma_result init_reverb_node(reverb_node_t *reverb, ma_uint32 sample_rate);
 extern void free_reverb_node(reverb_node_t *reverb);
 
-/* Gamepad axis lookup (implemented in control.c) */
+/*  Gamepad and keyboard functions (implemented in control.c) */
 extern int get_axis_from_atom(atom_t atom_term, SDL_GamepadAxis *axis);
 extern SDL_Gamepad *get_gamepad_ptr(term_t gamepad_term);
+extern void process_keyboard_event(SDL_Event *event);
 
 /* Capture functions (implemented in capture.c) */
 extern capture_slot_t *get_capture_device(int index);
@@ -677,6 +716,7 @@ extern int create_audio_buffer_from_pcm(
 
 /* Grain triggering (implemented in granular.c) */
 extern int trigger_grain(granular_delay_t *g);
+extern int trigger_grain_pitched(granular_delay_t *g, float semitones);
 
 /* Module registration functions */
 extern install_t promini_register_predicates(void);
@@ -687,6 +727,7 @@ extern install_t image_register_predicates(void);
 extern install_t control_register_predicates(void);
 extern install_t granular_register_predicates(void);
 extern install_t capture_register_predicates(void);
+extern install_t keyboard_register_predicates(void);
 
 /* Module cleanup functions */
 extern install_t uninstall_promini(void);
@@ -697,4 +738,5 @@ extern install_t uninstall_image(void);
 extern install_t uninstall_control(void);
 extern install_t uninstall_granular(void);
 extern install_t uninstall_capture(void);
+extern install_t uninstall_keyboard(void);
 #endif /* PROMINI_H */
