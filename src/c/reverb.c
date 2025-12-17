@@ -56,7 +56,7 @@ static ma_uint32 calc_buffer_size(ma_uint32 delay) {
 
 /* Allocate delay buffer, returns mask (size - 1) or 0 on failure */
 static float *alloc_buffer(ma_uint32 size) {
-	float *buf = (float*)malloc(size * sizeof(float));
+	float *buf = (float*)ma_malloc(size * sizeof(float), NULL);
 	if (buf) {
 		memset(buf, 0, size * sizeof(float));
 	}
@@ -213,17 +213,17 @@ static float pitchshift_process(reverb_pitchshift_t *ps, float input,
  * ============================================================================ */
 
 static void free_tank_half(reverb_tank_half_t *th) {
-	if (th->decay_diff1_buf) { free(th->decay_diff1_buf); th->decay_diff1_buf = NULL; }
-	if (th->pre_damp.buffer) { free(th->pre_damp.buffer); th->pre_damp.buffer = NULL; }
-	if (th->decay_diff2_buf) { free(th->decay_diff2_buf); th->decay_diff2_buf = NULL; }
-	if (th->post_damp.buffer) { free(th->post_damp.buffer); th->post_damp.buffer = NULL; }
+	if (th->decay_diff1_buf) { ma_free(th->decay_diff1_buf, NULL); th->decay_diff1_buf = NULL; }
+	if (th->pre_damp.buffer) { ma_free(th->pre_damp.buffer, NULL); th->pre_damp.buffer = NULL; }
+	if (th->decay_diff2_buf) { ma_free(th->decay_diff2_buf, NULL); th->decay_diff2_buf = NULL; }
+	if (th->post_damp.buffer) { ma_free(th->post_damp.buffer, NULL); th->post_damp.buffer = NULL; }
 }
 
 static void free_channel(reverb_channel_t *ch) {
 	int i;
-	if (ch->predelay_buf) { free(ch->predelay_buf); ch->predelay_buf = NULL; }
+	if (ch->predelay_buf) { ma_free(ch->predelay_buf, NULL); ch->predelay_buf = NULL; }
 	for (i = 0; i < 4; i++) {
-		if (ch->diffuser_buf[i]) { free(ch->diffuser_buf[i]); ch->diffuser_buf[i] = NULL; }
+		if (ch->diffuser_buf[i]) { ma_free(ch->diffuser_buf[i], NULL); ch->diffuser_buf[i] = NULL; }
 	}
 	free_tank_half(&ch->tank[0]);
 	free_tank_half(&ch->tank[1]);
@@ -597,7 +597,7 @@ void free_reverb_node(reverb_node_t *reverb) {
 	for (i = 0; i < 2; i++) {
 		for (j = 0; j < 2; j++) {
 			if (reverb->shimmer[i][j].buffer) {
-				free(reverb->shimmer[i][j].buffer);
+				ma_free(reverb->shimmer[i][j].buffer, NULL);
 				reverb->shimmer[i][j].buffer = NULL;
 			}
 		}

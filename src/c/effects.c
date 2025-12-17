@@ -80,7 +80,7 @@ ma_result attach_effect_node(
 	ma_node *endpoint;
 	ma_result result;
 
-	new_effect = (effect_node_t*)malloc(sizeof(effect_node_t));
+	new_effect = (effect_node_t*)ma_malloc(sizeof(effect_node_t), NULL);
 	if (new_effect == NULL) {
 		return MA_OUT_OF_MEMORY;
 	}
@@ -95,7 +95,7 @@ ma_result attach_effect_node(
 	if (*effect_chain == NULL) {
 		result = ma_node_attach_output_bus(source_node, 0, (ma_node*)effect_node, 0);
 		if (result != MA_SUCCESS) {
-			free(new_effect);
+			ma_free(new_effect, NULL);
 			return result;
 		}
 
@@ -103,7 +103,7 @@ ma_result attach_effect_node(
 		if (result != MA_SUCCESS) {
 			ma_node_detach_output_bus(source_node, 0);
 			ma_node_attach_output_bus(source_node, 0, endpoint, 0);
-			free(new_effect);
+			ma_free(new_effect, NULL);
 			return result;
 		}
 
@@ -117,7 +117,7 @@ ma_result attach_effect_node(
 
 		result = ma_node_attach_output_bus((ma_node*)tail->effect_node, 0, (ma_node*)effect_node, 0);
 		if (result != MA_SUCCESS) {
-			free(new_effect);
+			ma_free(new_effect, NULL);
 			return result;
 		}
 
@@ -125,7 +125,7 @@ ma_result attach_effect_node(
 		if (result != MA_SUCCESS) {
 			ma_node_detach_output_bus((ma_node*)tail->effect_node, 0);
 			ma_node_attach_output_bus((ma_node*)tail->effect_node, 0, endpoint, 0);
-			free(new_effect);
+			ma_free(new_effect, NULL);
 			return result;
 		}
 
@@ -297,7 +297,7 @@ static ma_result init_bitcrush_node(bitcrush_node_t *node, int bits, int sample_
 	node->target_sample_rate = (ma_uint32)sample_rate;
 
 	if (sample_rate > 0) {
-		node->hold_samples = (float *)malloc(channels * sizeof(float));
+		node->hold_samples = (float *)ma_malloc(channels * sizeof(float), NULL);
 		if (node->hold_samples == NULL) {
 			ma_node_uninit(&node->base, NULL);
 			return MA_OUT_OF_MEMORY;
@@ -343,24 +343,24 @@ static ma_result attach_bitcrush_effect(term_t params, ma_node *source_node, eff
 		return MA_ERROR;
 	}
 
-	bitcrush = (bitcrush_node_t*)malloc(sizeof(bitcrush_node_t));
+	bitcrush = (bitcrush_node_t*)ma_malloc(sizeof(bitcrush_node_t), NULL);
 	if (!bitcrush) {
 		return MA_OUT_OF_MEMORY;
 	}
 
 	result = init_bitcrush_node(bitcrush, bits, sample_rate);
 	if (result != MA_SUCCESS) {
-		free(bitcrush);
+		ma_free(bitcrush, NULL);
 		return result;
 	}
 
 	result = attach_effect_node(source_node, effect_chain, &bitcrush->base, EFFECT_BITCRUSH);
 	if (result != MA_SUCCESS) {
 		if (bitcrush->hold_samples) {
-			free(bitcrush->hold_samples);
+			ma_free(bitcrush->hold_samples, NULL);
 		}
 		ma_node_uninit(&bitcrush->base, NULL);
-		free(bitcrush);
+		ma_free(bitcrush, NULL);
 		return result;
 	}
 
@@ -524,21 +524,21 @@ static ma_result attach_lpf_effect(term_t params, ma_node *source_node, effect_n
 		return MA_ERROR;
 	}
 
-	lpf = (lpf_node_t*)malloc(sizeof(lpf_node_t));
+	lpf = (lpf_node_t*)ma_malloc(sizeof(lpf_node_t), NULL);
 	if (!lpf) {
 		return MA_OUT_OF_MEMORY;
 	}
 
 	result = init_lpf_node(lpf, cutoff, (ma_uint32)order_int);
 	if (result != MA_SUCCESS) {
-		free(lpf);
+		ma_free(lpf, NULL);
 		return result;
 	}
 
 	result = attach_effect_node(source_node, effect_chain, &lpf->node.baseNode, EFFECT_LPF);
 	if (result != MA_SUCCESS) {
 		ma_lpf_node_uninit(&lpf->node, NULL);
-		free(lpf);
+		ma_free(lpf, NULL);
 		return result;
 	}
 
@@ -722,21 +722,21 @@ static ma_result attach_hpf_effect(term_t params, ma_node *source_node, effect_n
 		return MA_ERROR;
 	}
 
-	hpf = (hpf_node_t*)malloc(sizeof(hpf_node_t));
+	hpf = (hpf_node_t*)ma_malloc(sizeof(hpf_node_t), NULL);
 	if (!hpf) {
 		return MA_OUT_OF_MEMORY;
 	}
 
 	result = init_hpf_node(hpf, cutoff, (ma_uint32)order_int);
 	if (result != MA_SUCCESS) {
-		free(hpf);
+		ma_free(hpf, NULL);
 		return result;
 	}
 
 	result = attach_effect_node(source_node, effect_chain, &hpf->node.baseNode, EFFECT_HPF);
 	if (result != MA_SUCCESS) {
 		ma_hpf_node_uninit(&hpf->node, NULL);
-		free(hpf);
+		ma_free(hpf, NULL);
 		return result;
 	}
 
@@ -920,21 +920,21 @@ static ma_result attach_bpf_effect(term_t params, ma_node *source_node, effect_n
 		return MA_ERROR;
 	}
 
-	bpf = (bpf_node_t*)malloc(sizeof(bpf_node_t));
+	bpf = (bpf_node_t*)ma_malloc(sizeof(bpf_node_t), NULL);
 	if (!bpf) {
 		return MA_OUT_OF_MEMORY;
 	}
 
 	result = init_bpf_node(bpf, cutoff, (ma_uint32)order_int);
 	if (result != MA_SUCCESS) {
-		free(bpf);
+		ma_free(bpf, NULL);
 		return result;
 	}
 
 	result = attach_effect_node(source_node, effect_chain, &bpf->node.baseNode, EFFECT_BPF);
 	if (result != MA_SUCCESS) {
 		ma_bpf_node_uninit(&bpf->node, NULL);
-		free(bpf);
+		ma_free(bpf, NULL);
 		return result;
 	}
 
@@ -1141,21 +1141,21 @@ static ma_result attach_delay_effect(term_t params, ma_node *source_node, effect
 		return MA_ERROR;
 	}
 
-	delay = (delay_node_t*)malloc(sizeof(delay_node_t));
+	delay = (delay_node_t*)ma_malloc(sizeof(delay_node_t), NULL);
 	if (!delay) {
 		return MA_OUT_OF_MEMORY;
 	}
 
 	result = init_delay_node(delay, (ma_uint32)delay_in_frames_int, decay, wet, dry);
 	if (result != MA_SUCCESS) {
-		free(delay);
+		ma_free(delay, NULL);
 		return result;
 	}
 
 	result = attach_effect_node(source_node, effect_chain, &delay->node.baseNode, EFFECT_DELAY);
 	if (result != MA_SUCCESS) {
 		ma_delay_node_uninit(&delay->node, NULL);
-		free(delay);
+		ma_free(delay, NULL);
 		return result;
 	}
 
@@ -1411,12 +1411,12 @@ static ma_result init_ping_pong_delay_node(
 	}
 
 	node->buffer_size = max_delay_in_frames;
-	node->buffer_l = (float *)malloc(max_delay_in_frames *sizeof(float));
-	node->buffer_r = (float *)malloc(max_delay_in_frames *sizeof(float));
+	node->buffer_l = (float *)ma_malloc(max_delay_in_frames * sizeof(float), NULL);
+	node->buffer_r = (float *)ma_malloc(max_delay_in_frames * sizeof(float), NULL);
 
 	if (node->buffer_l == NULL || node->buffer_r == NULL) {
-		if (node->buffer_l) free(node->buffer_l);
-		if (node->buffer_r) free(node->buffer_r);
+		if (node->buffer_l) ma_free(node->buffer_l, NULL);
+		if (node->buffer_r) ma_free(node->buffer_r, NULL);
 		ma_node_uninit(&node->base, NULL);
 		return MA_OUT_OF_MEMORY;
 	}
@@ -1500,14 +1500,14 @@ static ma_result attach_ping_pong_delay_effect(term_t params, ma_node *source_no
 		return MA_ERROR;
 	}
 
-	pp = (ping_pong_delay_node_t*)malloc(sizeof(ping_pong_delay_node_t));
+	pp = (ping_pong_delay_node_t*)ma_malloc(sizeof(ping_pong_delay_node_t), NULL);
 	if (!pp) {
 		return MA_OUT_OF_MEMORY;
 	}
 
 	result = init_ping_pong_delay_node(pp, (ma_uint32)max_delay_int, (ma_uint32)delay_int, feedback, wet, dry);
 	if (result != MA_SUCCESS) {
-		free(pp);
+		ma_free(pp, NULL);
 		return result;
 	}
 
@@ -1530,10 +1530,10 @@ static ma_result attach_ping_pong_delay_effect(term_t params, ma_node *source_no
 
 	result = attach_effect_node(source_node, effect_chain, &pp->base, EFFECT_PING_PONG_DELAY);
 	if (result != MA_SUCCESS) {
-		free(pp->buffer_l);
-		free(pp->buffer_r);
+		ma_free(pp->buffer_l, NULL);
+		ma_free(pp->buffer_r, NULL);
 		ma_node_uninit(&pp->base, NULL);
-		free(pp);
+		ma_free(pp, NULL);
 		return result;
 	}
 
@@ -1776,7 +1776,7 @@ static ma_result attach_reverb_effect(term_t params, ma_node *source_node, effec
 	ma_uint32 sample_rate;
 	float value;
 
-	reverb = (reverb_node_t*)malloc(sizeof(reverb_node_t));
+	reverb = (reverb_node_t*)ma_malloc(sizeof(reverb_node_t), NULL);
 	if (!reverb) {
 		return MA_OUT_OF_MEMORY;
 	}
@@ -1785,14 +1785,14 @@ static ma_result attach_reverb_effect(term_t params, ma_node *source_node, effec
 
 	result = init_reverb_node(reverb, sample_rate);
 	if (result != MA_SUCCESS) {
-		free(reverb);
+		ma_free(reverb, NULL);
 		return result;
 	}
 
 	result = init_effect_node_base(&reverb->base, &reverb_vtable);
 	if (result != MA_SUCCESS) {
 		free_reverb_node(reverb);
-		free(reverb);
+		ma_free(reverb, NULL);
 		return result;
 	}
 
@@ -1850,7 +1850,7 @@ static ma_result attach_reverb_effect(term_t params, ma_node *source_node, effec
 	if (result != MA_SUCCESS) {
 		free_reverb_node(reverb);
 		ma_node_uninit(&reverb->base, NULL);
-		free(reverb);
+		ma_free(reverb, NULL);
 		return result;
 	}
 
@@ -2119,21 +2119,21 @@ static ma_result attach_pan_effect(term_t params, ma_node *source_node, effect_n
 		pan = 0.0f;
 	}
 
-	node = (pan_node_t*)malloc(sizeof(pan_node_t));
+	node = (pan_node_t*)ma_malloc(sizeof(pan_node_t), NULL);
 	if (!node) {
 		return MA_OUT_OF_MEMORY;
 	}
 
 	result = init_pan_node(node, pan);
 	if (result != MA_SUCCESS) {
-		free(node);
+		ma_free(node, NULL);
 		return result;
 	}
 
 	result = attach_effect_node(source_node, effect_chain, &node->base, EFFECT_PAN);
 	if (result != MA_SUCCESS) {
 		ma_node_uninit(&node->base, NULL);
-		free(node);
+		ma_free(node, NULL);
 		return result;
 	}
 
@@ -2290,21 +2290,21 @@ static ma_result attach_vca_effect(term_t params, ma_node *source_node, effect_n
 		gain = 1.0f;
 	}
 
-	vca = (vca_node_t*)malloc(sizeof(vca_node_t));
+	vca = (vca_node_t*)ma_malloc(sizeof(vca_node_t), NULL);
 	if (!vca) {
 		return MA_OUT_OF_MEMORY;
 	}
 
 	result = init_vca_node(vca, gain);
 	if (result != MA_SUCCESS) {
-		free(vca);
+		ma_free(vca, NULL);
 		return result;
 	}
 
 	result = attach_effect_node(source_node, effect_chain, &vca->base, EFFECT_VCA);
 	if (result != MA_SUCCESS) {
 		ma_node_uninit(&vca->base, NULL);
-		free(vca);
+		ma_free(vca, NULL);
 		return result;
 	}
 
@@ -2576,22 +2576,22 @@ static ma_result attach_compressor_effect(term_t params, ma_node *source_node, e
 		lookahead_ms = COMPRESSOR_DEFAULT_LOOKAHEAD_MS;
 	}
 
-	comp = (compressor_node_t*)malloc(sizeof(compressor_node_t));
+	comp = (compressor_node_t*)ma_malloc(sizeof(compressor_node_t), NULL);
 	if (!comp) {
 		return MA_OUT_OF_MEMORY;
 	}
 
 	result = init_compressor_node(comp, threshold, ratio, knee, attack_ms, release_ms, makeup_gain, lookahead_ms);
 	if (result != MA_SUCCESS) {
-		free(comp);
+		ma_free(comp, NULL);
 		return result;
 	}
 
 	result = attach_effect_node(source_node, effect_chain, &comp->base, EFFECT_COMPRESSOR);
 	if (result != MA_SUCCESS) {
-		free(comp->delay_buffer);
+		ma_free(comp->delay_buffer, NULL);
 		ma_node_uninit(&comp->base, NULL);
-		free(comp);
+		ma_free(comp, NULL);
 		return result;
 	}
 
@@ -2945,14 +2945,14 @@ static ma_result attach_moog_effect(term_t params, ma_node *source, effect_node_
 		drive = 1.0f;
 	}
 
-	node = malloc(sizeof(moog_node_t));
+	node = ma_malloc(sizeof(moog_node_t), NULL);
 	if (!node) {
 		return MA_OUT_OF_MEMORY;
 	}
 
 	result = moog_node_init(node);
 	if (result != MA_SUCCESS) {
-		free(node);
+		ma_free(node, NULL);
 		return result;
 	}
 
@@ -2965,7 +2965,7 @@ static ma_result attach_moog_effect(term_t params, ma_node *source, effect_node_
 	result = attach_effect_node(source, chain, &node->base, EFFECT_MOOG);
 	if (result != MA_SUCCESS) {
 		ma_node_uninit(&node->base, NULL);
-		free(node);
+		ma_free(node, NULL);
 		return result;
 	}
 
@@ -3243,7 +3243,7 @@ static foreign_t pl_effects(term_t source_handle, term_t effects_list)
 	PL_put_nil(list);
 
 	if (count > 0) {
-		effect_node_t** effects_array = malloc(count * sizeof(effect_node_t*));
+		effect_node_t** effects_array = ma_malloc(count * sizeof(effect_node_t*), NULL);
 		int i = 0;
 		for (effect = effect_chain; effect != NULL; effect = effect->next) {
 			effects_array[i++] = effect;
@@ -3313,7 +3313,7 @@ static foreign_t pl_effects(term_t source_handle, term_t effects_list)
 			}
 
 			if (!query_result) {
-				free(effects_array);
+				ma_free(effects_array, NULL);
 				return FALSE;
 			}
 
@@ -3321,41 +3321,41 @@ static foreign_t pl_effects(term_t source_handle, term_t effects_list)
 			term_t source_term = PL_new_term_ref();
 			term_t slot_arg = PL_new_term_ref();
 			if (!PL_put_integer(slot_arg, slot)) {
-				free(effects_array);
+				ma_free(effects_array, NULL);
 				return FALSE;
 			}
 			if (!PL_cons_functor_v(source_term, source_functor, slot_arg)) {
-				free(effects_array);
+				ma_free(effects_array, NULL);
 				return FALSE;
 			}
 
 			/* Build effect(source(Slot), Type, Ptr, Params) */
 			if (!PL_put_term(args+0, source_term)) {
-				free(effects_array);
+				ma_free(effects_array, NULL);
 				return FALSE;
 			}
 			PL_put_atom_chars(args+1, type_str);
 			if (!PL_put_pointer(args+2, effect->effect_node)) {
-				free(effects_array);
+				ma_free(effects_array, NULL);
 				return FALSE;
 			}
 			if (!PL_put_term(args+3, params_list)) {
-				free(effects_array);
+				ma_free(effects_array, NULL);
 				return FALSE;
 			}
 
 			if (!PL_cons_functor_v(effect_term, effect_functor, args)) {
-				free(effects_array);
+				ma_free(effects_array, NULL);
 				return FALSE;
 			}
 
 			if (!PL_cons_list(list, effect_term, list)) {
-				free(effects_array);
+				ma_free(effects_array, NULL);
 				return FALSE;
 			}
 		}
 
-		free(effects_array);
+		ma_free(effects_array, NULL);
 	}
 
 	return PL_unify(effects_list, list);
@@ -3442,26 +3442,26 @@ static foreign_t pl_effect_detach(term_t effect_handle)
 			if (node->type == EFFECT_BITCRUSH) {
 				bitcrush_node_t *bitcrush = (bitcrush_node_t*)node->effect_node;
 				if (bitcrush->hold_samples) {
-					free(bitcrush->hold_samples);
+					ma_free(bitcrush->hold_samples, NULL);
 				}
 			} else if (node->type == EFFECT_REVERB) {
 				free_reverb_node((reverb_node_t*)node->effect_node);
 			} else if (node->type == EFFECT_COMPRESSOR) {
 				compressor_node_t *comp = (compressor_node_t*)node->effect_node;
 				if (comp->delay_buffer) {
-					free(comp->delay_buffer);
+					ma_free(comp->delay_buffer, NULL);
 				}
 			} else if (node->type == EFFECT_PING_PONG_DELAY) {
 				ping_pong_delay_node_t *pp = (ping_pong_delay_node_t*)node->effect_node;
 				if (pp->buffer_l != NULL) {
-					free(pp->buffer_l);
+					ma_free(pp->buffer_l, NULL);
 				}
 				if (pp->buffer_r != NULL) {
-					free(pp->buffer_r);
+					ma_free(pp->buffer_r, NULL);
 				}
 			}
 			ma_node_uninit(node->effect_node, NULL);
-			free(node->effect_node);
+			ma_free(node->effect_node, NULL);
 
 			if (prev) {
 				prev->next = node->next;
@@ -3469,7 +3469,7 @@ static foreign_t pl_effect_detach(term_t effect_handle)
 				*effect_chain = node->next;
 			}
 
-			free(node);
+			ma_free(node, NULL);
 
 			/* reconnect the chain */
 			effect_node_t *first_effect = *effect_chain;

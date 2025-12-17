@@ -145,7 +145,7 @@ static int load_image(const char *filename)
 	}
 
 	num_bytes = width * height * channels;
-	buffer = (unsigned char*)malloc(num_bytes);
+	buffer = (unsigned char*)ma_malloc(num_bytes, NULL);
 	if (buffer == NULL) {
 		stbi_image_free(pixels);
 		free_image_slot(slot);
@@ -191,7 +191,7 @@ static int image_write_png(int slot, const char *name)
 		int block_h = (img->height + img->buf_height - 1) / img->buf_height;
 		unsigned char *expanded;
 
-		expanded = (unsigned char*)malloc(img->width * img->height * img->channels);
+		expanded = (unsigned char*)ma_malloc(img->width * img->height * img->channels, NULL);
 		if (expanded == NULL) {
 			return -1;
 		}
@@ -210,7 +210,7 @@ static int image_write_png(int slot, const char *name)
 
 		result = stbi_write_png(path, img->width, img->height, img->channels,
 		                        expanded, img->width * img->channels);
-		free(expanded);
+		ma_free(expanded, NULL);
 	}
 
 	return result ? 0 : -1;
@@ -230,7 +230,7 @@ static void free_image_slot(int index)
 				g_images[index].pixels = NULL;
 			}
 			if (g_images[index].buffer != NULL) {
-				free(g_images[index].buffer);
+				ma_free(g_images[index].buffer, NULL);
 				g_images[index].buffer = NULL;
 			}
 			g_images[index].width = 0;
@@ -280,7 +280,7 @@ static int image_to_grayscale(int slot)
 
 	num_pixels = img->width * img->height;
 
-	dest = (unsigned char*)malloc(num_pixels);
+	dest = (unsigned char*)ma_malloc(num_pixels, NULL);
 	if (dest == NULL) {
 		return -1;
 	}
@@ -332,8 +332,8 @@ static int image_to_grayscale(int slot)
 	img->channels = 1;
 
 	/* reallocate buffer for grayscale */
-	free(img->buffer);
-	img->buffer = (unsigned char*)malloc(num_pixels);
+	ma_free(img->buffer, NULL);
+	img->buffer = (unsigned char*)ma_malloc(num_pixels, NULL);
 	if (img->buffer == NULL) {
 		return -1;
 	}
@@ -358,13 +358,13 @@ static int image_reset(int slot)
 	GET_IMAGE_FROM_SLOT(slot, img);
 
 	num_bytes = img->width * img->height * img->channels;
-	new_buf = (unsigned char*)malloc(num_bytes);
+	new_buf = (unsigned char*)ma_malloc(num_bytes, NULL);
 	if (new_buf == NULL) {
 		return -1;
 	}
 
 	memcpy(new_buf, img->pixels, num_bytes);
-	free(img->buffer);
+	ma_free(img->buffer, NULL);
 	img->buffer = new_buf;
 	img->buf_width = img->width;
 	img->buf_height = img->height;
@@ -426,7 +426,7 @@ static int image_downsample(int slot, int block_w, int block_h)
 		return -1;
 	}
 
-	new_buf = (unsigned char*)malloc(new_w * new_h * img->channels);
+	new_buf = (unsigned char*)ma_malloc(new_w * new_h * img->channels, NULL);
 	if (new_buf == NULL) {
 		return -1;
 	}
@@ -451,7 +451,7 @@ static int image_downsample(int slot, int block_w, int block_h)
 		}
 	}
 
-	free(img->buffer);
+	ma_free(img->buffer, NULL);
 	img->buffer = new_buf;
 	img->buf_width = new_w;
 	img->buf_height = new_h;
@@ -476,7 +476,7 @@ static int image_transpose(int slot, int direction)
 	new_w = img->buf_height;
 	new_h = img->buf_width;
 
-	new_buf = (unsigned char*)malloc(new_w * new_h * img->channels);
+	new_buf = (unsigned char*)ma_malloc(new_w * new_h * img->channels, NULL);
 	if (new_buf == NULL) {
 		return -1;
 	}
@@ -500,7 +500,7 @@ static int image_transpose(int slot, int direction)
   		}
   	}
 
-	free(img->buffer);
+	ma_free(img->buffer, NULL);
 	img->buffer = new_buf;
 	img->buf_width = new_w;
 	img->buf_height = new_h;

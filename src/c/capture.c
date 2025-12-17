@@ -390,7 +390,7 @@ static foreign_t pl_capture_extract(term_t capture_handle, term_t offset_term, t
 	sample_rate = capture->device.sampleRate;
 	bytes_per_frame = ma_get_bytes_per_frame(format, channels);
 
-	extracted_data = malloc(length * bytes_per_frame);
+	extracted_data = ma_malloc(length * bytes_per_frame, NULL);
 	if (extracted_data == NULL) {
 		return PL_resource_error("memory");
 	}
@@ -400,7 +400,7 @@ static foreign_t pl_capture_extract(term_t capture_handle, term_t offset_term, t
 
 	slot = create_audio_buffer_from_pcm(extracted_data, format, channels, length, sample_rate);
 	if (slot < 0) {
-		free(extracted_data);
+		ma_free(extracted_data, NULL);
 		return PL_resource_error("audio_buffer_slots");
 	}
 

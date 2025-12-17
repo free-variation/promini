@@ -60,7 +60,7 @@ void clock_init(ma_uint32 sample_rate)
 	ma_waveform *waveform;
 
 	/* Allocate waveform */
-	waveform = (ma_waveform*)malloc(sizeof(ma_waveform));
+	waveform = (ma_waveform*)ma_malloc(sizeof(ma_waveform), NULL);
 
 	wf_config = ma_waveform_config_init(
 		ma_format_f32,
@@ -103,7 +103,7 @@ void clock_uninit(void)
 	wf = (ma_waveform*)ma_sound_get_data_source(&g_clock.sound);
 	ma_sound_uninit(&g_clock.sound);
 	ma_waveform_uninit(wf);
-	free(wf);
+	ma_free(wf, NULL);
 }
 
 /*

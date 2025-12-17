@@ -657,6 +657,7 @@ extern keyboard_state_t g_keyboard;
 /* Visualizer types */
 typedef enum {
 	VIZ_MODE_WAVEFORM,
+	VIZ_MODE_SPECTRUM,
 	VIZ_MODE_SPECTROGRAM
 } viz_mode_t;
 
@@ -698,6 +699,7 @@ typedef struct {
 	float zoom;
 	float amp_scale;
 	float smoothing;
+	float auto_max_bin;
 	ma_bool32 log_freq;
 	ma_bool32 db_scale;
 	ma_bool32 paused;

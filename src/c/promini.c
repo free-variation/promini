@@ -292,7 +292,7 @@ static void free_audio_slot(int index)
 
 		if (g_audio_buffers[index].buffer != NULL) {
 			ma_audio_buffer_uninit(g_audio_buffers[index].buffer);
-			free(g_audio_buffers[index].buffer);
+			ma_free(g_audio_buffers[index].buffer, NULL);
 			g_audio_buffers[index].buffer = NULL;
 		}
 		if (g_audio_buffers[index].pData != NULL) {
@@ -421,7 +421,7 @@ int create_audio_buffer_from_pcm(void *pData, ma_format format, ma_uint32 channe
 		return -1;
 	}
 
-	buffer = (ma_audio_buffer*)malloc(sizeof(ma_audio_buffer));
+	buffer = (ma_audio_buffer*)ma_malloc(sizeof(ma_audio_buffer), NULL);
 	if (buffer == NULL) {
 		free_audio_slot(slot);
 		return -1;
@@ -431,7 +431,7 @@ int create_audio_buffer_from_pcm(void *pData, ma_format format, ma_uint32 channe
 	buffer_config.sampleRate = sample_rate;
 	result = ma_audio_buffer_init(&buffer_config, buffer);
 	if (result != MA_SUCCESS) {
-		free(buffer);
+		ma_free(buffer, NULL);
 		free_audio_slot(slot);
 		return -1;
 	}
@@ -698,7 +698,7 @@ static foreign_t extract_from_ring_buffer(
 		length_frames = max_frames - offset_frames;
 	}
 
-	extracted_data = malloc(length_frames * rb->channels * sizeof(float));
+	extracted_data = ma_malloc(length_frames * rb->channels * sizeof(float), NULL);
 	if (extracted_data == NULL) {
 		return PL_resource_error("memory");
 	}
@@ -708,7 +708,7 @@ static foreign_t extract_from_ring_buffer(
 	slot = create_audio_buffer_from_pcm(extracted_data, ma_format_f32, rb->channels,
 	                                   length_frames, sample_rate);
 	if (slot < 0) {
-		free(extracted_data);
+		ma_free(extracted_data, NULL);
 		return PL_resource_error("audio_buffer_slots");
 	}
 
@@ -790,7 +790,7 @@ static foreign_t pl_audio_extract(
 
 		bytes_per_frame = ma_get_bytes_per_frame(format, channels);
 
-		extracted_data = malloc(length_frames * bytes_per_frame);
+		extracted_data = ma_malloc(length_frames * bytes_per_frame, NULL);
 		if (extracted_data == NULL) {
 			return PL_resource_error("memory");
 		}
@@ -803,7 +803,7 @@ static foreign_t pl_audio_extract(
 		extracted_slot = create_audio_buffer_from_pcm(extracted_data, format, channels,
 		                                             length_frames, sample_rate);
 		if (extracted_slot < 0) {
-			free(extracted_data);
+			ma_free(extracted_data, NULL);
 			return PL_resource_error("audio_buffer_slots");
 		}
 
@@ -910,28 +910,28 @@ void free_effect_chain(effect_node_t *effect) {
 		if (effect->type == EFFECT_BITCRUSH) {
 			bitcrush_node_t *bitcrush = (bitcrush_node_t*)effect->effect_node;
 			if (bitcrush->hold_samples != NULL) {
-				free(bitcrush->hold_samples);
+				ma_free(bitcrush->hold_samples, NULL);
 			}
 		} else if (effect->type == EFFECT_REVERB) {
 			free_reverb_node((reverb_node_t*)effect->effect_node);
 		} else if (effect->type == EFFECT_COMPRESSOR) {
 			compressor_node_t *comp = (compressor_node_t*)effect->effect_node;
 			if (comp->delay_buffer != NULL) {
-				free(comp->delay_buffer);
+				ma_free(comp->delay_buffer, NULL);
 			}
 		} else if (effect->type == EFFECT_PING_PONG_DELAY) {
 			ping_pong_delay_node_t *pp = (ping_pong_delay_node_t*)effect->effect_node;
 			if (pp->buffer_l != NULL) {
-				free(pp->buffer_l);
+				ma_free(pp->buffer_l, NULL);
 			}
 			if (pp->buffer_r != NULL) {
-				free(pp->buffer_r);
+				ma_free(pp->buffer_r, NULL);
 			}
 		}
 
 		ma_node_uninit(effect->effect_node, NULL);
-		free(effect->effect_node);
-		free(effect);
+		ma_free(effect->effect_node, NULL);
+		ma_free(effect, NULL);
 		effect = next;
 	}
 }
@@ -952,14 +952,14 @@ static void free_sound_slot(int index)
 
         if (g_sounds[index].sound != NULL) {
             ma_sound_uninit(g_sounds[index].sound);
-            free(g_sounds[index].sound);
+            ma_free(g_sounds[index].sound, NULL);
             g_sounds[index].sound = NULL;
         }
 
 		/* Free audio buffer if present */
 		if (g_sounds[index].audio_buffer != NULL) {
 			ma_audio_buffer_uninit(g_sounds[index].audio_buffer);
-			free(g_sounds[index].audio_buffer);
+			ma_free(g_sounds[index].audio_buffer, NULL);
 			g_sounds[index].audio_buffer = NULL;
 		}
 
@@ -1046,7 +1046,7 @@ foreign_t pl_promini_init(void)
     }
 
     /* Allocate engine */
-    g_engine = (ma_engine*)malloc(sizeof(ma_engine));
+    g_engine = (ma_engine*)ma_malloc(sizeof(ma_engine), NULL);
     if (g_engine == NULL) {
         return PL_resource_error("memory");
     }
@@ -1058,7 +1058,7 @@ foreign_t pl_promini_init(void)
 
     result = ma_engine_init(&engine_config, g_engine);
     if (result != MA_SUCCESS) {
-        free(g_engine);
+        ma_free(g_engine, NULL);
         g_engine = NULL;
         return FALSE;
     }
@@ -1319,7 +1319,7 @@ static foreign_t pl_sound_create(term_t data_handle, term_t sound_handle)
 	}
 
 	/* Create a new buffer that shares the PCM data but has independent cursor */
-	sound_buffer = (ma_audio_buffer*)malloc(sizeof(ma_audio_buffer));
+	sound_buffer = (ma_audio_buffer*)ma_malloc(sizeof(ma_audio_buffer), NULL);
 	if (sound_buffer == NULL) {
 		free_sound_slot(sound_slot);
 		return PL_resource_error("memory");
@@ -1331,15 +1331,15 @@ static foreign_t pl_sound_create(term_t data_handle, term_t sound_handle)
 
 	result = ma_audio_buffer_init(&buffer_config, sound_buffer);
 	if (result != MA_SUCCESS) {
-		free(sound_buffer);
+		ma_free(sound_buffer, NULL);
 		free_sound_slot(sound_slot);
 		return FALSE;
 	}
 
-	sound = (ma_sound*)malloc(sizeof(ma_sound));
+	sound = (ma_sound*)ma_malloc(sizeof(ma_sound), NULL);
 	if (sound == NULL) {
 		ma_audio_buffer_uninit(sound_buffer);
-		free(sound_buffer);
+		ma_free(sound_buffer, NULL);
 		free_sound_slot(sound_slot);
 		return PL_resource_error("memory");
 	}
@@ -1347,8 +1347,8 @@ static foreign_t pl_sound_create(term_t data_handle, term_t sound_handle)
 	result = ma_sound_init_from_data_source(g_engine, sound_buffer, MA_SOUND_FLAG_NO_SPATIALIZATION, NULL, sound);
 	if (result != MA_SUCCESS) {
 		ma_audio_buffer_uninit(sound_buffer);
-		free(sound_buffer);
-		free(sound);
+		ma_free(sound_buffer, NULL);
+		ma_free(sound, NULL);
 		free_sound_slot(sound_slot);
 		return FALSE;
 	}
@@ -1516,7 +1516,7 @@ static foreign_t pl_audio_reverse(term_t source_handle, term_t reversed_handle)
 	format = source_buffer->ref.format;
 	bytes_per_frame = ma_get_bytes_per_frame(format, channels);
 
-	reversed_data = malloc(frame_count * bytes_per_frame);
+	reversed_data = ma_malloc(frame_count * bytes_per_frame, NULL);
 	if (reversed_data == NULL) {
 		return PL_resource_error("memory");
 	}
@@ -1535,7 +1535,7 @@ static foreign_t pl_audio_reverse(term_t source_handle, term_t reversed_handle)
 
 	slot = create_audio_buffer_from_pcm(reversed_data, format, channels, frame_count, sample_rate);
 	if (slot < 0) {
-		free(reversed_data);
+		ma_free(reversed_data, NULL);
 		return PL_resource_error("audio_buffer_slots");
 	}
 
@@ -1605,7 +1605,7 @@ install_t uninstall_promini(void)
     /* Clean up engine */
     if (g_engine != NULL) {
         ma_engine_uninit(g_engine);
-        free(g_engine);
+        ma_free(g_engine, NULL);
         g_engine = NULL;
     }
 }
