@@ -28,36 +28,30 @@ Live granular sampler + concatenative synthesis + additive synth + effects + mod
 | Granular delay | Beads-style with ring buffer, tempo sync, sound buffer loading |
 | Image-to-audio | additive, waveform, RGB stereo modes |
 
+### Complete
+
+| Component | Notes |
+|-----------|-------|
+| SDL visualizer | waveform, spectrum, spectrogram; multiple windows; auto-range; themes |
+
 ### Next Steps
 
-1. **Polyphonic keyboard support** - keyboard rows trigger synth voices, not just granular
-   - Route keyboard rows to synth voices with ADSR envelopes
-   - Voice allocation: round-robin or least-recently-used
-   - Per-row: voice pool, mode/scale, octave offset
-   - Key down triggers attack, key up triggers release
-2. **SDL visualizer** - attach waveform/spectrogram display to any audio source
-   - Passthrough node taps audio, copies to ring buffer
-   - Per-source windows, multiple can run simultaneously
-   - Keyboard controls: mode toggle, zoom, smoothing, log/linear freq, dB/linear amp, pause
-   - See `docs/visualizer-plan.md` for full design
-3. **Additional modulation targets** - sound pitch, delay params, reverb params, bitcrush
-4. **Additional modulation sources** - noise, sampler (audio buffer as control signal)
-5. **Route depth/center get/set predicates** - with per-sample interpolation
-6. **Route as modulation target** - modulate depth/center from LFO/envelope
-7. **Output device selection** - `promini_init/1` with device name for routing to BlackHole, etc.
-8. **Corpus analyzer** - for concatenative synthesis
-   - Segmenter: fixed interval or onset detection (envelope follower)
-   - Analyzer: RMS (loudness), ZCR (brightness), optional pitch
-   - Metadata array parallel to ring buffer
-   - Query interface: expose grain features to Prolog
-9. **Reverb variable room size** - scale all delay times together with single parameter (Oliverb-style)
-10. **Reverb highpass in tank** - prevent low-frequency buildup, complement existing damping (lowpass)
-11. **Reverb extended modulation** - random oscillators (not sine), apply to all diffusers not just decay diffusers
-12. **Reverb freeze mode** - decay=1.0 with stable limiting for infinite sustain
-13. **Reverb early reflections** - multitap delay stage before input diffusers, separate mix control
-14. **Reverb in-loop pitch shift** - option to move shimmer into feedback path (builds up vs post-process)
-15. **Reverb reverse shimmer** - reversed grain playback for smoother pitch shift buildup
-16. **Ping pong delay feedback filter** - lowpass/highpass on feedback path for tape-style darkening or thinning
+1. **Multiple keyboard windows** - slot-based array, per-window event routing
+2. **Polyphonic keyboard support** - keyboard rows trigger synth voices, not just granular
+   - Envelope gate API (trigger/release from key events)
+   - Voice pool per keyboard row
+   - Voice stealing (oldest voice when pool exhausted)
+3. **Reverb extensions** - room size, tank highpass, freeze, early reflections, extended modulation
+4. **Concatenative granular synthesis** - corpus-based descriptor matching
+   - Corpus analysis: segment audio, extract descriptors (centroid, flatness, pitch, RMS, etc.)
+   - Search/matching: nearest neighbor in descriptor space
+   - Target modes: manual, audio follower, trajectory, random walk
+5. **Step sequencer** - pattern-based note/parameter control, clock-synced
+6. **Arpeggiator** - held notes to sequence patterns
+7. **Effects** - chorus/flanger/phaser, waveshaping/saturation, comb filter
+8. **Karplus-Strong** - plucked string synthesis
+9. **Spectral effects** - FFT-based freeze, blur, morph
+10. **Prolog composition DSL** - declarative patterns, harmonic rules, generative constraints
 
 ### Known Issues
 
@@ -160,12 +154,12 @@ Cubic interpolation during audio generation to smooth transitions between buffer
 
 ### Two Models
 
-**Beads-style (blind/positional):**
+**Beads-style (blind/positional):** ✓ Complete
 - Position-based: "play grain at 500ms ago"
 - Good for textures, smearing, time-stretching
-- Parameters: position, size, density, pitch, feedback
+- Parameters: position, size, density, pitch, spray, reverse, envelope shape, mode quantization
 
-**Concatenative (corpus-based):**
+**Concatenative (corpus-based):** Planned
 - Feature-based: "play a grain that sounds like X"
 - Good for reconstruction, remix, semantic control
 - Treats buffer as queryable database
@@ -173,41 +167,63 @@ Cubic interpolation during audio generation to smooth transitions between buffer
 ### Corpus Data Structure
 
 ```c
+#define MAX_CORPUS_SEGMENTS 4096
+#define NUM_DESCRIPTORS 8
+
 typedef struct {
-    size_t start_frame;
-    size_t length;
-    float rms;           /* loudness */
-    float zcr;           /* zero-crossing rate (brightness) */
-    float pitch;         /* 0 if unpitched/unknown */
-} grain_metadata_t;
+    ma_uint32 start_frame;
+    ma_uint32 length_frames;
+    float descriptors[NUM_DESCRIPTORS];  /* centroid, spread, flatness, rolloff, rms, zcr, pitch, pitch_confidence */
+} corpus_segment_t;
+
+typedef struct {
+    ma_bool32 in_use;
+    int audio_buffer_slot;
+    corpus_segment_t segments[MAX_CORPUS_SEGMENTS];
+    int segment_count;
+} corpus_t;
 ```
+
+### Descriptors
+
+| Index | Name | Description |
+|-------|------|-------------|
+| 0 | centroid | Spectral brightness (weighted mean frequency) |
+| 1 | spread | Spectral width |
+| 2 | flatness | Noisiness (geometric/arithmetic mean ratio) |
+| 3 | rolloff | Frequency below which 85% energy lies |
+| 4 | rms | Loudness |
+| 5 | zcr | Zero-crossing rate |
+| 6 | pitch | Fundamental frequency estimate |
+| 7 | pitch_confidence | How tonal vs noisy |
 
 ### Segmentation Strategies
 
-1. **Fixed interval** - chop every N ms (simple, predictable)
-2. **Onset detection** - envelope follower triggers on transients (musical)
+1. **Fixed grid** - equal-sized slices (simple, predictable)
+2. **Onset detection** - spectral flux peaks (musical boundaries)
+3. **Beat-aligned** - use clock/tempo for rhythmic material
 
-### Prolog Query Interface
+### Target Modes
+
+1. **Manual** - user specifies descriptor values directly
+2. **Audio follower** - analyze live input, match corpus to it
+3. **Trajectory** - interpolate through descriptor space over time
+4. **Random walk** - Brownian motion through descriptor space
+
+### Prolog Interface
 
 ```prolog
-% Get all grains from corpus
-corpus_grains(CorpusId, GrainList).
+corpus_init(-Corpus, +AudioBuffer)
+corpus_analyze(+Corpus, +Options)     % method, segment_ms
+corpus_segment_count(+Corpus, -Count)
+corpus_get_descriptor(+Corpus, +SegmentIdx, +DescriptorIdx, -Value)
 
-% Get features for a grain
-grain_features(GrainId, [rms=R, zcr=Z, pitch=P]).
-
-% Find grains matching criteria
-find_grain(G, Criteria) :-
-    corpus_grains(corpus, Grains),
-    member(G, Grains),
-    matches_criteria(G, Criteria).
-
-% Semantic categories
-snare_sound(G) :- grain_features(G, F), member(rms=R, F), R > 0.7, member(zcr=Z, F), Z > 0.5.
-kick_sound(G) :- grain_features(G, F), member(rms=R, F), R > 0.7, member(zcr=Z, F), Z < 0.3.
-
-% Schedule grain playback
-grain_play(GrainId, [pitch=1.0, envelope=hann, pan=0.0]).
+concat_player_init(-Player, +Corpus)
+concat_player_set_target(+Player, +Descriptors)
+concat_player_set_weights(+Player, +Weights)
+concat_player_follow(+Player, +AudioSource)
+concat_player_start(+Player)
+concat_player_stop(+Player)
 ```
 
 ### Use Cases
@@ -215,4 +231,5 @@ grain_play(GrainId, [pitch=1.0, envelope=hann, pan=0.0]).
 - **Live remix**: detect kicks/snares in drum loop, resequence
 - **Mosaicing**: reconstruct target sound from corpus
 - **Timbral search**: "find something bright and loud"
+- **Audio following**: voice controls which drum sounds play
 - **Generative sequencing**: logic-driven grain selection

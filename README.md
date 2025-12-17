@@ -44,10 +44,11 @@ Existing or planned features (all in stereo):
     - audio buffers *(planned)*
   - targets: many parameters across the system, with S&H *(in progress)*
 - control interface using gamepad ✓, keyboard ✓, trackpad *(planned)*
-- SDL visualizer *(planned)*
-  - waveform and FFT spectrogram modes
-  - attach to any audio source
-  - multiple windows simultaneously
+- SDL visualizer ✓
+  - waveform, spectrum, spectrogram modes ✓
+  - attach to any audio source ✓
+  - multiple windows simultaneously ✓
+  - auto-ranging, theme support, FFT size selection ✓
 - patches, presets, and setups saved as transparent prolog clauses ✓
 - MCP integration for AI-assisted patch design and composition *(planned)*
 
