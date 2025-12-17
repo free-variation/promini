@@ -194,6 +194,63 @@ static int scancode_to_key(SDL_Scancode sc, int *row, int *col)
 	return 0;
 }
 
+static void keyboard_stop(void);
+
+/*
+ * keyboard_handle_event()
+ * Handle SDL event if it belongs to the keyboard window.
+ */
+void keyboard_handle_event(SDL_Event *event)
+{
+	int row, col, mod_index;
+	SDL_WindowID event_wid;
+
+	if (!g_keyboard.active || g_keyboard.window == NULL) return;
+
+	/* extract window ID based on event type */
+	switch (event->type) {
+	case SDL_EVENT_KEY_DOWN:
+	case SDL_EVENT_KEY_UP:
+		event_wid = event->key.windowID;
+		break;
+	case SDL_EVENT_WINDOW_CLOSE_REQUESTED:
+		event_wid = event->window.windowID;
+		break;
+	default:
+		return;
+	}
+
+	if (event_wid != SDL_GetWindowID(g_keyboard.window)) return;
+
+	if (event->type == SDL_EVENT_WINDOW_CLOSE_REQUESTED) {
+		keyboard_stop();
+	} else if (event->type == SDL_EVENT_KEY_DOWN) {
+		if (event->key.scancode == SDL_SCANCODE_ESCAPE) {
+			keyboard_stop();
+		} else if (scancode_to_key(event->key.scancode, &row, &col)) {
+			g_keyboard.keys_pressed[row][col] = MA_TRUE;
+			if (g_keyboard.rows[row].target_type == KEYBOARD_TARGET_GRANULAR) {
+				int slot = g_keyboard.rows[row].granular_slot;
+				if (slot >= 0 && slot < MAX_GRANULAR_DELAYS && g_granular_delays[slot].in_use) {
+					keyboard_row_t *kr = &g_keyboard.rows[row];
+					int degree = col % kr->mode_length;
+					int octave = col / kr->mode_length;
+					float semitones = (float)(kr->octave_offset + octave) * 12.0f + kr->mode[degree];
+					trigger_grain_pitched(&g_granular_delays[slot], semitones);
+				}
+			}
+		} else if (scancode_to_mod(event->key.scancode, &mod_index)) {
+			g_keyboard.mod_keys[mod_index] = MA_TRUE;
+		}
+	} else if (event->type == SDL_EVENT_KEY_UP) {
+		if (scancode_to_key(event->key.scancode, &row, &col)) {
+			g_keyboard.keys_pressed[row][col] = MA_FALSE;
+		} else if (scancode_to_mod(event->key.scancode, &mod_index)) {
+			g_keyboard.mod_keys[mod_index] = MA_FALSE;
+		}
+	}
+}
+
 /*
  * keyboard_stop()
  * Cleanup keyboard state. Called from event loop and pl_keyboard_stop.
@@ -227,7 +284,6 @@ static int dispatch_sdl_events(int fd)
 {
 	struct pollfd fds[1];
 	SDL_Event event;
-	int row, col, mod_index;
 
 	if (g_control_initialized) {
 		/* move pending OS events into SDL's internal queue */
@@ -235,39 +291,12 @@ static int dispatch_sdl_events(int fd)
 
 		/* process all queued events */
 		while (SDL_PollEvent(&event)) {
-			if (g_keyboard.active) {
-				if (event.type == SDL_EVENT_KEY_DOWN &&
-				    event.key.scancode == SDL_SCANCODE_ESCAPE) {
-					keyboard_stop();
-				} else if (event.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED) {
-					keyboard_stop();
-				} else if (event.type == SDL_EVENT_KEY_DOWN) {
-					if (scancode_to_key(event.key.scancode, &row, &col)) {
-						g_keyboard.keys_pressed[row][col] = MA_TRUE;
-						if (g_keyboard.rows[row].target_type == KEYBOARD_TARGET_GRANULAR) {
-							int slot = g_keyboard.rows[row].granular_slot;
-							if (slot >= 0 && slot < MAX_GRANULAR_DELAYS && g_granular_delays[slot].in_use) {
-								keyboard_row_t *kr = &g_keyboard.rows[row];
-								int degree = col % kr->mode_length;
-								int octave = col / kr->mode_length;
-								float semitones = (float)(kr->octave_offset + octave) * 12.0f + kr->mode[degree];
-								trigger_grain_pitched(&g_granular_delays[slot], semitones);
-							}
-						}
-					} else if (scancode_to_mod(event.key.scancode, &mod_index)) {
-						g_keyboard.mod_keys[mod_index] = MA_TRUE;
-					}
-				} else if (event.type == SDL_EVENT_KEY_UP) {
-					if (scancode_to_key(event.key.scancode, &row, &col)) {
-						g_keyboard.keys_pressed[row][col] = MA_FALSE;
-					} else if (scancode_to_mod(event.key.scancode, &mod_index)) {
-						g_keyboard.mod_keys[mod_index] = MA_FALSE;
-					}
-				}
-			}
+			keyboard_handle_event(&event);
+			visualizer_handle_event(&event);
 		}
 
 		keyboard_render();
+		visualizer_render_all();
 	}
 
 	/* Poll stdin with 10ms timeout - allows event loop to run while REPL waits */

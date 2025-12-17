@@ -122,7 +122,9 @@
     clock_is_running/0,
     clock_get_beat_position/1,
     clock_route_init/5,
-    clock_route_uninit/1
+    clock_route_uninit/1,
+    visualizer_attach/3,
+    visualizer_detach/1
   ]).
 
 :- use_foreign_library('../../lib/promini').

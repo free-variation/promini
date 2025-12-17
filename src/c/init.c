@@ -24,6 +24,7 @@ install_t install(void)
     capture_register_predicates();
     granular_register_predicates();
 	clock_register_predicates();
+	visualizer_register_predicates();
 }
 
 /*
@@ -33,6 +34,7 @@ install_t install(void)
  */
 install_t uninstall(void)
 {
+	uninstall_visualizer();
 	uninstall_clock();
 	uninstall_control();
 	uninstall_image();

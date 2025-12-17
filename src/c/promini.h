@@ -59,6 +59,12 @@ extern pthread_mutex_t g_sounds_mutex;
 extern pthread_mutex_t g_audio_buffers_mutex;
 extern pthread_mutex_t g_capture_devices_mutex;
 extern pthread_mutex_t g_voices_mutex;
+extern pthread_mutex_t g_summing_mutex;
+extern pthread_mutex_t g_mod_mutex;
+extern pthread_mutex_t g_images_mutex;
+extern pthread_mutex_t g_image_synths_mutex;
+extern pthread_mutex_t g_granular_mutex;
+extern pthread_mutex_t g_visualizers_mutex;
 
 /*
  * Sound management
@@ -342,7 +348,6 @@ typedef struct {
 } summing_node_t;
 
 extern summing_node_t g_summing_nodes[MAX_SUMMING_NODES];
-extern pthread_mutex_t g_summing_mutex;
 
 /* Moog ladder filter node */
 typedef struct {
@@ -494,10 +499,9 @@ typedef struct {
 	float phase_offset;
 } clock_route_t;
 
-/* modulaation arrays and mutex */
+/* modulation arrays */
 extern mod_source_t g_mod_sources[MAX_MOD_SOURCES];
 extern mod_route_t g_mod_routes[MAX_MOD_ROUTES];
-extern pthread_mutex_t g_mod_mutex;
 
 extern promini_clock_t g_clock;
 extern clock_route_t g_clock_routes[MAX_CLOCK_ROUTES];
@@ -527,8 +531,6 @@ typedef struct {
 	int channels;
 	ma_bool32 in_use;
 } image_slot_t;
-
-extern pthread_mutex_t g_images_mutex;
 
 /* Image synth node */
 # define MAX_IMAGE_SYNTHS 64
@@ -567,8 +569,6 @@ typedef struct {
 		} waveform;
 	} params;
 } image_synth_node_t;
-
-extern pthread_mutex_t g_image_synths_mutex;
 
 /*
  * Granular delay
@@ -654,6 +654,58 @@ typedef struct {
 
 extern keyboard_state_t g_keyboard;
 
+/* Visualizer types */
+typedef enum {
+	VIZ_MODE_WAVEFORM,
+	VIZ_MODE_SPECTROGRAM
+} viz_mode_t;
+
+#define MAX_VISUALIZERS 16
+#define VIZ_BUFFER_FRAMES 8192
+#define VIZ_WATERFALL_ROWS 256
+#define VIZ_TRIGGER_SEARCH_FRAMES 1024
+
+typedef struct {
+	float *real;
+	float *imag;
+	float *magnitudes;
+	float *window;
+	ma_uint32 fft_size;
+} fft_state_t;
+
+typedef struct {
+	ma_node_base base;
+	ma_bool32 in_use;
+
+	/* audio tap - audio thread writes, render thread reads */
+	ring_buffer_t buffer;
+
+	/* FFT state */
+	fft_state_t fft;
+	float *smoothed_magnitudes[2];
+
+	/* waterfall history (per channel) */
+	float *waterfall[2];
+	ma_uint32 waterfall_row;
+
+	/* display */
+	viz_mode_t mode;
+	ma_bool32 triggered;
+	SDL_Window *window;
+	SDL_Renderer *renderer;
+
+	/* display parameters */
+	float zoom;
+	float amp_scale;
+	float smoothing;
+	ma_bool32 log_freq;
+	ma_bool32 db_scale;
+	ma_bool32 paused;
+	ma_uint32 theme;
+} visualizer_node_t;
+
+extern visualizer_node_t g_visualizers[MAX_VISUALIZERS];
+
 /* Shared arrays */
 extern sound_slot_t g_sounds[MAX_SOUNDS];
 extern synth_voice_t g_voices[MAX_VOICES];
@@ -661,7 +713,7 @@ extern synth_oscillator_t g_oscillators[MAX_OSCILLATORS];
 extern image_slot_t g_images[MAX_IMAGES];
 extern image_synth_node_t g_image_synths[MAX_IMAGE_SYNTHS];
 extern granular_delay_t g_granular_delays[MAX_GRANULAR_DELAYS];
-extern pthread_mutex_t g_granular_mutex;
+extern visualizer_node_t g_visualizers[MAX_VISUALIZERS];
 
 /* Helper functions (implemented in promini.c) */
 extern void get_engine_format_info(ma_format *format, ma_uint32 *channels, ma_uint32 *sampleRate);
@@ -728,6 +780,12 @@ extern install_t control_register_predicates(void);
 extern install_t granular_register_predicates(void);
 extern install_t capture_register_predicates(void);
 extern install_t keyboard_register_predicates(void);
+extern install_t visualizer_register_predicates(void);
+
+/* Event handlers and render functions */
+extern void keyboard_handle_event(SDL_Event *event);
+extern void visualizer_handle_event(SDL_Event *event);
+extern void visualizer_render_all(void);
 
 /* Module cleanup functions */
 extern install_t uninstall_promini(void);
@@ -739,4 +797,5 @@ extern install_t uninstall_control(void);
 extern install_t uninstall_granular(void);
 extern install_t uninstall_capture(void);
 extern install_t uninstall_keyboard(void);
+extern install_t uninstall_visualizer(void);
 #endif /* PROMINI_H */
