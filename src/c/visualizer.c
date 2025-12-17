@@ -55,6 +55,7 @@ static void theme_gradient(const viz_theme_t *th, float intensity, Uint8 *r, Uin
 
 /* forward declarations */
 static void fft_free(fft_state_t *fft);
+static void resize_fft(visualizer_node_t *viz, ma_uint32 new_size);
 
 /******************************************************************************
  * SLOT AND WINDOW MANAGEMENT
@@ -189,6 +190,26 @@ void visualizer_handle_event(SDL_Event *event)
 				case SDL_SCANCODE_C:
 					viz->theme = (viz->theme + 1) % VIZ_THEME_COUNT;
 					break;
+				case SDL_SCANCODE_LEFTBRACKET:
+					viz->smoothing -= 0.05f;
+					if (viz->smoothing < 0.0f) viz->smoothing = 0.0f;
+					break;
+				case SDL_SCANCODE_RIGHTBRACKET:
+					viz->smoothing += 0.05f;
+					if (viz->smoothing > 0.95f) viz->smoothing = 0.95f;
+					break;
+				case SDL_SCANCODE_1:
+					resize_fft(viz, 512);
+					break;
+				case SDL_SCANCODE_2:
+					resize_fft(viz, 1024);
+					break;
+				case SDL_SCANCODE_3:
+					resize_fft(viz, 2048);
+					break;
+				case SDL_SCANCODE_4:
+					resize_fft(viz, 4096);
+					break;
 				default:
 					break;
 			}
@@ -250,6 +271,40 @@ static void fft_free(fft_state_t *fft)
 	fft->imag = NULL;
 	fft->magnitudes = NULL;
 	fft->window = NULL;
+}
+
+/*
+ * resize_fft()
+ * Change FFT size, reallocating all related buffers.
+ */
+static void resize_fft(visualizer_node_t *viz, ma_uint32 new_size)
+{
+	ma_uint32 num_bins;
+
+	if (viz->fft.fft_size == new_size) return;
+
+	/* free old buffers */
+	fft_free(&viz->fft);
+	if (viz->smoothed_magnitudes[0]) ma_free(viz->smoothed_magnitudes[0], NULL);
+	if (viz->smoothed_magnitudes[1]) ma_free(viz->smoothed_magnitudes[1], NULL);
+	if (viz->waterfall[0]) ma_free(viz->waterfall[0], NULL);
+	if (viz->waterfall[1]) ma_free(viz->waterfall[1], NULL);
+
+	/* reinitialize with new size */
+	fft_init(&viz->fft, new_size);
+	num_bins = new_size / 2;
+
+	viz->smoothed_magnitudes[0] = (float *)ma_malloc(num_bins * sizeof(float), NULL);
+	viz->smoothed_magnitudes[1] = (float *)ma_malloc(num_bins * sizeof(float), NULL);
+	viz->waterfall[0] = (float *)ma_malloc(VIZ_WATERFALL_ROWS * num_bins * sizeof(float), NULL);
+	viz->waterfall[1] = (float *)ma_malloc(VIZ_WATERFALL_ROWS * num_bins * sizeof(float), NULL);
+
+	memset(viz->smoothed_magnitudes[0], 0, num_bins * sizeof(float));
+	memset(viz->smoothed_magnitudes[1], 0, num_bins * sizeof(float));
+	memset(viz->waterfall[0], 0, VIZ_WATERFALL_ROWS * num_bins * sizeof(float));
+	memset(viz->waterfall[1], 0, VIZ_WATERFALL_ROWS * num_bins * sizeof(float));
+	viz->waterfall_row = 0;
+	viz->auto_max_bin = (float)(num_bins / 4);
 }
 
 /*
@@ -487,7 +542,7 @@ static void render_spectrum(visualizer_node_t *viz)
 	ma_uint32 highest_active;
 	float target_max;
 	float *samples;
-	float fft_input[1024];
+	float fft_input[4096];
 	ma_uint64 read_start;
 	ma_uint32 i, bin;
 	int x, x1, x2;
@@ -555,9 +610,9 @@ static void render_spectrum(visualizer_node_t *viz)
 			/* convert to height */
 			if (viz->db_scale) {
 				db = 20.0f * log10f(mag + 1e-6f);
-				height = (db + 60.0f) / 60.0f;
+				height = (db + 60.0f) / 60.0f * viz->amp_scale;
 			} else {
-				height = mag * 2.0f;
+				height = mag * viz->amp_scale;
 			}
 			norm_height = CLAMP(height, 0.0f, 1.0f);
 			height = norm_height * half_h;
@@ -607,7 +662,7 @@ static void render_spectrogram(visualizer_node_t *viz)
 	ma_uint32 highest_active;
 	float target_max;
 	float *samples;
-	float fft_input[1024];
+	float fft_input[4096];
 	ma_uint64 read_start;
 	ma_uint32 i, row, bin;
 	int x, x1, x2, y;
@@ -694,9 +749,9 @@ static void render_spectrogram(visualizer_node_t *viz)
 				/* convert to intensity */
 				if (viz->db_scale) {
 					db = 20.0f * log10f(mag + 1e-6f);
-					intensity = (db + 60.0f) / 60.0f;
+					intensity = (db + 60.0f) / 60.0f * viz->amp_scale;
 				} else {
-					intensity = mag * 2.0f;
+					intensity = mag * viz->amp_scale;
 				}
 				intensity = CLAMP(intensity, 0.0f, 1.0f);
 
