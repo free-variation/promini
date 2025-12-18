@@ -43,7 +43,7 @@ Existing or planned features (all in stereo):
     - noise *(planned)*
     - audio buffers *(planned)*
   - targets: many parameters across the system, with S&H *(in progress)*
-- control interface using gamepad ✓, keyboard ✓, trackpad *(planned)*
+- control interface using gamepad ✓, keyboard ✓ (polyphonic synth support with voice stealing), trackpad *(planned)*
 - SDL visualizer ✓
   - waveform, spectrum, spectrogram modes ✓
   - attach to any audio source ✓

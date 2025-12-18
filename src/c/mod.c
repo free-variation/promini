@@ -9,6 +9,17 @@
 #define APPLY_MOD_VALUE(current, value, route) \
 	((route)->rate_mode ? (current) + (value) : (value))
 
+#define GET_MOD_SOURCE(handle_term, src_var, slot_var) \
+	do { \
+		if (!get_typed_handle(handle_term, "mod_source", &slot_var)) { \
+			return PL_type_error("mod_source", handle_term); \
+		} \
+		if (slot_var < 0 || slot_var >= MAX_MOD_SOURCES) { \
+			return PL_existence_error("mod_source", handle_term); \
+		} \
+		src_var = &g_mod_sources[slot_var]; \
+	} while (0)
+
 /******************************************************************************
  * GLOBAL VARIABLES
  *****************************************************************************/
@@ -208,8 +219,8 @@ static float read_source_value(mod_source_t *src, ma_uint32 frame_count, ma_uint
 				case 2: /* break: hold at break_level */
 					value = src->source.envelope.break_level;
 					break;
-				case 3: /* release: break_level -> 0 */
-					value = src->source.envelope.break_level *
+				case 3: /* release: release_from -> 0 */
+					value = src->source.envelope.release_from *
 					        (1.0f - src->source.envelope.stage_progress);
 					break;
 				default: /* done */
@@ -217,8 +228,9 @@ static float read_source_value(mod_source_t *src, ma_uint32 frame_count, ma_uint
 					break;
 			}
 
-			/* advance stage progress */
-			if (src->source.envelope.stage < 4) {
+			/* advance stage progress (break stage holds when gate is TRUE) */
+			if (src->source.envelope.stage < 4 &&
+					!(src->source.envelope.stage == 2 && src->source.envelope.gate)) {
 				float proportion;
 				switch (src->source.envelope.stage) {
 					case 0: proportion = src->source.envelope.attack; break;
@@ -236,6 +248,9 @@ static float read_source_value(mod_source_t *src, ma_uint32 frame_count, ma_uint
 				if (src->source.envelope.stage_progress >= 1.0f) {
 					src->source.envelope.stage++;
 					src->source.envelope.stage_progress = 0.0f;
+					if (src->source.envelope.stage == 3) {
+						src->source.envelope.release_from = src->source.envelope.break_level;
+					}
 					if (src->source.envelope.stage > 3 && src->source.envelope.loop) {
 						src->source.envelope.stage = 0;
 					}
@@ -524,15 +539,9 @@ static foreign_t pl_mod_source_uninit(term_t handle_term)
 	int slot, i;
 	mod_source_t *src;
 
-	if (!get_typed_handle(handle_term, "mod_source", &slot)) {
-		return PL_type_error("mod_source", handle_term);
-	}
-	if (slot < 0 || slot >= MAX_MOD_SOURCES) {
-		return PL_existence_error("mod_source", handle_term);
-	}
+	GET_MOD_SOURCE(handle_term, src, slot);
 
 	pthread_mutex_lock(&g_mod_mutex);
-	src = &g_mod_sources[slot];
 	if (!src->in_use) {
 		pthread_mutex_unlock(&g_mod_mutex);
 		return PL_existence_error("mod_source", handle_term);
@@ -828,15 +837,10 @@ static foreign_t pl_mod_lfo_set_frequency(term_t handle_term, term_t freq_term)
 	double freq;
 	mod_source_t *src;
 
-	if (!get_typed_handle(handle_term, "mod_source", &slot)) {
-		return PL_type_error("mod_source", handle_term);
-	}
 	if (!PL_get_float(freq_term, &freq)) return FALSE;
-
-	if (slot < 0 || slot >= MAX_MOD_SOURCES) return FALSE;
+	GET_MOD_SOURCE(handle_term, src, slot);
 
 	pthread_mutex_lock(&g_mod_mutex);
-	src = &g_mod_sources[slot];
 	if (!src->in_use || src->type != MOD_SOURCE_WAVEFORM) {
 		pthread_mutex_unlock(&g_mod_mutex);
 		return FALSE;
@@ -857,13 +861,9 @@ static foreign_t pl_mod_lfo_get_frequency(term_t handle_term, term_t freq_term)
 	mod_source_t *src;
 	float freq;
 
-	if (!get_typed_handle(handle_term, "mod_source", &slot)) {
-		return PL_type_error("mod_source", handle_term);
-	}
-	if (slot < 0 || slot >= MAX_MOD_SOURCES) return FALSE;
+	GET_MOD_SOURCE(handle_term, src, slot);
 
 	pthread_mutex_lock(&g_mod_mutex);
-	src = &g_mod_sources[slot];
 	if (!src->in_use || src->type != MOD_SOURCE_WAVEFORM) {
 		pthread_mutex_unlock(&g_mod_mutex);
 		return FALSE;
@@ -928,6 +928,8 @@ static foreign_t pl_mod_envelope_init(
 	src->source.envelope.loop = loop_int ? MA_TRUE : MA_FALSE;
 	src->source.envelope.stage = 4; /* start in "done" state until triggered */
 	src->source.envelope.stage_progress = 0.0f;
+	src->source.envelope.gate = MA_FALSE;
+	src->source.envelope.release_from = 0.0f;
 
 	pthread_mutex_unlock(&g_mod_mutex);
 	return unify_typed_handle(handle_term, "mod_source", slot);
@@ -943,13 +945,9 @@ static foreign_t pl_mod_envelope_trigger(term_t handle_term)
 	int slot;
 	mod_source_t *src;
 
-	if (!get_typed_handle(handle_term, "mod_source", &slot)) {
-		return PL_type_error("mod_source", handle_term);
-	}
-	if (slot < 0 || slot >= MAX_MOD_SOURCES) return FALSE;
+	GET_MOD_SOURCE(handle_term, src, slot);
 
 	pthread_mutex_lock(&g_mod_mutex);
-	src = &g_mod_sources[slot];
 	if (!src->in_use || src->type != MOD_SOURCE_ENVELOPE) {
 		pthread_mutex_unlock(&g_mod_mutex);
 		return FALSE;
@@ -962,8 +960,77 @@ static foreign_t pl_mod_envelope_trigger(term_t handle_term)
 	return TRUE;
 }
 
+/*
+ * envelope_gate_on()
+ * Sets envelope gate to TRUE and restarts attack stage.
+ * Called from keyboard event handler.
+ */
+void envelope_gate_on(int slot)
+{
+	mod_source_t *src;
+
+	if (slot < 0 || slot >= MAX_MOD_SOURCES) return;
+
+	pthread_mutex_lock(&g_mod_mutex);
+	src = &g_mod_sources[slot];
+	if (!src->in_use || src->type != MOD_SOURCE_ENVELOPE) {
+		pthread_mutex_unlock(&g_mod_mutex);
+		return;
+	}
+
+	src->source.envelope.gate = MA_TRUE;
+	src->source.envelope.stage = 0;
+	src->source.envelope.stage_progress = 0.0f;
+
+	pthread_mutex_unlock(&g_mod_mutex);
+}
+
+/*
+ * envelope_gate_off()
+ * Sets envelope gate to FALSE and jumps to release stage.
+ * Called from keyboard event handler.
+ */
+void envelope_gate_off(int slot)
+{
+	mod_source_t *src;
+	float value;
+
+	if (slot < 0 || slot >= MAX_MOD_SOURCES) return;
+
+	pthread_mutex_lock(&g_mod_mutex);
+	src = &g_mod_sources[slot];
+	if (!src->in_use || src->type != MOD_SOURCE_ENVELOPE) {
+		pthread_mutex_unlock(&g_mod_mutex);
+		return;
+	}
+
+	/* calculate current value to release from */
+	switch (src->source.envelope.stage) {
+		case 0:
+			value = src->source.envelope.stage_progress;
+			break;
+		case 1:
+			value = 1.0f - src->source.envelope.stage_progress *
+			        (1.0f - src->source.envelope.break_level);
+			break;
+		case 2:
+			value = src->source.envelope.break_level;
+			break;
+		default:
+			value = 0.0f;
+			break;
+	}
+
+	src->source.envelope.gate = MA_FALSE;
+	src->source.envelope.release_from = value;
+	src->source.envelope.stage = 3;
+	src->source.envelope.stage_progress = 0.0f;
+
+	pthread_mutex_unlock(&g_mod_mutex);
+}
+
 /******************************************************************************
- * GAMEPAD CONTRL 
+ * GAMEPAD CONTRL
  *****************************************************************************/
 
 /*

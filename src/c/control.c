@@ -5,6 +5,7 @@
  */
 
 #include "promini.h"
+#include <limits.h>
 #include <poll.h>
 #include <unistd.h>
 #include <SDL3_ttf/SDL_ttf.h>
@@ -20,6 +21,15 @@
         kb_var = &g_keyboards[slot_var]; \
     } while (0)
 
+#define GET_ROW(kb_var, row_term, row_var, kr_var) \
+    do { \
+        if (!PL_get_integer(row_term, &row_var)) return FALSE; \
+        if (row_var < 0 || row_var >= KEYBOARD_ROWS) { \
+            return PL_domain_error("keyboard_row", row_term); \
+        } \
+        kr_var = &kb_var->rows[row_var]; \
+    } while (0)
+
 /******************************************************************************
  * GLOBAL VARIABLES
  *****************************************************************************/
@@ -27,9 +37,13 @@
 static ma_bool32 g_control_initialized = MA_FALSE;
 static PL_dispatch_hook_t g_old_dispatch_hook = NULL;
 static TTF_Font *g_font = NULL;
+static int g_voice_allocation_counter = 0;
 
 keyboard_t g_keyboards[MAX_KEYBOARDS] = {{0}};
 
+/* forward declarations */
+static void update_keyboard_title(keyboard_t *kb);
+static void gate_off_voice_envelopes(keyboard_row_t *kr, int pool_idx);
 
 /******************************************************************************
  * SLOT MANAGEMENT
@@ -78,10 +92,24 @@ static int find_keyboard_by_window(SDL_WindowID window_id)
 static void free_keyboard_slot(int slot)
 {
 	keyboard_t *kb;
+	int row, col, pool_idx;
+	keyboard_row_t *kr;
 
 	if (slot < 0 || slot >= MAX_KEYBOARDS) return;
 	kb = &g_keyboards[slot];
 	if (!kb->in_use) return;
+
+	/* gate off all active envelopes */
+	for (row = 0; row < KEYBOARD_ROWS; row++) {
+		kr = &kb->rows[row];
+		if (kr->target_type != KEYBOARD_TARGET_SYNTH) continue;
+		for (col = 0; col < KEYBOARD_KEYS_PER_ROW; col++) {
+			pool_idx = kr->target.synth.key_to_voice[col];
+			if (pool_idx >= 0) {
+				gate_off_voice_envelopes(kr, pool_idx);
+			}
+		}
+	}
 
 	if (kb->renderer != NULL) {
 		SDL_DestroyRenderer(kb->renderer);
@@ -91,6 +119,17 @@ static void free_keyboard_slot(int slot)
 		SDL_DestroyWindow(kb->window);
 		kb->window = NULL;
 	}
+
+	/* clear key state */
+	for (row = 0; row < KEYBOARD_ROWS; row++) {
+		for (col = 0; col < KEYBOARD_KEYS_PER_ROW; col++) {
+			kb->keys_pressed[row][col] = MA_FALSE;
+		}
+	}
+	for (col = 0; col < 5; col++) {
+		kb->mod_keys[col] = MA_FALSE;
+	}
+
 	kb->in_use = MA_FALSE;
 }
 
@@ -275,6 +314,130 @@ static int scancode_to_key(SDL_Scancode sc, int *row, int *col)
 }
 
 /*
+ * find_free_voice()
+ * Find a voice the pool not currently assigned to any key.
+ * If all voices are in use, steal the oldest one.
+ * Returns pool index.
+ */
+static int find_free_voice(keyboard_row_t *kr)
+{
+	int i, j;
+	ma_bool32 in_use;
+	int oldest_idx = 0;
+	int oldest_order = INT_MAX;
+
+	for (i = 0; i < kr->target.synth.pool_size; i++) {
+		in_use = MA_FALSE;
+		for (j = 0; j < KEYBOARD_KEYS_PER_ROW; j++) {
+			if (kr->target.synth.key_to_voice[j] == i) {
+				in_use = MA_TRUE;
+				/* track oldest for stealing */
+				if (kr->target.synth.allocation_order[i] < oldest_order) {
+					oldest_order = kr->target.synth.allocation_order[i];
+					oldest_idx = i;
+				}
+				break;
+			}
+		}
+		if (!in_use) return i;
+	}
+
+	/* all in use, steal oldest */
+	return oldest_idx;
+}
+
+/*
+ * handle_granular_key_down()
+ * Handle key press for granular row.
+ * Trigger gain with pitch.
+ */
+static void handle_granular_key_down(keyboard_row_t *kr, int col)
+{
+	int slot, degree, octave;
+	float semitones;
+
+	slot = kr->target.granular_slot;
+	if (slot < 0 || slot >= MAX_GRANULAR_DELAYS || !g_granular_delays[slot].in_use) {
+		return;
+	}
+
+	degree = col % kr->mode_length;
+	octave = col / kr->mode_length;
+	semitones = (float)(kr->octave_offset + octave) * 12.0f + kr->mode[degree];
+	trigger_grain_pitched(&g_granular_delays[slot], semitones);
+}
+
+/*
+ * gate_off_voice_envelopes()
+ * Gate off all envelopes for a voice in the pool.
+ */
+static void gate_off_voice_envelopes(keyboard_row_t *kr, int pool_idx)
+{
+	int e;
+	for (e = 0; e < kr->target.synth.envelope_counts[pool_idx]; e++) {
+		envelope_gate_off(kr->target.synth.envelope_slots[pool_idx][e]);
+	}
+}
+
+/*
+ * handle_synth_key_down()
+ * Handle key press for synth row - allocate voice, set freq, gate on.
+ */
+  static void handle_synth_key_down(keyboard_row_t *kr, int col)
+  {
+        int pool_idx, voice_slot, degree, octave, e;
+        float semitones;
+        double freq;
+
+		if (kr->target.synth.key_to_voice[col] != -1) return;  /* key already held */
+
+        if (kr->target.synth.pool_size <= 0) return;
+
+		pool_idx = find_free_voice(kr);
+		voice_slot = kr->target.synth.voice_slots[pool_idx];
+		degree = col % kr->mode_length;
+		octave = col / kr->mode_length;
+		semitones = (float)(kr->octave_offset + octave) * 12.0f + kr->mode[degree];
+        freq = 440.0 * pow(2.0, semitones / 12.0);
+
+		/* gate off and clear old key if stealing */
+		for (e = 0; e < KEYBOARD_KEYS_PER_ROW; e++) {
+			if (kr->target.synth.key_to_voice[e] == pool_idx) {
+				gate_off_voice_envelopes(kr, pool_idx);
+				kr->target.synth.key_to_voice[e] = -1;
+				break;
+			}
+		}
+
+		kr->target.synth.key_to_voice[col] = pool_idx;
+		kr->target.synth.allocation_order[pool_idx] = ++g_voice_allocation_counter;
+		voice_set_frequency(voice_slot, freq);
+
+		for (e = 0; e < kr->target.synth.envelope_counts[pool_idx]; e++) {
+			envelope_gate_on(kr->target.synth.envelope_slots[pool_idx][e]);
+		}
+}
+
+/*
+ * handle_synth_key_up()
+ * Handle key release for synth row - gate off envelopes, release voice.
+ */
+static void handle_synth_key_up(keyboard_row_t *kr, int col)
+{
+	int pool_idx, e;
+
+	pool_idx = kr->target.synth.key_to_voice[col];
+	if (pool_idx < 0) return;
+
+	/* gate off all envelopes */
+	for (e = 0; e < kr->target.synth.envelope_counts[pool_idx]; e++) {
+		envelope_gate_off(kr->target.synth.envelope_slots[pool_idx][e]);
+	}
+
+	kr->target.synth.key_to_voice[col] = -1;
+}
+
+/*
  * keyboard_handle_event()
  * Handle SDL event if it belongs to the keyboard window.
  */
@@ -310,14 +473,9 @@ void keyboard_handle_event(SDL_Event *event)
 		} else if (scancode_to_key(event->key.scancode, &row, &col)) {
 			kb->keys_pressed[row][col] = MA_TRUE;
 			if (kb->rows[row].target_type == KEYBOARD_TARGET_GRANULAR) {
-				int slot = kb->rows[row].granular_slot;
-				if (slot >= 0 && slot < MAX_GRANULAR_DELAYS && g_granular_delays[slot].in_use) {
-					keyboard_row_t *kr = &kb->rows[row];
-					int degree = col % kr->mode_length;
-					int octave = col / kr->mode_length;
-					float semitones = (float)(kr->octave_offset + octave) * 12.0f + kr->mode[degree];
-					trigger_grain_pitched(&g_granular_delays[slot], semitones);
-				}
+				handle_granular_key_down(&kb->rows[row], col);
+			} else if (kb->rows[row].target_type == KEYBOARD_TARGET_SYNTH) {
+				handle_synth_key_down(&kb->rows[row], col);
 			}
 		} else if (scancode_to_mod(event->key.scancode, &mod_index)) {
 			kb->mod_keys[mod_index] = MA_TRUE;
@@ -325,6 +483,9 @@ void keyboard_handle_event(SDL_Event *event)
 	} else if (event->type == SDL_EVENT_KEY_UP) {
 		if (scancode_to_key(event->key.scancode, &row, &col)) {
 			kb->keys_pressed[row][col] = MA_FALSE;
+			if (kb->rows[row].target_type == KEYBOARD_TARGET_SYNTH) {
+				handle_synth_key_up(&kb->rows[row], col);
+			}
 		} else if (scancode_to_mod(event->key.scancode, &mod_index)) {
 			kb->mod_keys[mod_index] = MA_FALSE;
 		}
@@ -675,17 +836,16 @@ static foreign_t pl_control_axis(term_t gamepad_term, term_t axis_term, term_t v
 /*
  * pl_keyboard_init()
  * keyboard_init(-Keyboard)
- * Create a new keyboard window, returns keyboard(Slot) handle.
+ * Create a new keyboard window with unconfigured rows.
  */
 static foreign_t pl_keyboard_init(term_t kb_term)
 {
-	int slot;
+	int slot, row, i;
 	keyboard_t *kb;
 	functor_t functor;
 	term_t slot_term;
 	static float d_minor[] = {0.0f, 2.0f, 3.0f, 5.0f, 7.0f, 8.0f, 10.0f};
 	int octaves[] = {2, 1, 0, -1};
-	int row, i;
 
 	slot = allocate_keyboard_slot();
 	if (slot < 0) return FALSE;
@@ -713,7 +873,7 @@ static foreign_t pl_keyboard_init(term_t kb_term)
 		return FALSE;
 	}
 
-	/* Initialize rows with D minor natural mode */
+	/* Initialize all rows as unconfigured */
 	for (row = 0; row < KEYBOARD_ROWS; row++) {
 		for (i = 0; i < 7; i++) {
 			kb->rows[row].mode[i] = d_minor[i];
@@ -721,15 +881,20 @@ static foreign_t pl_keyboard_init(term_t kb_term)
 		kb->rows[row].mode_length = 7;
 		kb->rows[row].octave_offset = octaves[row];
 		kb->rows[row].target_type = KEYBOARD_TARGET_NONE;
-		kb->rows[row].granular_slot = -1;
+		kb->rows[row].target.synth.pool_size = 0;
+		for (i = 0; i < KEYBOARD_KEYS_PER_ROW; i++) {
+			kb->rows[row].target.synth.key_to_voice[i] = -1;
+		}
 	}
 
+	update_keyboard_title(kb);
+
 	/* return keyboard(Slot) handle */
-	functor = PL_new_functor(PL_new_atom("keyboard"), 1);                                                  
-	slot_term = PL_new_term_ref();                                                                         
-	if (!PL_put_integer(slot_term, slot)) return FALSE;                                                    
-                                                                                                               
-	return PL_unify_term(kb_term, PL_FUNCTOR, functor, PL_TERM, slot_term); 
+	functor = PL_new_functor(PL_new_atom("keyboard"), 1);
+	slot_term = PL_new_term_ref();
+	if (!PL_put_integer(slot_term, slot)) return FALSE;
+
+	return PL_unify_term(kb_term, PL_FUNCTOR, functor, PL_TERM, slot_term);
 }
 
 /*                                                                                                           
@@ -759,23 +924,20 @@ static foreign_t pl_keyboard_row_set(term_t kb_term, term_t row_term, term_t opt
 {
 	int slot, row, octave, count;
 	keyboard_t *kb;
+	keyboard_row_t *kr;
 
 	GET_KEYBOARD(kb_term, kb, slot);
-
-	if (!PL_get_integer(row_term, &row)) return FALSE;
-	if (row < 0 || row >= KEYBOARD_ROWS) {
-		return PL_domain_error("keyboard_row", row_term);
-	}
+	GET_ROW(kb, row_term, row, kr);
 
 	/* parse mode list if provided */
-	count = get_param_float_list(opts_term, "mode", kb->rows[row].mode, MAX_MODE_INTERVALS);
+	count = get_param_float_list(opts_term, "mode", kr->mode, MAX_MODE_INTERVALS);
 	if (count > 0) {
-		kb->rows[row].mode_length = count;
+		kr->mode_length = count;
 	}
 
 	/* parse octave if provided */
 	if (get_param_int(opts_term, "octave", &octave)) {
-		kb->rows[row].octave_offset = octave;
+		kr->octave_offset = octave;
 	}
 
 	return TRUE;
@@ -789,37 +951,60 @@ static void update_keyboard_title(keyboard_t *kb)
 {
 	char title[256];
 	char *p;
-	int row, len;
-	int slots_seen[KEYBOARD_ROWS];
-	int num_seen = 0;
-	int slot, already_seen, i;
+	int row, len, i, j;
+	int granular_seen[KEYBOARD_ROWS];
+	int voice_seen[MAX_POOL_VOICES * KEYBOARD_ROWS];
+	int num_granular = 0;
+	int num_voices = 0;
+	int slot, already_seen;
 
 	p = title;
 
 	for (row = 0; row < KEYBOARD_ROWS; row++) {
 		if (kb->rows[row].target_type == KEYBOARD_TARGET_GRANULAR) {
-			slot = kb->rows[row].granular_slot;
+			slot = kb->rows[row].target.granular_slot;
 
 			/* check if already seen */
 			already_seen = 0;
-			for (i = 0; i < num_seen; i++) {
-				if (slots_seen[i] == slot) {
+			for (i = 0; i < num_granular; i++) {
+				if (granular_seen[i] == slot) {
 					already_seen = 1;
 					break;
 				}
 			}
 			if (already_seen) continue;
-			slots_seen[num_seen++] = slot;
+			granular_seen[num_granular++] = slot;
 
 			len = snprintf(p, sizeof(title) - (p - title),
 				"%sgranular(%d)",
-				(num_seen == 1) ? "" : ", ",
+				(p == title) ? "" : ", ",
 				slot);
 			p += len;
+		} else if (kb->rows[row].target_type == KEYBOARD_TARGET_SYNTH) {
+			for (j = 0; j < kb->rows[row].target.synth.pool_size; j++) {
+				slot = kb->rows[row].target.synth.voice_slots[j];
+
+				/* check if already seen */
+				already_seen = 0;
+				for (i = 0; i < num_voices; i++) {
+					if (voice_seen[i] == slot) {
+						already_seen = 1;
+						break;
+					}
+				}
+				if (already_seen) continue;
+				voice_seen[num_voices++] = slot;
+
+				len = snprintf(p, sizeof(title) - (p - title),
+					"%svoice(%d)",
+					(p == title) ? "" : ", ",
+					slot);
+				p += len;
+			}
 		}
 	}
 
-	if (num_seen == 0) {
+	if (p == title) {
 		snprintf(title, sizeof(title), "keyboard");
 	}
 
@@ -835,21 +1020,187 @@ static foreign_t pl_keyboard_connect(term_t kb_term, term_t row_term, term_t tar
 {
 	int slot, row, target_slot;
 	keyboard_t *kb;
+	keyboard_row_t *kr;
 
 	GET_KEYBOARD(kb_term, kb, slot);
-
-	if (!PL_get_integer(row_term, &row)) return FALSE;
-	if (row < 0 || row >= KEYBOARD_ROWS) return FALSE;
+	GET_ROW(kb, row_term, row, kr);
 
 	if (get_typed_handle(target_term, "granular", &target_slot)) {
 		if (target_slot < 0 || target_slot >= MAX_GRANULAR_DELAYS) return FALSE;
-		kb->rows[row].target_type = KEYBOARD_TARGET_GRANULAR;
-		kb->rows[row].granular_slot = target_slot;
+		kr->target_type = KEYBOARD_TARGET_GRANULAR;
+		kr->target.granular_slot = target_slot;
 		update_keyboard_title(kb);
 		return TRUE;
 	}
 
 	return FALSE;
+}
+
+/* 
+ * pl_keyboard_row_add_voice()
+ * keyboard_row_add_voice(+Keyboard, +Row, +Voice, +Envelopes)
+ * Add a voice and list of envelopes to a row's synth pool
+ */
+static foreign_t pl_keyboard_row_add_voice(
+		term_t kb_term,
+		term_t row_term,
+		term_t voice_term,
+		term_t envelopes_term)
+{
+	keyboard_t *kb;
+	int kb_slot, row, voice_slot, envelope_slot;
+	int envelope_count = 0;
+	keyboard_row_t *kr;
+	term_t head = PL_new_term_ref();
+	term_t list = PL_copy_term_ref(envelopes_term);
+
+	GET_KEYBOARD(kb_term, kb, kb_slot);
+	GET_ROW(kb, row_term, row, kr);
+
+	if (!get_typed_handle(voice_term, "voice", &voice_slot)) {
+		return PL_type_error("voice", voice_term);
+	}
+
+	if (kr->target.synth.pool_size >= MAX_POOL_VOICES) {
+		return PL_resource_error("pool_voices");
+	}
+
+	/* parse envelope list */
+	while (PL_get_list(list, head, list)) {
+		if (envelope_count >= MAX_ENVELOPES_PER_VOICE) {
+			return PL_resource_error("envelopes_per_voice");
+		}
+		if (!get_typed_handle(head, "mod_source", &envelope_slot)) {
+			return PL_type_error("mod_source", head);
+		}
+		kr->target.synth.envelope_slots[kr->target.synth.pool_size][envelope_count] = envelope_slot;
+		envelope_count++;
+	}
+
+	kr->target_type = KEYBOARD_TARGET_SYNTH;
+	kr->target.synth.voice_slots[kr->target.synth.pool_size] = voice_slot;
+	kr->target.synth.envelope_counts[kr->target.synth.pool_size] = envelope_count;
+	kr->target.synth.pool_size++;
+
+	update_keyboard_title(kb);
+	return TRUE;
+}
+
+/*
+ * clear_voice_slot()
+ * Clear a voice slot in a row's synth pool.
+ */
+static void clear_voice_slot(keyboard_row_t *kr, int idx)
+{
+	int j;
+
+	kr->target.synth.voice_slots[idx] = -1;
+	kr->target.synth.envelope_counts[idx] = 0;
+	for (j = 0; j < MAX_ENVELOPES_PER_VOICE; j++) {
+		kr->target.synth.envelope_slots[idx][j] = -1;
+	}
+}
+
+
+/*
+ * pl_keyboard_row_remove_voice()
+ * keyboard_row_remove_voice(+Keyboard, +Row, +Voice)
+ * Remove a voice from a row's synth pool.
+ */
+static foreign_t pl_keyboard_row_remove_voice(term_t kb_term, term_t row_term, term_t voice_term)
+{
+	keyboard_t *kb;
+	int kb_slot, row, voice_slot, i, j, k, last;
+	keyboard_row_t *kr;
+
+	GET_KEYBOARD(kb_term, kb, kb_slot);
+	GET_ROW(kb, row_term, row, kr);
+
+	if (!get_typed_handle(voice_term, "voice", &voice_slot)) {
+		return PL_type_error("voice", voice_term);
+	}
+
+	/* find voice in pool */
+	for (i = 0; i < kr->target.synth.pool_size; i++) {
+		if (kr->target.synth.voice_slots[i] == voice_slot) {
+			/* gate off if any key is using this voice */
+			for (k = 0; k < KEYBOARD_KEYS_PER_ROW; k++) {
+				if (kr->target.synth.key_to_voice[k] == i) {
+					gate_off_voice_envelopes(kr, i);
+					kr->target.synth.key_to_voice[k] = -1;
+					break;
+				}
+			}
+
+			/* swap with last entry */
+			last = kr->target.synth.pool_size - 1;
+			if (i != last) {
+				/* update key_to_voice mappings pointing to last */
+				for (k = 0; k < KEYBOARD_KEYS_PER_ROW; k++) {
+					if (kr->target.synth.key_to_voice[k] == last) {
+						kr->target.synth.key_to_voice[k] = i;
+					}
+				}
+
+				kr->target.synth.voice_slots[i] = kr->target.synth.voice_slots[last];
+				kr->target.synth.envelope_counts[i] = kr->target.synth.envelope_counts[last];
+				kr->target.synth.allocation_order[i] = kr->target.synth.allocation_order[last];
+				for (j = 0; j < MAX_ENVELOPES_PER_VOICE; j++) {
+					kr->target.synth.envelope_slots[i][j] = kr->target.synth.envelope_slots[last][j];
+				}
+			}
+
+			clear_voice_slot(kr, last);
+			kr->target.synth.pool_size--;
+
+			/* if pool empty, reset to NONE */
+			if (kr->target.synth.pool_size == 0) {
+				kr->target_type = KEYBOARD_TARGET_NONE;
+			}
+
+			return TRUE;
+		}
+	}
+
+	return FALSE;
+}
+
+/*
+ * pl_keyboard_row_clear()
+ * keyboard_row_clear(+Keyboard, +Row)
+ * Remove all voices from a row's synth pool.
+ */
+static foreign_t pl_keyboard_row_clear(term_t kb_term, term_t row_term)
+{
+	keyboard_t *kb;
+	int kb_slot, row, i, pool_idx;
+	keyboard_row_t *kr;
+
+	GET_KEYBOARD(kb_term, kb, kb_slot);
+	GET_ROW(kb, row_term, row, kr);
+
+	/* gate off all active envelopes */
+	for (i = 0; i < KEYBOARD_KEYS_PER_ROW; i++) {
+		pool_idx = kr->target.synth.key_to_voice[i];
+		if (pool_idx >= 0) {
+			gate_off_voice_envelopes(kr, pool_idx);
+		}
+	}
+
+	/* clear all voice slots */
+	for (i = 0; i < kr->target.synth.pool_size; i++) {
+		clear_voice_slot(kr, i);
+	}
+
+	kr->target.synth.pool_size = 0;
+	kr->target_type = KEYBOARD_TARGET_NONE;
+
+	/* clear key mappings */
+	for (i = 0; i < KEYBOARD_KEYS_PER_ROW; i++) {
+		kr->target.synth.key_to_voice[i] = -1;
+	}
+
+	return TRUE;
 }
 
 /******************************************************************************
@@ -873,6 +1224,9 @@ install_t control_register_predicates(void)
 	PL_register_foreign("keyboard_uninit", 1, pl_keyboard_uninit, 0);
 	PL_register_foreign("keyboard_connect", 3, pl_keyboard_connect, 0);
 	PL_register_foreign("keyboard_row_set", 3, pl_keyboard_row_set, 0);
+	PL_register_foreign("keyboard_row_add_voice", 4, pl_keyboard_row_add_voice, 0);
+	PL_register_foreign("keyboard_row_clear", 2, pl_keyboard_row_clear, 0);
+	PL_register_foreign("keyboard_row_remove_voice", 3, pl_keyboard_row_remove_voice, 0);
 }
 
 /*

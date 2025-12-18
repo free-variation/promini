@@ -945,6 +945,13 @@ static foreign_t pl_visualizer_attach(
 		return FALSE;
 	}
 
+	/* jitter window position to avoid stacking */
+	{
+		int x, y;
+		SDL_GetWindowPosition(viz->window, &x, &y);
+		SDL_SetWindowPosition(viz->window, x + slot * 30, y + slot * 30);
+	}
+
 	/* initialize display state */
 	viz->mode = VIZ_MODE_WAVEFORM;
 	viz->triggered = MA_FALSE;

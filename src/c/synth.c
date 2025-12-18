@@ -42,6 +42,9 @@ synth_oscillator_t g_oscillators[MAX_OSCILLATORS] = {{0}};
  */
 pthread_mutex_t g_voices_mutex = PTHREAD_MUTEX_INITIALIZER;
 
+/* forward declarations */
+void free_voice_pool(int count, int *slots);
+
 /******************************************************************************
  * HELPER FUNCTIONS
  *****************************************************************************/
@@ -110,6 +113,70 @@ static void free_voice_slot(int index)
 }
 
 /*
+ * init_voice_at_slot()
+ * Initialize a voice at an already-allocated slot.
+ */
+static ma_result init_voice_at_slot(int slot)
+{
+	ma_result result;
+
+	result = ma_sound_group_init(g_engine, 0, NULL, &g_voices[slot].group);
+	if (result != MA_SUCCESS) {
+		return result;
+	}
+
+	ma_sound_group_stop(&g_voices[slot].group);
+	g_voices[slot].is_voice = MA_FALSE;
+	g_voices[slot].effect_chain = NULL;
+	
+	return MA_SUCCESS;
+}
+
+/*
+ * allocate_voice_pool()
+ * Allocate multiple voice slots for polyphonic keyboard.
+ * Stores slot indices in the provided array.
+ * Returns MA_SUCCESS or error code.
+ */
+ma_result allocate_voice_pool(int count, int *slots)
+{
+	int i;
+	ma_result result;
+
+	for (i = 0; i < count; i++) {
+		slots[i] = allocate_voice_slot();
+		if (slots[i] < 0) {
+			free_voice_pool(i, slots);
+			return MA_OUT_OF_MEMORY;
+		}
+
+		result = init_voice_at_slot(slots[i]);
+		if (result != MA_SUCCESS) {
+			free_voice_slot(slots[i]);
+			free_voice_pool(i, slots);
+			return result;
+		}
+	}
+
+	return MA_SUCCESS;
+}
+
+/*
+ * free_voice_pool()
+ * Free multiple voice slots.
+ */
+void free_voice_pool(int count, int *slots)
+{
+	int i;
+
+	for (i = 0; i < count; i++) {
+		if (slots[i] >= 0) {
+			free_voice_slot(slots[i]);
+		}
+	}
+}
+
+/*
  * allocate_oscillator_slot()
  * Finds a free oscillator slot and marks it as in use.
  * Returns slot index, or -1 if all slots are full.
@@ -171,15 +238,11 @@ static foreign_t pl_synth_voice_init(term_t handle)
 		return PL_resource_error("voice_slots");
 	}
 
-	result = ma_sound_group_init(g_engine, 0, NULL, &g_voices[slot].group);
+	result = init_voice_at_slot(slot);
 	if (result != MA_SUCCESS) {
 		free_voice_slot(slot);
 		return FALSE;
 	}
-
-	ma_sound_group_stop(&g_voices[slot].group);
-	g_voices[slot].is_voice = MA_FALSE;
-	g_voices[slot].effect_chain = NULL;
 
 	return unify_typed_handle(handle, "voice", slot);
 }
@@ -639,6 +702,69 @@ static foreign_t pl_synth_oscillator_get_phase(term_t osc_handle, term_t phase_t
 	return PL_unify_float(phase_term, phase);
 }
 
+
+/*
+ * voice_set_frequency()
+ * Sets the frequency of a voice by scaling all its oscillators.
+ * Uses th efrist oscillator as the reference (tonic).
+ */
+void voice_set_frequency(int voice_slot, double frequency)
+{
+	int i;
+	int first_osc = -1;
+	double current_freq, ratio;
+
+	/* find first oscillator for this voice */
+	for (i = 0; i < MAX_OSCILLATORS; i++) {
+		if (g_oscillators[i].in_use && !g_oscillators[i].is_noise &&
+				g_oscillators[i].voice_index == voice_slot) {
+			first_osc = i;
+			break;
+		}
+	}
+
+	if (first_osc < 0) return;
+
+	current_freq = g_oscillators[first_osc].source.waveform.config.frequency;
+	if (current_freq <= 0.0) return;
+
+	ratio = frequency / current_freq;
+
+	/* scale all oscillators */
+	for (i = 0; i < MAX_OSCILLATORS; i++) {
+		if (g_oscillators[i].in_use && !g_oscillators[i].is_noise &&
+				g_oscillators[i].voice_index == voice_slot) {
+			double new_freq = g_oscillators[i].source.waveform.config.frequency * ratio;
+			ma_waveform_set_frequency(&g_oscillators[i].source.waveform, new_freq);
+		}
+	}
+}
+
+/*
+ * pl_synth_voice_set_frequency()
+ * synth_voice_set_frequency(+Voice, +Frequency)
+ * Sets the frequency of a voice by scaling all its oscillators.
+ */
+static foreign_t pl_synth_voice_set_frequency(term_t voice_handle, term_t freq_term)
+{
+	int voice_slot;
+	synth_voice_t *voice;
+	double frequency;
+
+	GET_VOICE_FROM_HANDLE(voice_handle, voice, voice_slot);
+
+	if (!PL_get_float(freq_term, &frequency)) {
+		return PL_type_error("float", freq_term);
+	}
+	if (frequency <= 0.0) {
+		return PL_domain_error("positive_frequency", freq_term);
+	}
+
+	voice_set_frequency(voice_slot, frequency);
+
+	return TRUE;
+}
+
 /******************************************************************************
  * PROLOG INTERFACE
  *****************************************************************************/
@@ -665,6 +791,7 @@ install_t synth_register_predicates(void)
 	PL_register_foreign("synth_oscillator_get_frequency", 2, pl_synth_oscillator_get_frequency, 0);
 	PL_register_foreign("synth_oscillator_set_phase", 2, pl_synth_oscillator_set_phase, 0);
 	PL_register_foreign("synth_oscillator_get_phase", 2, pl_synth_oscillator_get_phase, 0);
+	PL_register_foreign("synth_voice_set_frequency", 2, pl_synth_voice_set_frequency, 0);
 }
 
 /* uninstall_synth()

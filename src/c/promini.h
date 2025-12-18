@@ -423,6 +423,8 @@ typedef struct {
 			ma_bool32 loop;    /* restart after release */
 			ma_uint32 stage;   /* 0=attack, 1=decay, 2=break, 3=release, 4=done */
 			float stage_progress; /* 0-1 within current stage */
+			ma_bool32 gate;		/* TRUE while key held */
+			float release_from;	/* level at start of release stage */
 		} envelope;
 		struct {
 			SDL_Gamepad *gamepad;
@@ -508,6 +510,8 @@ extern clock_route_t g_clock_routes[MAX_CLOCK_ROUTES];
 
 /* modulation functions in mod.c */
 extern void process_modulation(ma_uint32 frame_count, ma_uint32 sample_rate);
+extern void envelope_gate_on(int slot);
+extern void envelope_gate_off(int slot);
 extern install_t mod_register_predicates(void);
 extern install_t uninstall_mod(void);
 
@@ -630,10 +634,13 @@ typedef struct {
 #define KEYBOARD_KEYS_PER_ROW 10
 #define MAX_MODE_INTERVALS 12
 #define MAX_KEYBOARDS 16
+#define MAX_POOL_VOICES 8
+#define MAX_ENVELOPES_PER_VOICE 8
 
 typedef enum {
 	KEYBOARD_TARGET_NONE,
-	KEYBOARD_TARGET_GRANULAR
+	KEYBOARD_TARGET_GRANULAR,
+	KEYBOARD_TARGET_SYNTH
 } keyboard_target_type_t;
 
 typedef struct {
@@ -641,7 +648,19 @@ typedef struct {
 	int mode_length;
 	int octave_offset;
 	keyboard_target_type_t target_type;
-	int granular_slot;
+	
+	union {
+		int granular_slot;
+		struct {
+			int voice_slots[MAX_POOL_VOICES];
+			int envelope_slots[MAX_POOL_VOICES][MAX_ENVELOPES_PER_VOICE];
+			int envelope_counts[MAX_POOL_VOICES];
+			int allocation_order[MAX_POOL_VOICES];
+			int pool_size;
+			int key_to_voice[KEYBOARD_KEYS_PER_ROW];
+			ma_bool32 gate_mode;
+		} synth;
+	} target;
 } keyboard_row_t;
 
 typedef struct {
@@ -772,6 +791,11 @@ extern int create_audio_buffer_from_pcm(
 /* Grain triggering (implemented in granular.c) */
 extern int trigger_grain(granular_delay_t *g);
 extern int trigger_grain_pitched(granular_delay_t *g, float semitones);
+
+/* polyphonic keyboard functions */
+extern ma_result allocate_voice_pool(int count, int *slots);
+extern void free_voice_pool(int count, int *slots);
+extern void voice_set_frequency(int voice_slot, double frequency);
 
 /* Module registration functions */
 extern install_t promini_register_predicates(void);

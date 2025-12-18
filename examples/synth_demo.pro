@@ -773,6 +773,101 @@ add_harmonic_proper(Voice, Fundamental, N, Osc) :-
 
 
 /*
+ * demo_voice_set_frequency/0
+ * Demonstrates synth_voice_set_frequency which scales all oscillators
+ * proportionally, preserving harmonic ratios.
+ */
+demo_voice_set_frequency :-
+    format('~n=== Voice Set Frequency Demo ===~n'),
+    format('Demonstrating pitch changes that preserve harmonic ratios...~n'),
+
+    synth_voice_init(Voice),
+
+    % Build a voice with harmonics at 220Hz fundamental
+    format('Creating voice with 4 harmonics at 220Hz fundamental...~n'),
+    synth_oscillator_add(Voice, 220.0, 0.0, _),   % 1x = 220Hz
+    synth_oscillator_add(Voice, 440.0, 0.0, _),   % 2x = 440Hz
+    synth_oscillator_add(Voice, 660.0, 0.0, _),   % 3x = 660Hz
+    synth_oscillator_add(Voice, 880.0, 0.0, _),   % 4x = 880Hz
+
+    synth_voice_start(Voice),
+
+    format('Playing at 220Hz (A3)...~n'),
+    sleep(1),
+
+    format('Shifting to 330Hz (E4) - all harmonics scale proportionally...~n'),
+    synth_voice_set_frequency(Voice, 330.0),
+    sleep(1),
+
+    format('Shifting to 440Hz (A4)...~n'),
+    synth_voice_set_frequency(Voice, 440.0),
+    sleep(1),
+
+    format('Shifting to 293.66Hz (D4)...~n'),
+    synth_voice_set_frequency(Voice, 293.66),
+    sleep(1),
+
+    format('Back to 220Hz (A3)...~n'),
+    synth_voice_set_frequency(Voice, 220.0),
+    sleep(1),
+
+    synth_voice_stop(Voice),
+    synth_voice_uninit(Voice),
+    format('Done.~n~n').
+
+
+/*
+ * demo_voice_melody/0
+ * Uses synth_voice_set_frequency to play a simple melody.
+ */
+demo_voice_melody :-
+    format('~n=== Voice Melody Demo ===~n'),
+    format('Playing a melody using synth_voice_set_frequency...~n'),
+
+    synth_voice_init(Voice),
+
+    % Build a rich voice with harmonics
+    synth_oscillator_add(Voice, 440.0, 0.0, O1),
+    synth_oscillator_add(Voice, 880.0, 0.0, O2),
+    synth_oscillator_add(Voice, 1320.0, 0.0, O3),
+    synth_oscillator_set_volume(O1, 1.0),
+    synth_oscillator_set_volume(O2, 0.5),
+    synth_oscillator_set_volume(O3, 0.25),
+
+    voice_attach_effect(Voice, reverb, [decay=0.6, wet=0.3], _),
+
+    synth_voice_start(Voice),
+
+    % Play "Twinkle Twinkle" first phrase (C C G G A A G)
+    format('Playing melody...~n'),
+    play_note(Voice, 261.63, 0.4),  % C4
+    play_note(Voice, 261.63, 0.4),  % C4
+    play_note(Voice, 392.0, 0.4),   % G4
+    play_note(Voice, 392.0, 0.4),   % G4
+    play_note(Voice, 440.0, 0.4),   % A4
+    play_note(Voice, 440.0, 0.4),   % A4
+    play_note(Voice, 392.0, 0.8),   % G4 (held)
+
+    sleep(0.2),
+
+    play_note(Voice, 349.23, 0.4),  % F4
+    play_note(Voice, 349.23, 0.4),  % F4
+    play_note(Voice, 329.63, 0.4),  % E4
+    play_note(Voice, 329.63, 0.4),  % E4
+    play_note(Voice, 293.66, 0.4),  % D4
+    play_note(Voice, 293.66, 0.4),  % D4
+    play_note(Voice, 261.63, 0.8),  % C4 (held)
+
+    synth_voice_stop(Voice),
+    synth_voice_uninit(Voice),
+    format('Done.~n~n').
+
+play_note(Voice, Freq, Duration) :-
+    synth_voice_set_frequency(Voice, Freq),
+    sleep(Duration).
+
+
+/*
  * demo_all/0
  * Runs all demos in sequence.
  */

@@ -33,25 +33,22 @@ Live granular sampler + concatenative synthesis + additive synth + effects + mod
 | Component | Notes |
 |-----------|-------|
 | SDL visualizer | waveform, spectrum, spectrogram; multiple windows; auto-range; themes |
+| Multiple keyboard windows | slot-based array, per-window event routing |
+| Polyphonic keyboard for synth | voice pool per row, voice stealing (oldest), envelope gate API, key repeat handling |
 
 ### Next Steps
 
-1. **Multiple keyboard windows** - slot-based array, per-window event routing
-2. **Polyphonic keyboard support** - keyboard rows trigger synth voices, not just granular
-   - Envelope gate API (trigger/release from key events)
-   - Voice pool per keyboard row
-   - Voice stealing (oldest voice when pool exhausted)
-3. **Reverb extensions** - room size, tank highpass, freeze, early reflections, extended modulation
-4. **Concatenative granular synthesis** - corpus-based descriptor matching
+1. **Reverb extensions** - room size, tank highpass, freeze, early reflections, extended modulation
+2. **Concatenative granular synthesis** - corpus-based descriptor matching
    - Corpus analysis: segment audio, extract descriptors (centroid, flatness, pitch, RMS, etc.)
    - Search/matching: nearest neighbor in descriptor space
    - Target modes: manual, audio follower, trajectory, random walk
-5. **Step sequencer** - pattern-based note/parameter control, clock-synced
-6. **Arpeggiator** - held notes to sequence patterns
-7. **Effects** - chorus/flanger/phaser, waveshaping/saturation, comb filter
-8. **Karplus-Strong** - plucked string synthesis
-9. **Spectral effects** - FFT-based freeze, blur, morph
-10. **Prolog composition DSL** - declarative patterns, harmonic rules, generative constraints
+3. **Step sequencer** - pattern-based note/parameter control, clock-synced
+4. **Arpeggiator** - held notes to sequence patterns
+5. **Effects** - chorus/flanger/phaser, waveshaping/saturation, comb filter
+6. **Karplus-Strong** - plucked string synthesis
+7. **Spectral effects** - FFT-based freeze, blur, morph
+8. **Prolog composition DSL** - declarative patterns, harmonic rules, generative constraints
 
 ### Known Issues
 

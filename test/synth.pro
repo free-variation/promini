@@ -145,4 +145,38 @@ test(remove_noise, [nondet, cleanup(synth_voice_uninit(V))]) :-
     synth_noise_add(V, white, N),
     synth_oscillator_remove(N).
 
+% Voice set frequency tests
+
+test(voice_set_frequency_single_osc, [nondet, cleanup(synth_voice_uninit(V))]) :-
+    synth_voice_init(V),
+    synth_oscillator_add(V, 440.0, 0.0, O),
+    synth_voice_set_frequency(V, 880.0),
+    synth_oscillator_get_frequency(O, Freq),
+    abs(Freq - 880.0) < 0.001.
+
+test(voice_set_frequency_harmonic_ratios, [nondet, cleanup(synth_voice_uninit(V))]) :-
+    synth_voice_init(V),
+    synth_oscillator_add(V, 440.0, 0.0, O1),
+    synth_oscillator_add(V, 880.0, 0.0, O2),
+    synth_oscillator_add(V, 1320.0, 0.0, O3),
+    synth_voice_set_frequency(V, 220.0),
+    synth_oscillator_get_frequency(O1, F1),
+    synth_oscillator_get_frequency(O2, F2),
+    synth_oscillator_get_frequency(O3, F3),
+    abs(F1 - 220.0) < 0.001,
+    abs(F2 - 440.0) < 0.001,
+    abs(F3 - 660.0) < 0.001.
+
+test(voice_set_frequency_no_oscillators, [nondet, cleanup(synth_voice_uninit(V))]) :-
+    synth_voice_init(V),
+    synth_voice_set_frequency(V, 440.0).
+
+test(voice_set_frequency_with_noise, [nondet, cleanup(synth_voice_uninit(V))]) :-
+    synth_voice_init(V),
+    synth_oscillator_add(V, 440.0, 0.0, O),
+    synth_noise_add(V, white, _),
+    synth_voice_set_frequency(V, 880.0),
+    synth_oscillator_get_frequency(O, Freq),
+    abs(Freq - 880.0) < 0.001.
+
 :- end_tests(synth).
