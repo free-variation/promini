@@ -9,6 +9,17 @@
 #include <unistd.h>
 #include <SDL3_ttf/SDL_ttf.h>
 
+#define GET_KEYBOARD(handle_term, kb_var, slot_var) \
+    do { \
+        if (!get_typed_handle(handle_term, "keyboard", &slot_var)) { \
+            return PL_type_error("keyboard", handle_term); \
+        } \
+        if (slot_var < 0 || slot_var >= MAX_KEYBOARDS || !g_keyboards[slot_var].in_use) { \
+            return PL_existence_error("keyboard", handle_term); \
+        } \
+        kb_var = &g_keyboards[slot_var]; \
+    } while (0)
+
 /******************************************************************************
  * GLOBAL VARIABLES
  *****************************************************************************/
@@ -17,7 +28,71 @@ static ma_bool32 g_control_initialized = MA_FALSE;
 static PL_dispatch_hook_t g_old_dispatch_hook = NULL;
 static TTF_Font *g_font = NULL;
 
-keyboard_state_t g_keyboard = {0};
+keyboard_t g_keyboards[MAX_KEYBOARDS] = {{0}};
+
+
+/******************************************************************************
+ * SLOT MANAGEMENT
+ *****************************************************************************/
+
+/*
+ * allocate_keyboard_slot()
+ * Find a free keyboard slot and mark it in use.
+ * Returns slot index, or -1 if none available.
+ */
+static int allocate_keyboard_slot(void)
+{
+	int i;
+
+	for(i = 0; i < MAX_KEYBOARDS; i++) {
+		if (!g_keyboards[i].in_use) {
+			g_keyboards[i].in_use = MA_TRUE;
+			return i;
+		}
+	}
+
+	return -1;
+}
+
+/*
+ * find_keyboard_by_window()
+ * Find keyboard slot that owns the given window ID.
+ * Returns slot index, or -1 if not found.
+ */
+static int find_keyboard_by_window(SDL_WindowID window_id)
+{
+	int i;
+	for (i = 0; i < MAX_KEYBOARDS; i++) {
+		if (g_keyboards[i].in_use && g_keyboards[i].window != NULL &&
+				SDL_GetWindowID(g_keyboards[i].window) == window_id) {
+			return i;
+		}
+	}
+	return -1;
+}
+
+/*
+ * free_keyboard_slot()
+ * Clean up and release a keyboard slot.
+ */
+static void free_keyboard_slot(int slot)
+{
+	keyboard_t *kb;
+
+	if (slot < 0 || slot >= MAX_KEYBOARDS) return;
+	kb = &g_keyboards[slot];
+	if (!kb->in_use) return;
+
+	if (kb->renderer != NULL) {
+		SDL_DestroyRenderer(kb->renderer);
+		kb->renderer = NULL;
+	}
+	if (kb->window != NULL) {
+		SDL_DestroyWindow(kb->window);
+		kb->window = NULL;
+	}
+	kb->in_use = MA_FALSE;
+}
 
 /******************************************************************************
  * KEYBOARD AND WINDOW MANAGEMENT
@@ -30,7 +105,7 @@ keyboard_state_t g_keyboard = {0};
  */
 static void keyboard_render(void)
 {
-	int row, col, i;
+	int row, col, i, j;
 	int win_w, win_h;
 	float cell_w, cell_h;
 	float mod_widths[5];
@@ -44,81 +119,86 @@ static void keyboard_render(void)
 	SDL_Texture *texture;
 	SDL_FRect text_rect;
 	SDL_Color text_color = {255, 255, 255, 255};
+	keyboard_t *kb;
 
-	if (!g_keyboard.active) return;
+	for (i = 0; i < MAX_KEYBOARDS; i++)
+	{
+		kb = &g_keyboards[i];
+		if (!kb->in_use || kb->window == NULL) continue;
 
-	SDL_GetWindowSize(g_keyboard.window, &win_w, &win_h);
-	cell_w = win_w / 10.0f;
-	cell_h = win_h / 5.0f;
+		SDL_GetWindowSize(kb->window, &win_w, &win_h);
+		cell_w = win_w / 10.0f;
+		cell_h = win_h / 5.0f;
 
-	/* clear background */
-	SDL_SetRenderDrawColor(g_keyboard.renderer, 32, 32, 32, 0);
-	SDL_RenderClear(g_keyboard.renderer);
+		/* clear background */
+		SDL_SetRenderDrawColor(kb->renderer, 32, 32, 32, 0);
+		SDL_RenderClear(kb->renderer);
 
-	/* draw 4x10 key rectangles */
-	for (row = 0; row < 4; row++) {
-		for (col = 0; col < 10; col++) {
-			if (g_keyboard.keys_pressed[row][col]) {
-				SDL_SetRenderDrawColor(g_keyboard.renderer, 200, 120, 60, 220);
-			} else {
-				SDL_SetRenderDrawColor(g_keyboard.renderer, 80, 80, 80, 200);
-			}
-			rect.x = col * cell_w + 2;
-			rect.y = row * cell_h + 2;
-			rect.w = cell_w - 4;
-			rect.h = cell_h - 4;
-			SDL_RenderFillRect(g_keyboard.renderer, &rect);
+		/* draw 4x10 key rectangles */
+		for (row = 0; row < 4; row++) {
+			for (col = 0; col < 10; col++) {
+				if (kb->keys_pressed[row][col]) {
+					SDL_SetRenderDrawColor(kb->renderer, 200, 120, 60, 220);
+				} else {
+					SDL_SetRenderDrawColor(kb->renderer, 80, 80, 80, 200);
+				}
+				rect.x = col * cell_w + 2;
+				rect.y = row * cell_h + 2;
+				rect.w = cell_w - 4;
+				rect.h = cell_h - 4;
+				SDL_RenderFillRect(kb->renderer, &rect);
 
-			/* draw semitone value if key is pressed */
-			if (g_keyboard.keys_pressed[row][col] && g_font != NULL) {
-				kr = &g_keyboard.rows[row];
-				if (kr->mode_length > 0) {
-					degree = col % kr->mode_length;
-					octave = col / kr->mode_length;
-					semitones = octave * 12.0f + kr->mode[degree];
-					snprintf(text, sizeof(text), "%.1f", semitones);
+				/* draw semitone value if key is pressed */
+				if (kb->keys_pressed[row][col] && g_font != NULL) {
+					kr = &kb->rows[row];
+					if (kr->mode_length > 0) {
+						degree = col % kr->mode_length;
+						octave = col / kr->mode_length;
+						semitones = octave * 12.0f + kr->mode[degree];
+						snprintf(text, sizeof(text), "%.1f", semitones);
 
-					surface = TTF_RenderText_Blended(g_font, text, 0, text_color);
-					if (surface != NULL) {
-						texture = SDL_CreateTextureFromSurface(g_keyboard.renderer, surface);
-						if (texture != NULL) {
-							text_rect.w = (float)surface->w;
-							text_rect.h = (float)surface->h;
-							text_rect.x = rect.x + (rect.w - text_rect.w) / 2;
-							text_rect.y = rect.y + (rect.h - text_rect.h) / 2;
-							SDL_RenderTexture(g_keyboard.renderer, texture, NULL, &text_rect);
-							SDL_DestroyTexture(texture);
+						surface = TTF_RenderText_Blended(g_font, text, 0, text_color);
+						if (surface != NULL) {
+							texture = SDL_CreateTextureFromSurface(kb->renderer, surface);
+							if (texture != NULL) {
+								text_rect.w = (float)surface->w;
+								text_rect.h = (float)surface->h;
+								text_rect.x = rect.x + (rect.w - text_rect.w) / 2;
+								text_rect.y = rect.y + (rect.h - text_rect.h) / 2;
+								SDL_RenderTexture(kb->renderer, texture, NULL, &text_rect);
+								SDL_DestroyTexture(texture);
+							}
+							SDL_DestroySurface(surface);
 						}
-						SDL_DestroySurface(surface);
 					}
 				}
 			}
 		}
-	}
 
-	/* draw mod key row: l_shift, l_option, space, r_option, r_shift */
-	mod_widths[0] = cell_w * 1.5f;      /* l_shift */
-	mod_widths[1] = cell_w * 1.25f;     /* l_option */
-	mod_widths[2] = cell_w * 4.5f;      /* space */
-	mod_widths[3] = cell_w * 1.25f;     /* r_option */
-	mod_widths[4] = cell_w * 1.5f;      /* r_shift */
+		/* draw mod key row: l_shift, l_option, space, r_option, r_shift */
+		mod_widths[0] = cell_w * 1.5f;      /* l_shift */
+		mod_widths[1] = cell_w * 1.25f;     /* l_option */
+		mod_widths[2] = cell_w * 4.5f;      /* space */
+		mod_widths[3] = cell_w * 1.25f;     /* r_option */
+		mod_widths[4] = cell_w * 1.5f;      /* r_shift */
 
-	mod_x = 0;
-	for (i = 0; i < 5; i++) {
-		if (g_keyboard.mod_keys[i]) {
-			SDL_SetRenderDrawColor(g_keyboard.renderer, 200, 120, 60, 220);
-		} else {
-			SDL_SetRenderDrawColor(g_keyboard.renderer, 80, 80, 80, 200);
+		mod_x = 0;
+		for (j = 0; j < 5; j++) {
+			if (kb->mod_keys[j]) {
+				SDL_SetRenderDrawColor(kb->renderer, 200, 120, 60, 220);
+			} else {
+				SDL_SetRenderDrawColor(kb->renderer, 80, 80, 80, 200);
+			}
+			rect.x = mod_x + 2;
+			rect.y = 4 * cell_h + 2;
+			rect.w = mod_widths[j] - 4;
+			rect.h = cell_h - 4;
+			SDL_RenderFillRect(kb->renderer, &rect);
+			mod_x += mod_widths[j];
 		}
-		rect.x = mod_x + 2;
-		rect.y = 4 * cell_h + 2;
-		rect.w = mod_widths[i] - 4;
-		rect.h = cell_h - 4;
-		SDL_RenderFillRect(g_keyboard.renderer, &rect);
-		mod_x += mod_widths[i];
-	}
 
-	SDL_RenderPresent(g_keyboard.renderer);
+		SDL_RenderPresent(kb->renderer);
+	}
 }
 
 /*
@@ -194,8 +274,6 @@ static int scancode_to_key(SDL_Scancode sc, int *row, int *col)
 	return 0;
 }
 
-static void keyboard_stop(void);
-
 /*
  * keyboard_handle_event()
  * Handle SDL event if it belongs to the keyboard window.
@@ -204,8 +282,8 @@ void keyboard_handle_event(SDL_Event *event)
 {
 	int row, col, mod_index;
 	SDL_WindowID event_wid;
-
-	if (!g_keyboard.active || g_keyboard.window == NULL) return;
+	int slot;
+	keyboard_t *kb;
 
 	/* extract window ID based on event type */
 	switch (event->type) {
@@ -220,19 +298,21 @@ void keyboard_handle_event(SDL_Event *event)
 		return;
 	}
 
-	if (event_wid != SDL_GetWindowID(g_keyboard.window)) return;
+	slot = find_keyboard_by_window(event_wid);
+	if (slot < 0) return;
+	kb = &g_keyboards[slot];
 
 	if (event->type == SDL_EVENT_WINDOW_CLOSE_REQUESTED) {
-		keyboard_stop();
+		free_keyboard_slot(slot);
 	} else if (event->type == SDL_EVENT_KEY_DOWN) {
 		if (event->key.scancode == SDL_SCANCODE_ESCAPE) {
-			keyboard_stop();
+			free_keyboard_slot(slot);
 		} else if (scancode_to_key(event->key.scancode, &row, &col)) {
-			g_keyboard.keys_pressed[row][col] = MA_TRUE;
-			if (g_keyboard.rows[row].target_type == KEYBOARD_TARGET_GRANULAR) {
-				int slot = g_keyboard.rows[row].granular_slot;
+			kb->keys_pressed[row][col] = MA_TRUE;
+			if (kb->rows[row].target_type == KEYBOARD_TARGET_GRANULAR) {
+				int slot = kb->rows[row].granular_slot;
 				if (slot >= 0 && slot < MAX_GRANULAR_DELAYS && g_granular_delays[slot].in_use) {
-					keyboard_row_t *kr = &g_keyboard.rows[row];
+					keyboard_row_t *kr = &kb->rows[row];
 					int degree = col % kr->mode_length;
 					int octave = col / kr->mode_length;
 					float semitones = (float)(kr->octave_offset + octave) * 12.0f + kr->mode[degree];
@@ -240,35 +320,15 @@ void keyboard_handle_event(SDL_Event *event)
 				}
 			}
 		} else if (scancode_to_mod(event->key.scancode, &mod_index)) {
-			g_keyboard.mod_keys[mod_index] = MA_TRUE;
+			kb->mod_keys[mod_index] = MA_TRUE;
 		}
 	} else if (event->type == SDL_EVENT_KEY_UP) {
 		if (scancode_to_key(event->key.scancode, &row, &col)) {
-			g_keyboard.keys_pressed[row][col] = MA_FALSE;
+			kb->keys_pressed[row][col] = MA_FALSE;
 		} else if (scancode_to_mod(event->key.scancode, &mod_index)) {
-			g_keyboard.mod_keys[mod_index] = MA_FALSE;
+			kb->mod_keys[mod_index] = MA_FALSE;
 		}
 	}
-}
-
-/*
- * keyboard_stop()
- * Cleanup keyboard state. Called from event loop and pl_keyboard_stop.
- */
-static void keyboard_stop(void)
-{
-	if (!g_keyboard.active) return;
-
-	if (g_keyboard.renderer != NULL) {
-		SDL_DestroyRenderer(g_keyboard.renderer);
-		g_keyboard.renderer = NULL;
-	}
-	if (g_keyboard.window != NULL) {
-		SDL_DestroyWindow(g_keyboard.window);
-		g_keyboard.window = NULL;
-	}
-
-	g_keyboard.active = MA_FALSE;
 }
 
 /******************************************************************************
@@ -612,69 +672,95 @@ static foreign_t pl_control_axis(term_t gamepad_term, term_t axis_term, term_t v
 	return PL_unify_float(value_term, value);
 }
 
-
-
 /*
- * pl_keyboard_start()
- * keyboard_start
- * Enable keyboard capture.
+ * pl_keyboard_init()
+ * keyboard_init(-Keyboard)
+ * Create a new keyboard window, returns keyboard(Slot) handle.
  */
-static foreign_t pl_keyboard_start(void)
+static foreign_t pl_keyboard_init(term_t kb_term)
 {
-	if (g_keyboard.active) return TRUE;
+	int slot;
+	keyboard_t *kb;
+	functor_t functor;
+	term_t slot_term;
+	static float d_minor[] = {0.0f, 2.0f, 3.0f, 5.0f, 7.0f, 8.0f, 10.0f};
+	int octaves[] = {2, 1, 0, -1};
+	int row, i;
 
-	g_keyboard.window = SDL_CreateWindow("promini keyboard", 600, 240,
+	slot = allocate_keyboard_slot();
+	if (slot < 0) return FALSE;
+	kb = &g_keyboards[slot];
+
+	kb->window = SDL_CreateWindow("promini keyboard", 600, 240,
 			SDL_WINDOW_RESIZABLE | SDL_WINDOW_TRANSPARENT | SDL_WINDOW_UTILITY);
-	if (g_keyboard.window == NULL) return FALSE;
+	if (kb->window == NULL) {
+		kb->in_use = MA_FALSE;
+		return FALSE;
+	}
 
-	g_keyboard.renderer = SDL_CreateRenderer(g_keyboard.window, NULL);
-	if (g_keyboard.renderer == NULL) {
-		SDL_DestroyWindow(g_keyboard.window);
-		g_keyboard.window = NULL;
+	/* offset window position based on slot to avoid stacking */
+	{
+		int x, y;
+		SDL_GetWindowPosition(kb->window, &x, &y);
+		SDL_SetWindowPosition(kb->window, x + slot * 30, y + slot * 30);
+	}
+
+	kb->renderer = SDL_CreateRenderer(kb->window, NULL);
+	if (kb->renderer == NULL) {
+		SDL_DestroyWindow(kb->window);
+		kb->window = NULL;
+		kb->in_use = MA_FALSE;
 		return FALSE;
 	}
 
 	/* Initialize rows with D minor natural mode */
-	{
-		static float d_minor[] = {0.0f, 2.0f, 3.0f, 5.0f, 7.0f, 8.0f, 10.0f};
-		int octaves[] = {2, 1, 0, -1};
-		int row, i;
-
-		for (row = 0; row < KEYBOARD_ROWS; row++) {
-			for (i = 0; i < 7; i++) {
-				g_keyboard.rows[row].mode[i] = d_minor[i];
-			}
-			g_keyboard.rows[row].mode_length = 7;
-			g_keyboard.rows[row].octave_offset = octaves[row];
-			g_keyboard.rows[row].target_type = KEYBOARD_TARGET_NONE;
-			g_keyboard.rows[row].granular_slot = -1;
+	for (row = 0; row < KEYBOARD_ROWS; row++) {
+		for (i = 0; i < 7; i++) {
+			kb->rows[row].mode[i] = d_minor[i];
 		}
+		kb->rows[row].mode_length = 7;
+		kb->rows[row].octave_offset = octaves[row];
+		kb->rows[row].target_type = KEYBOARD_TARGET_NONE;
+		kb->rows[row].granular_slot = -1;
 	}
 
-	g_keyboard.active = MA_TRUE;
-	return TRUE;
+	/* return keyboard(Slot) handle */
+	functor = PL_new_functor(PL_new_atom("keyboard"), 1);                                                  
+	slot_term = PL_new_term_ref();                                                                         
+	if (!PL_put_integer(slot_term, slot)) return FALSE;                                                    
+                                                                                                               
+	return PL_unify_term(kb_term, PL_FUNCTOR, functor, PL_TERM, slot_term); 
 }
 
-/*
- * pl_keyboard_stop()
- * keyboard_stop
- * Disable keyboard capture.
- */
-static foreign_t pl_keyboard_stop(void)
-{
-	keyboard_stop();
-	return TRUE;
-}
+/*                                                                                                           
+ * pl_keyboard_uninit()                                                                                      
+ * keyboard_uninit(+Keyboard)                                                                                
+ * Destroy a keyboard window.                                                                                
+ */                                                                                                          
+static foreign_t pl_keyboard_uninit(term_t kb_term)                                                          
+{                                                                                                            
+	int slot;                                                                                              
+
+	if (!get_typed_handle(kb_term, "keyboard", &slot)) return FALSE;                                       
+	if (slot < 0 || slot >= MAX_KEYBOARDS) return FALSE;                                                   
+	if (!g_keyboards[slot].in_use) return FALSE;                                                           
+
+	free_keyboard_slot(slot);                                                                              
+	return TRUE;                                                                                           
+  } 
 
 /*
  * pl_keyboard_row_set()
- * keyboard_row_set(+Row, +Options)
+ * keyboard_row_set(+Keyboard, +Row, +Options)
  * Configure a keyboard row's mode and octave.
  * Options: mode=List, octave=Int
  */
-static foreign_t pl_keyboard_row_set(term_t row_term, term_t opts_term)
+static foreign_t pl_keyboard_row_set(term_t kb_term, term_t row_term, term_t opts_term)
 {
-	int row, octave, count;
+	int slot, row, octave, count;
+	keyboard_t *kb;
+
+	GET_KEYBOARD(kb_term, kb, slot);
 
 	if (!PL_get_integer(row_term, &row)) return FALSE;
 	if (row < 0 || row >= KEYBOARD_ROWS) {
@@ -682,50 +768,88 @@ static foreign_t pl_keyboard_row_set(term_t row_term, term_t opts_term)
 	}
 
 	/* parse mode list if provided */
-	count = get_param_float_list(opts_term, "mode", g_keyboard.rows[row].mode, MAX_MODE_INTERVALS);
+	count = get_param_float_list(opts_term, "mode", kb->rows[row].mode, MAX_MODE_INTERVALS);
 	if (count > 0) {
-		g_keyboard.rows[row].mode_length = count;
+		kb->rows[row].mode_length = count;
 	}
 
 	/* parse octave if provided */
 	if (get_param_int(opts_term, "octave", &octave)) {
-		g_keyboard.rows[row].octave_offset = octave;
+		kb->rows[row].octave_offset = octave;
 	}
 
 	return TRUE;
 }
 
 /*
+ * update_keyboard_title()
+ * Update window title to show connected sources.
+ */
+static void update_keyboard_title(keyboard_t *kb)
+{
+	char title[256];
+	char *p;
+	int row, len;
+	int slots_seen[KEYBOARD_ROWS];
+	int num_seen = 0;
+	int slot, already_seen, i;
+
+	p = title;
+
+	for (row = 0; row < KEYBOARD_ROWS; row++) {
+		if (kb->rows[row].target_type == KEYBOARD_TARGET_GRANULAR) {
+			slot = kb->rows[row].granular_slot;
+
+			/* check if already seen */
+			already_seen = 0;
+			for (i = 0; i < num_seen; i++) {
+				if (slots_seen[i] == slot) {
+					already_seen = 1;
+					break;
+				}
+			}
+			if (already_seen) continue;
+			slots_seen[num_seen++] = slot;
+
+			len = snprintf(p, sizeof(title) - (p - title),
+				"%sgranular(%d)",
+				(num_seen == 1) ? "" : ", ",
+				slot);
+			p += len;
+		}
+	}
+
+	if (num_seen == 0) {
+		snprintf(title, sizeof(title), "keyboard");
+	}
+
+	SDL_SetWindowTitle(kb->window, title);
+}
+
+/*
  * pl_keyboard_connect()
- * keyboard_connect(+Row, +Target)
+ * keyboard_connect(+Keyboard, +Row, +Target)
  * Connect a keyboard row to a target (granular(N) for now).
  */
-static foreign_t pl_keyboard_connect(term_t row_term, term_t target_term)
+static foreign_t pl_keyboard_connect(term_t kb_term, term_t row_term, term_t target_term)
 {
-	int row;
-	int slot;
+	int slot, row, target_slot;
+	keyboard_t *kb;
+
+	GET_KEYBOARD(kb_term, kb, slot);
 
 	if (!PL_get_integer(row_term, &row)) return FALSE;
 	if (row < 0 || row >= KEYBOARD_ROWS) return FALSE;
 
-	if (get_typed_handle(target_term, "granular", &slot)) {
-		if (slot < 0 || slot >= MAX_GRANULAR_DELAYS) return FALSE;
-		g_keyboard.rows[row].target_type = KEYBOARD_TARGET_GRANULAR;
-		g_keyboard.rows[row].granular_slot = slot;
+	if (get_typed_handle(target_term, "granular", &target_slot)) {
+		if (target_slot < 0 || target_slot >= MAX_GRANULAR_DELAYS) return FALSE;
+		kb->rows[row].target_type = KEYBOARD_TARGET_GRANULAR;
+		kb->rows[row].granular_slot = target_slot;
+		update_keyboard_title(kb);
 		return TRUE;
 	}
 
 	return FALSE;
-}
-
-/*
- * pl_keyboard_active()
- * keyboard_active(-Active)
- * Returns true/false for keyboard capture state.
- */
-static foreign_t pl_keyboard_active(term_t active_term)
-{
-	return PL_unify_bool(active_term, g_keyboard.active);
 }
 
 /******************************************************************************
@@ -745,11 +869,10 @@ install_t control_register_predicates(void)
 	PL_register_foreign("control_close", 1, pl_control_close, 0);
 	PL_register_foreign("control_pump", 0, pl_control_pump, 0);
 	PL_register_foreign("control_axis", 3, pl_control_axis, 0);
-	PL_register_foreign("keyboard_start", 0, pl_keyboard_start, 0);
-	PL_register_foreign("keyboard_stop", 0, pl_keyboard_stop, 0);
-	PL_register_foreign("keyboard_connect", 2, pl_keyboard_connect, 0);
-	PL_register_foreign("keyboard_active", 1, pl_keyboard_active, 0);
-	PL_register_foreign("keyboard_row_set", 2, pl_keyboard_row_set, 0);
+	PL_register_foreign("keyboard_init", 1, pl_keyboard_init, 0);
+	PL_register_foreign("keyboard_uninit", 1, pl_keyboard_uninit, 0);
+	PL_register_foreign("keyboard_connect", 3, pl_keyboard_connect, 0);
+	PL_register_foreign("keyboard_row_set", 3, pl_keyboard_row_set, 0);
 }
 
 /*
@@ -758,11 +881,18 @@ install_t control_register_predicates(void)
  */
 install_t uninstall_control(void)
 {
+	int i;
+
 	if (g_control_initialized) {
+		for (i = 0; i < MAX_KEYBOARDS; i++) {
+			free_keyboard_slot(i);
+        }
+
 		if (g_font != NULL) {
 			TTF_CloseFont(g_font);
 			g_font = NULL;
 		}
+
 		TTF_Quit();
 		SDL_Quit();
 		g_control_initialized = MA_FALSE;

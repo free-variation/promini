@@ -629,6 +629,7 @@ typedef struct {
 #define KEYBOARD_ROWS 4
 #define KEYBOARD_KEYS_PER_ROW 10
 #define MAX_MODE_INTERVALS 12
+#define MAX_KEYBOARDS 16
 
 typedef enum {
 	KEYBOARD_TARGET_NONE,
@@ -644,15 +645,15 @@ typedef struct {
 } keyboard_row_t;
 
 typedef struct {
-	ma_bool32 active;
+	ma_bool32 in_use;
 	SDL_Window *window;
 	SDL_Renderer *renderer;
 	ma_bool32 keys_pressed[KEYBOARD_ROWS][KEYBOARD_KEYS_PER_ROW];
 	keyboard_row_t rows[KEYBOARD_ROWS];
 	ma_bool32 mod_keys[5];  /* l_shift, l_option, space, r_option, r_shift */
-} keyboard_state_t;
+} keyboard_t;
 
-extern keyboard_state_t g_keyboard;
+extern keyboard_t g_keyboards[MAX_KEYBOARDS];
 
 /* Visualizer types */
 typedef enum {
@@ -755,7 +756,7 @@ extern void free_reverb_node(reverb_node_t *reverb);
 /*  Gamepad and keyboard functions (implemented in control.c) */
 extern int get_axis_from_atom(atom_t atom_term, SDL_GamepadAxis *axis);
 extern SDL_Gamepad *get_gamepad_ptr(term_t gamepad_term);
-extern void process_keyboard_event(SDL_Event *event);
+extern void keyboard_handle_event(SDL_Event *event);
 
 /* Capture functions (implemented in capture.c) */
 extern capture_slot_t *get_capture_device(int index);
@@ -781,11 +782,9 @@ extern install_t image_register_predicates(void);
 extern install_t control_register_predicates(void);
 extern install_t granular_register_predicates(void);
 extern install_t capture_register_predicates(void);
-extern install_t keyboard_register_predicates(void);
 extern install_t visualizer_register_predicates(void);
 
 /* Event handlers and render functions */
-extern void keyboard_handle_event(SDL_Event *event);
 extern void visualizer_handle_event(SDL_Event *event);
 extern void visualizer_render_all(void);
 
@@ -798,6 +797,5 @@ extern install_t uninstall_image(void);
 extern install_t uninstall_control(void);
 extern install_t uninstall_granular(void);
 extern install_t uninstall_capture(void);
-extern install_t uninstall_keyboard(void);
 extern install_t uninstall_visualizer(void);
 #endif /* PROMINI_H */
