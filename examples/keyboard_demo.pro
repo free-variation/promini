@@ -301,6 +301,12 @@ demo_keyboard_hybrid :-
     summing_node_attach_effect(Sum, reverb, [wet=0.3, decay=0.8], _),
     assertz(demo_summing(Sum)),
 
+    /* S&H noise on granular position - random jumps every ~1 sec */
+    mod_noise_init(white, PosNoise),
+    mod_source_set_sh(PosNoise, 1000.0),
+    mod_route_init(PosNoise, granular, G1, position, absolute, 0.5, 0.5, 0.0, _),
+    mod_route_init(PosNoise, granular, G2, position, absolute, 0.5, 0.5, 0.0, _),
+
     /* keyboard setup */
     keyboard_init(K),
 

@@ -525,6 +525,20 @@ static void set_granular_pitch(void *target, float value, ma_uint32 frame_count,
 	g->pitch = APPLY_MOD_VALUE(g->pitch, value, route);
 }
 
+/*
+ * set_granular_position()
+ * Setter for granular position. Target is granular_delay_t*.
+ */
+static void set_granular_position(void *target, float value, ma_uint32 frame_count, mod_route_t *route)
+{
+	granular_delay_t *g = (granular_delay_t *)target;
+	float pos;
+	(void)frame_count;
+
+	pos = APPLY_MOD_VALUE(g->position, value, route);
+	g->position = CLAMP(pos, 0.0f, 1.0f);
+}
+
 /******************************************************************************
  * SOURCE AND ROUTE MANAGEMENT
  *****************************************************************************/
@@ -689,6 +703,8 @@ static foreign_t pl_mod_route_init(
 			setter = set_granular_density;
 		} else if (strcmp(param, "pitch") == 0) {
 			setter = set_granular_pitch;
+		} else if (strcmp(param, "position") == 0) {
+			setter = set_granular_position;
 		} else {
 			return PL_domain_error("granular_param", param_term);
 		}
@@ -873,6 +889,111 @@ static foreign_t pl_mod_lfo_get_frequency(term_t handle_term, term_t freq_term)
 	pthread_mutex_unlock(&g_mod_mutex);
 	return PL_unify_float(freq_term, freq);
 }
+
+/******************************************************************************
+ * ENVELOPE
+ *****************************************************************************/
+
+/*
+ * pl_mod_noise_init()
+ * Creates a noise modulation source.
+ * mod_noise_init(+Type, -Source)
+ * Type is one of: white, pink, brownian
+ */
+static foreign_t pl_mod_noise_init(term_t type_term, term_t handle_term)
+{
+	char *type_str;
+	int slot;
+	ma_noise_type noise_type;
+	ma_noise_config config;
+	ma_result result;
+	mod_source_t *src;
+
+	ENSURE_ENGINE_INITIALIZED();
+
+	if (!PL_get_atom_chars(type_term, &type_str)) return FALSE;
+
+	if (strcmp(type_str, "white") == 0) {
+		noise_type = ma_noise_type_white;
+	} else if (strcmp(type_str, "pink") == 0) {
+		noise_type = ma_noise_type_pink;
+	} else if (strcmp(type_str, "brownian") == 0) {
+		noise_type = ma_noise_type_brownian;
+	} else {
+		return PL_domain_error("noise_type", type_term);
+	}
+
+	pthread_mutex_lock(&g_mod_mutex);
+	slot = allocate_source_slot();
+	if (slot < 0) {
+		pthread_mutex_unlock(&g_mod_mutex);
+		return PL_resource_error("mod_source_slots");
+	}
+
+	src = &g_mod_sources[slot];
+	src->type = MOD_SOURCE_NOISE;
+
+	config = ma_noise_config_init(
+			ma_format_f32,
+			1,
+			noise_type, 
+			0,
+			1.0);
+
+	result = ma_noise_init(&config, NULL, &src->source.noise);
+	if (result != MA_SUCCESS) {
+		free_source_slot(slot);
+		pthread_mutex_unlock(&g_mod_mutex);
+		return FALSE;
+	}
+
+	pthread_mutex_unlock(&g_mod_mutex);
+	return unify_typed_handle(handle_term, "mod_source", slot);
+}
+
+
+/******************************************************************************
+ * SAMPLE & HOLD
+ *****************************************************************************/
+
+/*
+ * pl_mod_source_set_sh()
+ * Enables or disables sample & hold on a modulation source.
+ * mod_source_set_sh(+Source, +IntervalMs)
+ * IntervalMS of 0 disables S&H
+ */
+static foreign_t pl_mod_source_set_sh(term_t handle_term, term_t interval_term)
+{
+	int slot;
+	double interval_ms;
+	mod_source_t *src;
+	ma_uint32 sample_rate;
+
+	GET_MOD_SOURCE(handle_term, src, slot);
+	if (!PL_get_float(interval_term, &interval_ms)) return FALSE;
+
+	sample_rate = ma_engine_get_sample_rate(g_engine);
+
+	pthread_mutex_lock(&g_mod_mutex);
+	if (!src->in_use) {
+		pthread_mutex_unlock(&g_mod_mutex);
+		return PL_existence_error("mod_source", handle_term);
+	}
+
+	if (interval_ms <= 0) {
+		src->sh_enabled = MA_FALSE;
+		src->sh_interval = 0;
+	} else {
+		src->sh_enabled = MA_TRUE;
+		src->sh_interval = (ma_uint32)(interval_ms * sample_rate / 1000.0);
+		src->sh_counter = src->sh_interval; /* trigger immediate sample */
+	}
+
+	pthread_mutex_unlock(&g_mod_mutex);
+	return TRUE;
+}
+
+
 
 /******************************************************************************
  * ENVELOPE
@@ -1085,7 +1206,7 @@ static foreign_t pl_mod_gamepad_init(term_t gamepad_term, term_t axis_term, term
 }
 
 /******************************************************************************
- * KEYBOARD*CONTRL 
+ * KEYBOARD CONTRL 
  *****************************************************************************/
 
 /*
@@ -1154,4 +1275,6 @@ install_t mod_register_predicates(void)
 	PL_register_foreign("mod_route_uninit", 1, pl_mod_route_uninit, 0);
 	PL_register_foreign("mod_gamepad_init", 3, pl_mod_gamepad_init, 0);
 	PL_register_foreign("mod_keyboard_init", 3, pl_mod_keyboard_init, 0);
+	PL_register_foreign("mod_noise_init", 2, pl_mod_noise_init, 0);
+	PL_register_foreign("mod_source_set_sh", 2, pl_mod_source_set_sh, 0);
 }

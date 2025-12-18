@@ -72,6 +72,8 @@
     mod_route_uninit/1,
     mod_gamepad_init/3,
     mod_keyboard_init/3,
+    mod_noise_init/2,
+    mod_source_set_sh/2,
     summing_node_init/1,
     summing_node_uninit/1,
     summing_node_connect/2,

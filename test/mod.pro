@@ -326,4 +326,54 @@ test(keyboard_route_granular_pitch, [nondet, setup(control_init), cleanup((
     mod_route_init(K, granular, G, pitch, absolute, 12.0, 0.0, 0.0, R),
     R = mod_route(_).
 
+% Noise source tests
+
+test(create_noise_white, [nondet, cleanup(mod_source_uninit(N))]) :-
+    mod_noise_init(white, N),
+    N = mod_source(_).
+
+test(create_noise_pink, [nondet, cleanup(mod_source_uninit(N))]) :-
+    mod_noise_init(pink, N),
+    N = mod_source(_).
+
+test(create_noise_brownian, [nondet, cleanup(mod_source_uninit(N))]) :-
+    mod_noise_init(brownian, N),
+    N = mod_source(_).
+
+test(noise_route_to_granular_position, [nondet, cleanup((
+    mod_route_uninit(R),
+    mod_source_uninit(N),
+    granular_uninit(G)
+))]) :-
+    granular_init(2.0, G),
+    mod_noise_init(white, N),
+    mod_route_init(N, granular, G, position, absolute, 0.5, 0.5, 0.0, R),
+    R = mod_route(_).
+
+% Sample & hold tests
+
+test(noise_with_sh, [nondet, cleanup(mod_source_uninit(N))]) :-
+    mod_noise_init(white, N),
+    mod_source_set_sh(N, 1000.0).
+
+test(lfo_with_sh, [nondet, cleanup(mod_source_uninit(L))]) :-
+    mod_lfo_init(sine, 10.0, L),
+    mod_source_set_sh(L, 500.0).
+
+test(sh_disable, [nondet, cleanup(mod_source_uninit(N))]) :-
+    mod_noise_init(pink, N),
+    mod_source_set_sh(N, 1000.0),
+    mod_source_set_sh(N, 0.0).
+
+test(noise_sh_route_granular_position, [nondet, cleanup((
+    mod_route_uninit(R),
+    mod_source_uninit(N),
+    granular_uninit(G)
+))]) :-
+    granular_init(2.0, G),
+    mod_noise_init(white, N),
+    mod_source_set_sh(N, 1000.0),
+    mod_route_init(N, granular, G, position, absolute, 0.5, 0.5, 0.0, R),
+    R = mod_route(_).
+
 :- end_tests(mod).
