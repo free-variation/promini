@@ -351,6 +351,42 @@ test(set_reverb_freeze_off, [nondet]) :-
     Freeze = false,
     sound_unload(Sound).
 
+% Shimmer in-loop
+
+test(query_reverb_shimmer_in_loop_default, [nondet]) :-
+    sound_load('audio/counting.wav', Sound),
+    sound_attach_reverb(Sound, [], _),
+    effects(Sound, [effect(Sound, reverb, _, Params)]),
+    memberchk(shimmer_in_loop=InLoop, Params),
+    InLoop = false,
+    sound_unload(Sound).
+
+test(attach_reverb_with_shimmer_in_loop, [nondet]) :-
+    sound_load('audio/counting.wav', Sound),
+    sound_attach_reverb(Sound, [shimmer_in_loop=true], _),
+    effects(Sound, [effect(Sound, reverb, _, Params)]),
+    memberchk(shimmer_in_loop=InLoop, Params),
+    InLoop = true,
+    sound_unload(Sound).
+
+test(set_reverb_shimmer_in_loop, [nondet]) :-
+    sound_load('audio/counting.wav', Sound),
+    sound_attach_reverb(Sound, [], Effect),
+    effect_set_parameters(Effect, [shimmer_in_loop=1]),
+    effects(Sound, [effect(Sound, reverb, _, Params)]),
+    memberchk(shimmer_in_loop=InLoop, Params),
+    InLoop = true,
+    sound_unload(Sound).
+
+test(set_reverb_shimmer_in_loop_off, [nondet]) :-
+    sound_load('audio/counting.wav', Sound),
+    sound_attach_reverb(Sound, [shimmer_in_loop=true], Effect),
+    effect_set_parameters(Effect, [shimmer_in_loop=0]),
+    effects(Sound, [effect(Sound, reverb, _, Params)]),
+    memberchk(shimmer_in_loop=InLoop, Params),
+    InLoop = false,
+    sound_unload(Sound).
+
 % Detach and clear
 
 test(detach_reverb, [nondet]) :-

@@ -64,14 +64,6 @@ static float *alloc_buffer(ma_uint32 size) {
 	return buf;
 }
 
-/* Types defined in promini.h:
- * - reverb_delay_line_t
- * - reverb_tank_half_t
- * - reverb_channel_t
- * - reverb_pitchshift_t
- * - reverb_node_t
- */
-
 /* ============================================================================
  * Pitch shifter for shimmer effect
  * 4-grain overlap-add pitch shifting (see SuperCollider PitchShift for similar approach)
@@ -84,6 +76,8 @@ static inline float buffer_read_cubic_ps(float *buffer, ma_uint32 size, float po
 	float y0, y1, y2, y3;
 	float c0, c1, c2, c3;
 
+	/* Wrap negative positions */
+	while (pos < 0.0f) pos += (float)size;
 	i1 = (ma_uint32)pos % size;
 	i0 = (i1 == 0) ? size - 1 : i1 - 1;
 	i2 = (i1 + 1) % size;
@@ -465,8 +459,14 @@ static void process_channel(reverb_channel_t *ch, ma_uint32 t, float input,
                             float damping, float hp,
                             ma_int32 mod_offset0, ma_int32 mod_offset1,
                             float smooth_size,
+							ma_bool32 shimmer_in_loop, float shimmer_mix,
+							float shimmer_xfade, float shimmer_pos1, float shimmer_pos2,
                             float *out_l, float *out_r) {
 	float x, feedback0, feedback1;
+	float shifted0_a, shifted0_b, shifted0;
+	float shifted1_a, shifted1_b, shifted1;
+	float base_pos0, base_pos1;
+	ma_uint32 delay0, delay1;
 	ma_uint32 scaled_delay;
 
 	/* Predelay */
@@ -496,15 +496,46 @@ static void process_channel(reverb_channel_t *ch, ma_uint32 t, float input,
 			SCALED_DELAY(ch->diffuser_delay[3], smooth_size),
 			input_diff2, x);
 
-	/* Get cross-feedback from post-damping delays */
-	feedback0 = delay_read(
-			ch->tank[1].post_damp.buffer, ch->tank[1].post_damp.mask, t,
-			ch->tank[1].post_damp.mask + 1 -
-			SCALED_DELAY(ch->tank[1].post_damp.main_delay_base, smooth_size)) * decay;
-	feedback1 = delay_read(
-			ch->tank[0].post_damp.buffer, ch->tank[0].post_damp.mask, t,
-			ch->tank[0].post_damp.mask + 1 -
-			SCALED_DELAY(ch->tank[0].post_damp.main_delay_base, smooth_size)) * decay;
+	/* Get cross-feedback from post-damping delays.
+	 * Each tank half reads from the other's output for figure-8 topology. */
+	delay0 = ch->tank[1].post_damp.mask + 1 -
+		SCALED_DELAY(ch->tank[1].post_damp.main_delay_base, smooth_size);
+	delay1 = ch->tank[0].post_damp.mask + 1 -
+		SCALED_DELAY(ch->tank[0].post_damp.main_delay_base, smooth_size);
+
+	feedback0 = delay_read(ch->tank[1].post_damp.buffer,
+		ch->tank[1].post_damp.mask, t, delay0);
+	feedback1 = delay_read(ch->tank[0].post_damp.buffer,
+		ch->tank[0].post_damp.mask, t, delay1);
+
+	/* In-loop shimmer: blend pitch-shifted feedback with unshifted.
+	 * Two grains read at different positions, crossfaded with cosine window.
+	 * Each recirculation shifts pitch further, building harmonic cascades. */
+	if (shimmer_in_loop && shimmer_mix > 0.0f) {
+		base_pos0 = (float)((t + delay0) & ch->tank[1].post_damp.mask);
+		base_pos1 = (float)((t + delay1) & ch->tank[0].post_damp.mask);
+
+		/* Grain A and B for tank[1] feedback, 180 degrees apart */
+		shifted0_a = buffer_read_cubic_ps(ch->tank[1].post_damp.buffer,
+			ch->tank[1].post_damp.mask + 1, base_pos0 - shimmer_pos1);
+		shifted0_b = buffer_read_cubic_ps(ch->tank[1].post_damp.buffer,
+			ch->tank[1].post_damp.mask + 1, base_pos0 - shimmer_pos2);
+		shifted0 = shifted0_a * shimmer_xfade + shifted0_b * (1.0f - shimmer_xfade);
+
+		/* Grain A and B for tank[0] feedback */
+		shifted1_a = buffer_read_cubic_ps(ch->tank[0].post_damp.buffer,
+			ch->tank[0].post_damp.mask + 1, base_pos1 - shimmer_pos1);
+		shifted1_b = buffer_read_cubic_ps(ch->tank[0].post_damp.buffer,
+			ch->tank[0].post_damp.mask + 1, base_pos1 - shimmer_pos2);
+		shifted1 = shifted1_a * shimmer_xfade + shifted1_b * (1.0f - shimmer_xfade);
+
+		/* Crossfade between dry feedback and shimmer */
+		feedback0 = feedback0 * (1.0f - shimmer_mix) + shifted0 * shimmer_mix;
+		feedback1 = feedback1 * (1.0f - shimmer_mix) + shifted1 * shimmer_mix;
+	}
+
+	feedback0 *= decay;
+	feedback1 *= decay;
 
 	/* Process tank halves with cross-feedback */
 	process_tank_half(&ch->tank[0], t, x + feedback0, decay,
@@ -551,6 +582,9 @@ static void reverb_process_pcm_frames(
 	float wet_l, wet_r;
 	float mid, side;
 	float decay_compensation;
+
+	float shimmer_ratio, shimmer_window;
+	float shimmer_xfade, shimmer_pos1, shimmer_pos2;
 
 	get_engine_format_info(NULL, NULL, &sample_rate);
 	dc_coeff = expf(-2.0f * M_PI * 20.0f/ (float)sample_rate);
@@ -603,6 +637,19 @@ static void reverb_process_pcm_frames(
 			mod_offset[j] = (ma_int32)(sinf(reverb->mod_phase[j] * 2.0f * M_PI) * reverb->mod_depth * 16.0f);
 		}
 
+		/* shimmer phase for in-loop pitch shift (freeze stops phase) */
+		if (reverb->shimmer_in_loop && reverb->shimmer1_mix > 0.0f && !reverb->freeze) {
+			shimmer_ratio = SEMITONES_TO_RATIO(reverb->shimmer1_shift);
+			shimmer_window = 128.0f + (3410.0f - 128.0f) * reverb->smooth_size;
+			reverb->shimmer_phase += (1.0f - shimmer_ratio) / shimmer_window;
+			WRAP_PHASE(reverb->shimmer_phase);
+
+			shimmer_xfade = 0.5f - 0.5f * cosf(reverb->shimmer_phase * 2.0f * M_PI);
+			shimmer_pos1 = reverb->shimmer_phase * shimmer_window;
+			shimmer_pos2 = shimmer_pos1 + shimmer_window * 0.5f;
+			if (shimmer_pos2 >= shimmer_window) shimmer_pos2 -= shimmer_window;
+		}
+
 		ONE_POLE(reverb->smooth_size, size_target, 0.001f);
 		ONE_POLE(reverb->smooth_hp, reverb->hp, 0.001f);
 
@@ -615,6 +662,8 @@ static void reverb_process_pcm_frames(
 		                damping, reverb->smooth_hp,
 		                mod_offset[0], mod_offset[1],
 		                reverb->smooth_size,
+						reverb->shimmer_in_loop, reverb->shimmer1_mix,
+						shimmer_xfade, shimmer_pos1, shimmer_pos2,	
 		                &wet_l0, &wet_r0);
 
 		process_channel(&reverb->channels[1], reverb->t,
@@ -625,19 +674,24 @@ static void reverb_process_pcm_frames(
 		                damping, reverb->smooth_hp,
 		                mod_offset[2], mod_offset[3],
 		                reverb->smooth_size,
+						reverb->shimmer_in_loop, reverb->shimmer1_mix,
+						shimmer_xfade, shimmer_pos1, shimmer_pos2,	
 		                &wet_l1, &wet_r1);
 
 		/* Combine stereo outputs from both channels */
 		wet_l = (wet_l0 + wet_l1) * 0.5f;
 		wet_r = (wet_r0 + wet_r1) * 0.5f;
 
-		/* Apply shimmer pitch shifters */
-		wet_l = pitchshift_process(&reverb->shimmer[0][0], wet_l,
-		                           reverb->shimmer1_shift, reverb->shimmer1_mix, sample_rate);
+		/* Apply shimmer pitch shifters.
+		 * Skip shimmer1 if running in-loop (already applied to feedback). */
+		if (!reverb->shimmer_in_loop) {
+			wet_l = pitchshift_process(&reverb->shimmer[0][0], wet_l,
+			                           reverb->shimmer1_shift, reverb->shimmer1_mix, sample_rate);
+			wet_r = pitchshift_process(&reverb->shimmer[1][0], wet_r,
+			                           reverb->shimmer1_shift, reverb->shimmer1_mix, sample_rate);
+		}
 		wet_l = pitchshift_process(&reverb->shimmer[0][1], wet_l,
 		                           reverb->shimmer2_shift, reverb->shimmer2_mix, sample_rate);
-		wet_r = pitchshift_process(&reverb->shimmer[1][0], wet_r,
-		                           reverb->shimmer1_shift, reverb->shimmer1_mix, sample_rate);
 		wet_r = pitchshift_process(&reverb->shimmer[1][1], wet_r,
 		                           reverb->shimmer2_shift, reverb->shimmer2_mix, sample_rate);
 
@@ -794,6 +848,7 @@ ma_result init_reverb_node(reverb_node_t *reverb, ma_uint32 sample_rate) {
 	reverb->hp = 0.0f;
 	reverb->smooth_hp = 0.0f;
 	reverb->freeze = MA_FALSE;
+	reverb->shimmer_in_loop = MA_FALSE;
 
 	/* Initialize internal state */
 	reverb->t = 0;
@@ -801,6 +856,7 @@ ma_result init_reverb_node(reverb_node_t *reverb, ma_uint32 sample_rate) {
 	reverb->mod_phase[1] = 0.25f;
 	reverb->mod_phase[2] = 0.5f;
 	reverb->mod_phase[3] = 0.75f;
+	reverb->shimmer_phase = 0.0f;
 	reverb->hpf_l = 0.0f;
 	reverb->hpf_r = 0.0f;
 	reverb->lpf_l = 0.0f;

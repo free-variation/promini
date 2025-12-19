@@ -604,3 +604,75 @@ create_pad_voice(Voice, Envelope) :-
     /* soft pad envelope: slow attack, long release */
     mod_envelope_init(0.3, 0.2, 0.4, 0.7, 0.6, 800.0, false, Envelope),
     mod_route_init(Envelope, vca, Vca, gain, absolute, 1.0, 0.0, 0.0, _).
+
+demo_shimmer_in_loop :-
+    format('Loading sound...~n'),
+    sound_load('audio/guitar.wav', Sound),
+
+    format('~n=== Post-tank shimmer (default) ===~n'),
+    format('Single-pass pitch shift on wet output~n'),
+    sound_attach_reverb(Sound, [
+        decay=0.85, damping=0.4, wet=0.7, dry=0.3,
+        shimmer1_shift=12.0, shimmer1_mix=0.4
+    ], _),
+    sound_start(Sound),
+    sleep(2),
+    sound_stop(Sound),
+    format('Letting tail ring out...~n'),
+    sleep(8),
+    clear_effects(Sound),
+
+    format('~n=== In-loop shimmer (Oliverb-style) ===~n'),
+    format('Pitch shift in feedback path - accumulates each pass~n'),
+    sound_attach_reverb(Sound, [
+        decay=0.85, damping=0.4, wet=0.7, dry=0.3,
+        shimmer1_shift=12.0, shimmer1_mix=0.4,
+        shimmer_in_loop=true
+    ], _),
+    sound_seek(Sound, 0),
+    sound_start(Sound),
+    sleep(2),
+    sound_stop(Sound),
+    format('Letting tail ring out...~n'),
+    sleep(8),
+    clear_effects(Sound),
+
+    format('~n=== In-loop with fifth (+7 semitones) ===~n'),
+    format('Non-octave interval creates harmonic cloud~n'),
+    sound_attach_reverb(Sound, [
+        decay=0.9, damping=0.5, wet=0.8, dry=0.2,
+        shimmer1_shift=7.0, shimmer1_mix=0.35,
+        shimmer_in_loop=true
+    ], _),
+    sound_seek(Sound, 0),
+    sound_start(Sound),
+    sleep(2),
+    sound_stop(Sound),
+    format('Letting tail ring out...~n'),
+    sleep(10),
+    clear_effects(Sound),
+
+    sound_unload(Sound),
+    format('~nIn-loop shimmer demo complete.~n').
+
+demo_shimmer_freeze :-
+    format('Loading sound...~n'),
+    sound_load('audio/guitar.wav', Sound),
+
+    format('~n=== In-loop fifth, frozen ===~n'),
+    format('Cascading fifths up, then freeze~n'),
+    sound_attach_reverb(Sound, [
+        decay=0.9, damping=0.5, wet=1.0, dry=0.0,
+        shimmer1_shift=7.0, shimmer1_mix=0.35,
+        shimmer_in_loop=true
+    ], Effect),
+    sound_start(Sound),
+    sleep(2),
+    sound_stop(Sound),
+    sleep(2),
+    format('Freezing tail...~n'),
+    effect_set_parameters(Effect, [freeze=1]),
+    sleep(15),
+
+    sound_unload(Sound),
+    format('~nShimmer freeze demo complete.~n').

@@ -1856,6 +1856,9 @@ static ma_result attach_reverb_effect(term_t params, ma_node *source_node, effec
 	if (get_param_bool(params, "freeze", &freeze_val)) {
 		reverb->freeze = freeze_val;
 	}
+	if (get_param_bool(params, "shimmer_in_loop", &freeze_val)) {
+		reverb->shimmer_in_loop = freeze_val;
+	}
 
 	result = attach_effect_node(source_node, effect_chain, &reverb->base, EFFECT_REVERB);
 	if (result != MA_SUCCESS) {
@@ -1974,6 +1977,11 @@ static int query_reverb_params(reverb_node_t *reverb, term_t params_list)
 	if (!PL_cons_functor_v(param_term, eq_functor, param_args)) return FALSE;
 	if (!PL_cons_list(params_list, param_term, params_list)) return FALSE;
 
+	PL_put_atom_chars(param_args+0, "shimmer_in_loop");
+	if (!PL_put_atom_chars(param_args+1, reverb->shimmer_in_loop ? "true" : "false")) return FALSE;
+	if (!PL_cons_functor_v(param_term, eq_functor, param_args)) return FALSE;
+	if (!PL_cons_list(params_list, param_term, params_list)) return FALSE;
+
 	return TRUE;
 }
 
@@ -2043,6 +2051,8 @@ static foreign_t set_reverb_parameters(reverb_node_t *reverb, term_t params_list
 			reverb->hp = (float)value;
 		} else if (strcmp(param_name, "freeze") == 0) {
 			reverb->freeze = (value != 0.0) ? MA_TRUE : MA_FALSE;
+		} else if (strcmp(param_name, "shimmer_in_loop") == 0) {
+			reverb->shimmer_in_loop = (value != 0.0) ? MA_TRUE : MA_FALSE;
 		} else {
 			return PL_domain_error("reverb_parameter", key_term);
 		}

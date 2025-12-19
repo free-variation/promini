@@ -17,7 +17,7 @@ Existing or planned features (all in stereo):
 - essential audio processors:
   - bitcrush ✓
   - ping-pong delay ✓
-  - reverb (Dattorro with shimmer) ✓
+  - reverb (Dattorro with shimmer, in-loop shimmer, freeze) ✓
   - panning ✓
   - VCA ✓
   - summing node ✓

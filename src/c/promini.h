@@ -53,6 +53,14 @@ extern foreign_t pl_promini_init(void);
 #define SEMITONES_TO_RATIO(semi) (powf(2.0f, (semi) / 12.0f))
 
 /*
+ * Phase wraparound for oscillators (keeps phase in 0.0 to 1.0 range)
+ */
+#define WRAP_PHASE(p) do { \
+	if ((p) >= 1.0f) (p) -= 1.0f; \
+	if ((p) < 0.0f) (p) += 1.0f; \
+} while(0)
+
+/*
  * Thread safety - mutexes for protecting global state
  */
 extern pthread_mutex_t g_sounds_mutex;
@@ -323,11 +331,13 @@ typedef struct {
 	float hp;			/* tank highpass 0.0-1.0, default 0.0 */
 	float smooth_hp;	/* smoothed hp for click-free changes */
 	ma_bool32 freeze;	/* infinite sustain mode */
+	ma_bool32 shimmer_in_loop;
 
 
 	/* internal state */
 	ma_uint32 t;
 	float mod_phase[4];
+	float shimmer_phase;	/* 2-grain pitch shift phase */
 	float hpf_l, hpf_r;
 	float lpf_l, lpf_r;
 	float dc_block_l, dc_block_r;
