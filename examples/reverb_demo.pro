@@ -540,3 +540,67 @@ demo_darkening :-
 
     sound_unload(Sound),
     format('~nDarkening demo complete.~n').
+
+demo_freeze_keyboard :-
+    promini_init,
+    control_init,
+
+    format('Loading sound and freezing reverb...~n'),
+    sound_load('audio/guitar.wav', Sound),
+    sound_attach_reverb(Sound, [
+        decay=0.7, damping=0.4, wet=1.0, dry=0.0
+    ], Effect),
+
+    /* play guitar briefly then freeze */
+    sound_start(Sound),
+    sleep(3),
+    effect_set_parameters(Effect, [freeze=1]),
+    format('~n=== Reverb frozen - play synth over the pad ===~n'),
+
+    /* create 4 pad voices with soft envelope */
+    create_pad_voice(V1, E1),
+    create_pad_voice(V2, E2),
+    create_pad_voice(V3, E3),
+    create_pad_voice(V4, E4),
+
+    synth_voice_start(V1),
+    synth_voice_start(V2),
+    synth_voice_start(V3),
+    synth_voice_start(V4),
+
+    /* summing node with light reverb for synth */
+    summing_node_init(Sum),
+    summing_node_connect(Sum, V1),
+    summing_node_connect(Sum, V2),
+    summing_node_connect(Sum, V3),
+    summing_node_connect(Sum, V4),
+    summing_node_attach_effect(Sum, reverb, [wet=0.25, decay=0.6, damping=0.5], _),
+
+    /* keyboard with pentatonic scale */
+    keyboard_init(K),
+    keyboard_row_add_voice(K, 0, V1, [E1]),
+    keyboard_row_add_voice(K, 0, V2, [E2]),
+    keyboard_row_add_voice(K, 0, V3, [E3]),
+    keyboard_row_add_voice(K, 0, V4, [E4]),
+    keyboard_row_set(K, 0, [mode=[0.0, 2.0, 4.0, 7.0, 9.0], octave=0]),
+
+    format('Freeze keyboard:~n'),
+    format('  Frozen guitar reverb as pad~n'),
+    format('  Row 0 (1-0): Synth, pentatonic~n'),
+    format('  ESC to exit~n').
+
+/* helper: create a pad voice with soft attack and longer release */
+create_pad_voice(Voice, Envelope) :-
+    synth_voice_init(Voice),
+    /* fundamental + soft harmonics */
+    synth_oscillator_add(Voice, 220.0, 0.0, O1),
+    synth_oscillator_add(Voice, 440.0, 0.25, O2),
+    synth_oscillator_add(Voice, 660.0, 0.5, O3),
+    synth_oscillator_set_volume(O1, 0.35),
+    synth_oscillator_set_volume(O2, 0.15),
+    synth_oscillator_set_volume(O3, 0.05),
+    /* VCA for envelope control */
+    voice_attach_effect(Voice, vca, [gain=0.0], Vca),
+    /* soft pad envelope: slow attack, long release */
+    mod_envelope_init(0.3, 0.2, 0.4, 0.7, 0.6, 800.0, false, Envelope),
+    mod_route_init(Envelope, vca, Vca, gain, absolute, 1.0, 0.0, 0.0, _).
