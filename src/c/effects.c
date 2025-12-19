@@ -1775,6 +1775,7 @@ static ma_result attach_reverb_effect(term_t params, ma_node *source_node, effec
 	ma_result result;
 	ma_uint32 sample_rate;
 	float value;
+	ma_bool32 freeze_val;
 
 	reverb = (reverb_node_t*)ma_malloc(sizeof(reverb_node_t), NULL);
 	if (!reverb) {
@@ -1844,6 +1845,16 @@ static ma_result attach_reverb_effect(term_t params, ma_node *source_node, effec
 	}
 	if (get_param_float(params, "dry", &value)) {
 		reverb->dry = value;
+	}
+	if (get_param_float(params, "size", &value)) {
+		reverb->size = value;
+		reverb->smooth_size = value;
+	}
+	if (get_param_float(params, "hp", &value)) {
+		reverb->hp = value;
+	}
+	if (get_param_bool(params, "freeze", &freeze_val)) {
+		reverb->freeze = freeze_val;
 	}
 
 	result = attach_effect_node(source_node, effect_chain, &reverb->base, EFFECT_REVERB);
@@ -1948,6 +1959,21 @@ static int query_reverb_params(reverb_node_t *reverb, term_t params_list)
 	if (!PL_cons_functor_v(param_term, eq_functor, param_args)) return FALSE;
 	if (!PL_cons_list(params_list, param_term, params_list)) return FALSE;
 
+	PL_put_atom_chars(param_args+0, "size");
+	if (!PL_put_float(param_args+1, reverb->size)) return FALSE;
+	if (!PL_cons_functor_v(param_term, eq_functor, param_args)) return FALSE;
+	if (!PL_cons_list(params_list, param_term, params_list)) return FALSE;
+
+	PL_put_atom_chars(param_args+0, "hp");
+	if (!PL_put_float(param_args+1, reverb->hp)) return FALSE;
+	if (!PL_cons_functor_v(param_term, eq_functor, param_args)) return FALSE;
+	if (!PL_cons_list(params_list, param_term, params_list)) return FALSE;
+
+	PL_put_atom_chars(param_args+0, "freeze");
+	if (!PL_put_atom_chars(param_args+1, reverb->freeze ? "true" : "false")) return FALSE;
+	if (!PL_cons_functor_v(param_term, eq_functor, param_args)) return FALSE;
+	if (!PL_cons_list(params_list, param_term, params_list)) return FALSE;
+
 	return TRUE;
 }
 
@@ -2011,6 +2037,12 @@ static foreign_t set_reverb_parameters(reverb_node_t *reverb, term_t params_list
 			reverb->wet = (float)value;
 		} else if (strcmp(param_name, "dry") == 0) {
 			reverb->dry = (float)value;
+		} else if (strcmp(param_name, "size") == 0) {
+			reverb->size = (float)value;
+		} else if (strcmp(param_name, "hp") == 0) {
+			reverb->hp = (float)value;
+		} else if (strcmp(param_name, "freeze") == 0) {
+			reverb->freeze = (value != 0.0) ? MA_TRUE : MA_FALSE;
 		} else {
 			return PL_domain_error("reverb_parameter", key_term);
 		}

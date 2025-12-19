@@ -20,8 +20,8 @@ Live granular sampler + concatenative synthesis + additive synth + effects + mod
 | Additive synth | voices, oscillators, noise |
 | Effects | filters, reverb, delay, bitcrush, pan, moog, VCA, limiter |
 | Live capture | |
-| Modulation sources | LFO, envelope, gamepad |
-| Modulation routing | osc freq/vol, moog cutoff, VCA gain, pan, ping-pong delay |
+| Modulation sources | LFO, envelope, gamepad, noise (with S&H) |
+| Modulation routing | osc freq/vol, moog cutoff, VCA gain, pan, ping-pong delay, granular position |
 | Control interface | SDL3 gamepad input with dispatch hook for REPL integration |
 | Summing node | multiple sources to single output with effect chain |
 | Clock system | BPM-based clock with routes to LFO, envelope, granular, delays |
@@ -95,7 +95,7 @@ Live granular sampler + concatenative synthesis + additive synth + effects + mod
 - [x] LFO (sine, square, triangle, sawtooth)
 - [x] ADBR Envelope (attack-decay-break-release, loopable)
 - [x] Gamepad (axes, triggers, d-pad as virtual axes)
-- [ ] Noise (white, pink, brownian)
+- [x] Noise (white, pink, brownian) with sample & hold
 - [ ] Sampler (audio buffer as control signal)
 
 ### Targets Implemented
@@ -104,6 +104,7 @@ Live granular sampler + concatenative synthesis + additive synth + effects + mod
 - VCA effect: gain
 - Pan effect: pan
 - Ping-pong delay: delay
+- Granular: density, pitch, position
 
 ### Targets Planned
 - Sound: pitch

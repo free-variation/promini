@@ -236,8 +236,10 @@ typedef struct {
 typedef struct {
 	float *buffer;
 	ma_uint32 mask;
-	ma_uint32 main_delay;
-	ma_uint32 tap1, tap2, tap3;
+	ma_uint32 main_delay_base;	/* original delay in samples */
+	ma_uint32 tap1_base;
+	ma_uint32 tap2_base; 
+	ma_uint32 tap3_base;
 } reverb_delay_line_t;
 
 /* Tank half for reverb (one side of figure-8) */
@@ -250,12 +252,13 @@ typedef struct {
 	reverb_delay_line_t pre_damp;
 
 	float damping_state;
+	float hp_state;		/* tank highpass state */
 
 	float *decay_diff2_buf;
 	ma_uint32 decay_diff2_mask;
 	ma_uint32 decay_diff2_delay;
-	ma_uint32 decay_diff2_tap1;  /* output tap offset */
-	ma_uint32 decay_diff2_tap2;  /* output tap offset */
+	ma_uint32 decay_diff2_tap1_base;  /* base delay for output tap */
+	ma_uint32 decay_diff2_tap2_base;  /* base delay for output tap */
 
 	reverb_delay_line_t post_damp;
 } reverb_tank_half_t;
@@ -315,6 +318,12 @@ typedef struct {
 	float high_cut; /* Hz, 0 = disabled */
 	float wet;
 	float dry;
+	float size;			/* room size 0.0 - 2.0, default 1.0 */
+	float smooth_size;	/*smoothed for glitch-free changes */
+	float hp;			/* tank highpass 0.0-1.0, default 0.0 */
+	float smooth_hp;	/* smoothed hp for click-free changes */
+	ma_bool32 freeze;	/* infinite sustain mode */
+
 
 	/* internal state */
 	ma_uint32 t;

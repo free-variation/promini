@@ -40,9 +40,9 @@ Existing or planned features (all in stereo):
     - LFO ✓
     - looping envelope ✓
     - gamepad (axes, triggers, d-pad) ✓
-    - noise *(planned)*
+    - noise (with sample & hold) ✓
     - audio buffers *(planned)*
-  - targets: many parameters across the system, with S&H *(in progress)*
+  - targets: many parameters across the system ✓
 - control interface using gamepad ✓, keyboard ✓ (polyphonic synth support with voice stealing), trackpad *(planned)*
 - SDL visualizer ✓
   - waveform, spectrum, spectrogram modes ✓

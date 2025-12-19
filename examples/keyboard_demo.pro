@@ -301,22 +301,21 @@ demo_keyboard_hybrid :-
     summing_node_attach_effect(Sum, reverb, [wet=0.3, decay=0.8], _),
     assertz(demo_summing(Sum)),
 
-    /* S&H noise on granular position - random jumps every ~1 sec */
+    /* S&H noise on gong position - random jumps every ~1 sec */
     mod_noise_init(white, PosNoise),
     mod_source_set_sh(PosNoise, 1000.0),
     mod_route_init(PosNoise, granular, G1, position, absolute, 0.5, 0.5, 0.0, _),
-    mod_route_init(PosNoise, granular, G2, position, absolute, 0.5, 0.5, 0.0, _),
 
     /* keyboard setup */
     keyboard_init(K),
 
-    /* row 0: granular gong, pentatonic */
+    /* row 0: granular gong, pentatonic +2 octaves */
     keyboard_connect(K, 0, G1),
-    keyboard_row_set(K, 0, [mode=[0.0, 2.0, 4.0, 7.0, 9.0], octave=1]),
+    keyboard_row_set(K, 0, [mode=[0.0, 2.0, 4.0, 7.0, 9.0], octave=2]),
 
-    /* row 1: granular guitar, blues */
+    /* row 1: granular guitar, pentatonic +1 octave */
     keyboard_connect(K, 1, G2),
-    keyboard_row_set(K, 1, [mode=[0.0, 3.0, 5.0, 6.0, 7.0, 10.0], octave=0]),
+    keyboard_row_set(K, 1, [mode=[0.0, 2.0, 4.0, 7.0, 9.0], octave=1]),
 
     /* row 2: synth, pentatonic, octave 0 */
     keyboard_row_add_voice(K, 2, V1, [E1]),
@@ -333,8 +332,8 @@ demo_keyboard_hybrid :-
     keyboard_row_set(K, 3, [mode=[0.0, 2.0, 4.0, 7.0, 9.0], octave=(-1)]),
 
     format('Hybrid keyboard:~n'),
-    format('  Row 0 (1-0): Granular gong, pentatonic +1 octave~n'),
-    format('  Row 1 (Q-P): Granular guitar, blues~n'),
+    format('  Row 0 (1-0): Granular gong, pentatonic +2 octaves~n'),
+    format('  Row 1 (Q-P): Granular guitar, pentatonic +1 octave~n'),
     format('  Row 2 (A-;): Synth, pentatonic~n'),
     format('  Row 3 (Z-/): Synth, pentatonic -1 octave~n'),
     format('  ESC to exit~n').

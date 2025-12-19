@@ -15,6 +15,7 @@
 #include "promini.h"
 
 #define MAX_PREDELAY 9600  /* 200ms at 48kHz */
+#define SCALED_DELAY(base, size) ((ma_uint32)((base) * (size)))
 
 static const float mod_freq_ratios[4] = {1.0f, 1.5f, 1.2f, 1.8f};
 
@@ -231,14 +232,14 @@ static void free_channel(reverb_channel_t *ch) {
 
 static ma_result init_delay_line(reverb_delay_line_t *dl, ma_uint32 main_delay,
                                   ma_uint32 tap1, ma_uint32 tap2, ma_uint32 tap3) {
-	ma_uint32 size = calc_buffer_size(main_delay + 1);
+	ma_uint32 size = calc_buffer_size(main_delay * 2 + 1);  /* 2x for size scaling */
 	dl->buffer = alloc_buffer(size);
 	if (!dl->buffer) return MA_OUT_OF_MEMORY;
 	dl->mask = size - 1;
-	dl->main_delay = size - main_delay;
-	dl->tap1 = size - tap1;
-	dl->tap2 = size - tap2;
-	dl->tap3 = size - tap3;
+	dl->main_delay_base = main_delay;
+	dl->tap1_base = tap1;
+	dl->tap2_base = tap2;
+	dl->tap3_base = tap3;
 	return MA_SUCCESS;
 }
 
@@ -262,7 +263,7 @@ static ma_result init_tank_half(reverb_tank_half_t *th, int half_idx, ma_uint32 
 
 	/* Decay diffuser 1 */
 	th->decay_diff1_delay = (ma_uint32)(decay_diff1_delays[half_idx] * scale);
-	size = calc_buffer_size(th->decay_diff1_delay + 64);  /* extra for modulation */
+	size = calc_buffer_size(th->decay_diff1_delay * 2 + 64);  /* 2x for size scaling + modulation */
 	th->decay_diff1_buf = alloc_buffer(size);
 	if (!th->decay_diff1_buf) return MA_OUT_OF_MEMORY;
 	th->decay_diff1_mask = size - 1;
@@ -281,12 +282,12 @@ static ma_result init_tank_half(reverb_tank_half_t *th, int half_idx, ma_uint32 
 
 	/* Decay diffuser 2 with taps */
 	th->decay_diff2_delay = (ma_uint32)(decay_diff2_delays[half_idx] * scale);
-	size = calc_buffer_size(th->decay_diff2_delay + 1);
+	size = calc_buffer_size(th->decay_diff2_delay * 2 + 1);	/* 2x for size scaling */
 	th->decay_diff2_buf = alloc_buffer(size);
 	if (!th->decay_diff2_buf) return MA_OUT_OF_MEMORY;
 	th->decay_diff2_mask = size - 1;
-	th->decay_diff2_tap1 = size - (ma_uint32)(decay_diff2_tap1[half_idx] * scale);
-	th->decay_diff2_tap2 = size - (ma_uint32)(decay_diff2_tap2[half_idx] * scale);
+	th->decay_diff2_tap1_base = SCALED_DELAY(decay_diff2_tap1[half_idx], scale);
+	th->decay_diff2_tap2_base = SCALED_DELAY(decay_diff2_tap2[half_idx], scale);
 
 	/* Post-damping delay with taps */
 	if (init_delay_line(&th->post_damp,
@@ -319,7 +320,7 @@ static ma_result init_channel(reverb_channel_t *ch, ma_uint32 sample_rate) {
 	/* 4 input diffusers */
 	for (i = 0; i < 4; i++) {
 		ma_uint32 delay = (ma_uint32)(diffuser_delays[i] * scale);
-		size = calc_buffer_size(delay + 1);
+		size = calc_buffer_size(delay *2 + 1);	/* 2x for size scaling */
 		ch->diffuser_buf[i] = alloc_buffer(size);
 		if (!ch->diffuser_buf[i]) return MA_OUT_OF_MEMORY;
 		ch->diffuser_mask[i] = size - 1;
@@ -340,13 +341,13 @@ static ma_result init_channel(reverb_channel_t *ch, ma_uint32 sample_rate) {
 /* Process one sample through a tank half, return feedback for other half */
 static float process_tank_half(reverb_tank_half_t *th, ma_uint32 t, float input,
                                 float decay, float decay_diff1_gain,
-                                float decay_diff2_gain, float damping,
-                                ma_int32 mod_offset) {
+                                float decay_diff2_gain, float damping, float hp,
+                                ma_int32 mod_offset, float smooth_size) {
 	float x;
 	ma_uint32 mod_delay;
 
 	/* Decay diffuser 1 with modulation */
-	mod_delay = th->decay_diff1_delay + mod_offset;
+	mod_delay = SCALED_DELAY(th->decay_diff1_delay, smooth_size) + mod_offset;
 	if (mod_delay < 1) mod_delay = 1;
 	x = allpass_process(th->decay_diff1_buf, th->decay_diff1_mask, t,
 	                    mod_delay, decay_diff1_gain, input);
@@ -354,47 +355,106 @@ static float process_tank_half(reverb_tank_half_t *th, ma_uint32 t, float input,
 
 	/* Pre-damping delay */
 	delay_write(th->pre_damp.buffer, th->pre_damp.mask, t, x);
-	x = delay_read(th->pre_damp.buffer, th->pre_damp.mask, t, th->pre_damp.main_delay);
+	x = delay_read(th->pre_damp.buffer, th->pre_damp.mask, t,
+	               th->pre_damp.mask + 1 -
+	               SCALED_DELAY(th->pre_damp.main_delay_base, smooth_size));
 
 	/* Damping LPF */
 	ONE_POLE(th->damping_state, x, damping);
 	x = th->damping_state;
+
+	/* Tank highpass (bass decay control) */
+	if (hp > 0.0f) {
+		ONE_POLE(th->hp_state, x, hp);
+		x -= th->hp_state;
+	}
+
+	/* Soft limiter for stability - only activate for large signals */
+	if (fabsf(x) > 1.0f) {
+		x = tanhf(x);
+	}
 
 	/* Apply decay */
 	x *= decay;
 
 	/* Decay diffuser 2 */
 	x = allpass_process(th->decay_diff2_buf, th->decay_diff2_mask, t,
-	                    th->decay_diff2_delay, decay_diff2_gain, x);
+	                    SCALED_DELAY(th->decay_diff2_delay, smooth_size),
+	                    decay_diff2_gain, x);
 
 	/* Post-damping delay */
 	delay_write(th->post_damp.buffer, th->post_damp.mask, t, x);
-	x = delay_read(th->post_damp.buffer, th->post_damp.mask, t, th->post_damp.main_delay);
+	x = delay_read(th->post_damp.buffer, th->post_damp.mask, t,
+	               th->post_damp.mask + 1 -
+	               SCALED_DELAY(th->post_damp.main_delay_base, smooth_size));
 
 	return x;
 }
 
 /* Get output taps from tank - Dattorro Table 2 */
-static void get_tank_output(reverb_tank_half_t *tank, ma_uint32 t, float *out_l, float *out_r) {
+static void get_tank_output(reverb_tank_half_t *tank, ma_uint32 t,
+                            float smooth_size, float *out_l, float *out_r) {
 	/* Left output: taps from tank[1] positive, tank[0] negative */
 	*out_l = tank[1].decay_diff1_out;
-	*out_l += delay_read(tank[1].pre_damp.buffer, tank[1].pre_damp.mask, t, tank[1].pre_damp.tap1);
-	*out_l += delay_read(tank[1].pre_damp.buffer, tank[1].pre_damp.mask, t, tank[1].pre_damp.tap2);
-	*out_l -= delay_read(tank[1].decay_diff2_buf, tank[1].decay_diff2_mask, t, tank[1].decay_diff2_tap2);
-	*out_l += delay_read(tank[1].post_damp.buffer, tank[1].post_damp.mask, t, tank[1].post_damp.tap2);
-	*out_l -= delay_read(tank[0].pre_damp.buffer, tank[0].pre_damp.mask, t, tank[0].pre_damp.tap3);
-	*out_l -= delay_read(tank[0].decay_diff2_buf, tank[0].decay_diff2_mask, t, tank[0].decay_diff2_tap1);
-	*out_l += delay_read(tank[0].post_damp.buffer, tank[0].post_damp.mask, t, tank[0].post_damp.tap1);
+	*out_l += delay_read(
+			tank[1].pre_damp.buffer, tank[1].pre_damp.mask, t,
+			tank[1].pre_damp.mask + 1 -
+			SCALED_DELAY(tank[1].pre_damp.tap1_base, smooth_size));
+	*out_l += delay_read(
+			tank[1].pre_damp.buffer, tank[1].pre_damp.mask, t,
+			tank[1].pre_damp.mask + 1 -
+			SCALED_DELAY(tank[1].pre_damp.tap2_base, smooth_size));
+	*out_l -= delay_read(
+			tank[1].decay_diff2_buf, tank[1].decay_diff2_mask, t,
+			tank[1].decay_diff2_mask + 1 -
+			SCALED_DELAY(tank[1].decay_diff2_tap2_base, smooth_size));
+	*out_l += delay_read(
+			tank[1].post_damp.buffer, tank[1].post_damp.mask, t,
+			tank[1].post_damp.mask + 1 -
+			SCALED_DELAY(tank[1].post_damp.tap2_base, smooth_size));
+	*out_l -= delay_read(
+			tank[0].pre_damp.buffer, tank[0].pre_damp.mask, t,
+			tank[0].pre_damp.mask + 1 -
+			SCALED_DELAY(tank[0].pre_damp.tap3_base, smooth_size));
+	*out_l -= delay_read(
+			tank[0].decay_diff2_buf, tank[0].decay_diff2_mask, t,
+			tank[0].decay_diff2_mask + 1 -
+			SCALED_DELAY(tank[0].decay_diff2_tap1_base, smooth_size));
+	*out_l += delay_read(
+			tank[0].post_damp.buffer, tank[0].post_damp.mask, t,
+			tank[0].post_damp.mask + 1 -
+			SCALED_DELAY(tank[0].post_damp.tap1_base, smooth_size));
 
 	/* Right output: taps from tank[0] positive, tank[1] negative */
 	*out_r = tank[0].decay_diff1_out;
-	*out_r += delay_read(tank[0].pre_damp.buffer, tank[0].pre_damp.mask, t, tank[0].pre_damp.tap1);
-	*out_r += delay_read(tank[0].pre_damp.buffer, tank[0].pre_damp.mask, t, tank[0].pre_damp.tap2);
-	*out_r -= delay_read(tank[0].decay_diff2_buf, tank[0].decay_diff2_mask, t, tank[0].decay_diff2_tap2);
-	*out_r += delay_read(tank[0].post_damp.buffer, tank[0].post_damp.mask, t, tank[0].post_damp.tap2);
-	*out_r -= delay_read(tank[1].pre_damp.buffer, tank[1].pre_damp.mask, t, tank[1].pre_damp.tap3);
-	*out_r -= delay_read(tank[1].decay_diff2_buf, tank[1].decay_diff2_mask, t, tank[1].decay_diff2_tap1);
-	*out_r += delay_read(tank[1].post_damp.buffer, tank[1].post_damp.mask, t, tank[1].post_damp.tap1);
+	*out_r += delay_read(
+			tank[0].pre_damp.buffer, tank[0].pre_damp.mask, t,
+			tank[0].pre_damp.mask + 1 -
+			SCALED_DELAY(tank[0].pre_damp.tap1_base, smooth_size));
+	*out_r += delay_read(
+			tank[0].pre_damp.buffer, tank[0].pre_damp.mask, t,
+			tank[0].pre_damp.mask + 1 -
+			SCALED_DELAY(tank[0].pre_damp.tap2_base, smooth_size));
+	*out_r -= delay_read(
+			tank[0].decay_diff2_buf, tank[0].decay_diff2_mask, t,
+			tank[0].decay_diff2_mask + 1 -
+			SCALED_DELAY(tank[0].decay_diff2_tap2_base, smooth_size));
+	*out_r += delay_read(
+			tank[0].post_damp.buffer, tank[0].post_damp.mask, t,
+			tank[0].post_damp.mask + 1 -
+			SCALED_DELAY(tank[0].post_damp.tap2_base, smooth_size));
+	*out_r -= delay_read(
+			tank[1].pre_damp.buffer, tank[1].pre_damp.mask, t,
+			tank[1].pre_damp.mask + 1 -
+			SCALED_DELAY(tank[1].pre_damp.tap3_base, smooth_size));
+	*out_r -= delay_read(
+			tank[1].decay_diff2_buf, tank[1].decay_diff2_mask, t,
+			tank[1].decay_diff2_mask + 1 -
+			SCALED_DELAY(tank[1].decay_diff2_tap1_base, smooth_size));
+	*out_r += delay_read(
+			tank[1].post_damp.buffer, tank[1].post_damp.mask, t,
+			tank[1].post_damp.mask + 1 -
+			SCALED_DELAY(tank[1].post_damp.tap1_base, smooth_size));
 }
 
 /* Process one sample through complete channel */
@@ -402,9 +462,12 @@ static void process_channel(reverb_channel_t *ch, ma_uint32 t, float input,
                             ma_uint32 predelay_samples, float bandwidth,
                             float input_diff1, float input_diff2,
                             float decay, float decay_diff1, float decay_diff2,
-                            float damping, ma_int32 mod_offset0, ma_int32 mod_offset1,
+                            float damping, float hp,
+                            ma_int32 mod_offset0, ma_int32 mod_offset1,
+                            float smooth_size,
                             float *out_l, float *out_r) {
 	float x, feedback0, feedback1;
+	ma_uint32 scaled_delay;
 
 	/* Predelay */
 	delay_write(ch->predelay_buf, ch->predelay_mask, t, input);
@@ -416,29 +479,43 @@ static void process_channel(reverb_channel_t *ch, ma_uint32 t, float input,
 	x = ch->input_lpf_state;
 
 	/* 4 input diffusers */
-	x = allpass_process(ch->diffuser_buf[0], ch->diffuser_mask[0], t,
-	                    ch->diffuser_delay[0], input_diff1, x);
-	x = allpass_process(ch->diffuser_buf[1], ch->diffuser_mask[1], t,
-	                    ch->diffuser_delay[1], input_diff1, x);
-	x = allpass_process(ch->diffuser_buf[2], ch->diffuser_mask[2], t,
-	                    ch->diffuser_delay[2], input_diff2, x);
-	x = allpass_process(ch->diffuser_buf[3], ch->diffuser_mask[3], t,
-	                    ch->diffuser_delay[3], input_diff2, x);
+	x = allpass_process(
+			ch->diffuser_buf[0], ch->diffuser_mask[0], t,
+			SCALED_DELAY(ch->diffuser_delay[0], smooth_size),
+			input_diff1, x);
+	x = allpass_process(
+			ch->diffuser_buf[1], ch->diffuser_mask[1], t,
+			SCALED_DELAY(ch->diffuser_delay[1], smooth_size),
+			input_diff1, x);
+	x = allpass_process(
+			ch->diffuser_buf[2], ch->diffuser_mask[2], t,
+			SCALED_DELAY(ch->diffuser_delay[2], smooth_size),
+			input_diff2, x);
+	x = allpass_process(
+			ch->diffuser_buf[3], ch->diffuser_mask[3], t,
+			SCALED_DELAY(ch->diffuser_delay[3], smooth_size),
+			input_diff2, x);
 
 	/* Get cross-feedback from post-damping delays */
-	feedback0 = delay_read(ch->tank[1].post_damp.buffer, ch->tank[1].post_damp.mask,
-	                       t, ch->tank[1].post_damp.main_delay) * decay;
-	feedback1 = delay_read(ch->tank[0].post_damp.buffer, ch->tank[0].post_damp.mask,
-	                       t, ch->tank[0].post_damp.main_delay) * decay;
+	feedback0 = delay_read(
+			ch->tank[1].post_damp.buffer, ch->tank[1].post_damp.mask, t,
+			ch->tank[1].post_damp.mask + 1 -
+			SCALED_DELAY(ch->tank[1].post_damp.main_delay_base, smooth_size)) * decay;
+	feedback1 = delay_read(
+			ch->tank[0].post_damp.buffer, ch->tank[0].post_damp.mask, t,
+			ch->tank[0].post_damp.mask + 1 -
+			SCALED_DELAY(ch->tank[0].post_damp.main_delay_base, smooth_size)) * decay;
 
 	/* Process tank halves with cross-feedback */
 	process_tank_half(&ch->tank[0], t, x + feedback0, decay,
-	                  decay_diff1, decay_diff2, damping, mod_offset0);
+	                  decay_diff1, decay_diff2, damping, hp,
+	                  mod_offset0, smooth_size);
 	process_tank_half(&ch->tank[1], t, x + feedback1, decay,
-	                  decay_diff1, decay_diff2, damping, mod_offset1);
+	                  decay_diff1, decay_diff2, damping, hp,
+	                  mod_offset1, smooth_size);
 
 	/* Get stereo output from taps */
-	get_tank_output(ch->tank, t, out_l, out_r);
+	get_tank_output(ch->tank, t, smooth_size, out_l, out_r);
 }
 
 /* ============================================================================
@@ -467,6 +544,13 @@ static void reverb_process_pcm_frames(
 	float decay;
 	ma_int32 mod_offset[4];
 	float dc_coeff;
+	float size_target;
+
+	float in_l, in_r;
+	float wet_l0, wet_r0, wet_l1, wet_r1;
+	float wet_l, wet_r;
+	float mid, side;
+	float decay_compensation;
 
 	get_engine_format_info(NULL, NULL, &sample_rate);
 	dc_coeff = expf(-2.0f * M_PI * 20.0f/ (float)sample_rate);
@@ -487,18 +571,30 @@ static void reverb_process_pcm_frames(
 	decay_diff1 = 0.70f;
 	decay_diff2 = 0.50f;
 
+	/* Compensate output for high decay values.
+	 * Energy in feedback loop ~ 1/(1-d²), so attenuate by sqrt(1-d²)
+	 * Use user's decay setting, not freeze-modified value */
+	decay_compensation = sqrtf(1.0f - reverb->decay * reverb->decay);
+
 	decay = reverb->decay;
 
-	/* Compensate output for high decay values.
-	 * Energy in feedback loop ~ 1/(1-d²), so attenuate by sqrt(1-d²) */
-	float decay_compensation = sqrtf(1.0f - decay * decay);
+	/* Freeze mode: infinite decay, no new input, no damping */
+	if (reverb->freeze) {
+		decay = 1.0f;
+		damping = 1.0f;
+	}
+
+	/* smooth size parameter */
+	size_target = CLAMP(reverb->size, 0.0f, 2.0f);
 
 	for (i = 0; i < frame_count; i++) {
-		float in_l = in[i * 2];
-		float in_r = in[i * 2 + 1];
-		float wet_l0, wet_r0, wet_l1, wet_r1;
-		float wet_l, wet_r;
-		float mid, side;
+		if (reverb->freeze) {
+			in_l = 0.0f;
+			in_r = 0.0f;
+		} else {
+			in_l = in[i * 2];
+			in_r = in[i * 2 + 1];
+		}
 
 		/* Slow modulation for chorus effect in tank */
 		for (j = 0; j < 4; j++) {
@@ -507,13 +603,18 @@ static void reverb_process_pcm_frames(
 			mod_offset[j] = (ma_int32)(sinf(reverb->mod_phase[j] * 2.0f * M_PI) * reverb->mod_depth * 16.0f);
 		}
 
+		ONE_POLE(reverb->smooth_size, size_target, 0.001f);
+		ONE_POLE(reverb->smooth_hp, reverb->hp, 0.001f);
+
 		/* Process both channels */
 		process_channel(&reverb->channels[0], reverb->t,
 		                in_l + in_r * reverb->cross_feed,
 		                predelay_samples, bandwidth,
 		                input_diff1, input_diff2,
 		                decay, decay_diff1, decay_diff2,
-		                damping, mod_offset[0], mod_offset[1],
+		                damping, reverb->smooth_hp,
+		                mod_offset[0], mod_offset[1],
+		                reverb->smooth_size,
 		                &wet_l0, &wet_r0);
 
 		process_channel(&reverb->channels[1], reverb->t,
@@ -521,7 +622,9 @@ static void reverb_process_pcm_frames(
 		                predelay_samples, bandwidth,
 		                input_diff1, input_diff2,
 		                decay, decay_diff1, decay_diff2,
-		                damping, mod_offset[2], mod_offset[3],
+		                damping, reverb->smooth_hp,
+		                mod_offset[2], mod_offset[3],
+		                reverb->smooth_size,
 		                &wet_l1, &wet_r1);
 
 		/* Combine stereo outputs from both channels */
@@ -686,6 +789,11 @@ ma_result init_reverb_node(reverb_node_t *reverb, ma_uint32 sample_rate) {
 	reverb->high_cut = 12000.0f;
 	reverb->wet = 0.3f;
 	reverb->dry = 1.0f;
+	reverb->size = 1.0f;
+	reverb->smooth_size = 1.0f;
+	reverb->hp = 0.0f;
+	reverb->smooth_hp = 0.0f;
+	reverb->freeze = MA_FALSE;
 
 	/* Initialize internal state */
 	reverb->t = 0;

@@ -394,3 +394,149 @@ demo_width :-
     sound_unload(Sound3),
     sound_unload(Sound4),
     format('~nWidth demo complete.~n').
+
+demo_size :-
+    format('Loading sound...~n'),
+    sound_load('audio/gong.wav', Sound),
+
+    format('~n=== Small room (size=0.5) ===~n'),
+    sound_attach_reverb(Sound, [
+        decay=0.7, size=0.5, wet=0.5, dry=0.5
+    ], _),
+    sound_start(Sound),
+    sleep(5),
+    sound_stop(Sound),
+    clear_effects(Sound),
+
+    format('~n=== Default room (size=1.0) ===~n'),
+    sound_attach_reverb(Sound, [
+        decay=0.7, size=1.0, wet=0.5, dry=0.5
+    ], _),
+    sound_seek(Sound, 0),
+    sound_start(Sound),
+    sleep(5),
+    sound_stop(Sound),
+    clear_effects(Sound),
+
+    format('~n=== Large room (size=1.5) ===~n'),
+    sound_attach_reverb(Sound, [
+        decay=0.7, size=1.5, wet=0.5, dry=0.5
+    ], _),
+    sound_seek(Sound, 0),
+    sound_start(Sound),
+    sleep(6),
+    sound_stop(Sound),
+    clear_effects(Sound),
+
+    format('~n=== Huge room (size=2.0) ===~n'),
+    sound_attach_reverb(Sound, [
+        decay=0.7, size=2.0, wet=0.5, dry=0.5
+    ], _),
+    sound_seek(Sound, 0),
+    sound_start(Sound),
+    sleep(7),
+    sound_stop(Sound),
+
+    sound_unload(Sound),
+    format('~nSize demo complete.~n').
+
+demo_size_sweep :-
+    format('Loading sound...~n'),
+    sound_load('audio/gong.wav', Sound),
+
+    format('Sweeping room size from 0.3 to 2.0...~n'),
+    sound_attach_reverb(Sound, [decay=0.8, size=0.3, wet=0.5], Effect),
+    sound_loop(Sound),
+    sound_start(Sound),
+
+    sweep_param(Effect, size, 0.3, 2.0, 40),
+
+    sleep(2),
+
+    format('Sweeping room size back down...~n'),
+    sweep_param(Effect, size, 2.0, 0.3, 40),
+
+    sleep(1),
+    sound_stop(Sound),
+    sound_unload(Sound),
+    format('~nSize sweep demo complete.~n').
+
+demo_hp :-
+    format('Loading sound...~n'),
+    sound_load('audio/gong.wav', Sound),
+    sound_attach_reverb(Sound, [
+        decay=0.85, hp=0.0, wet=1.0, dry=0.0
+    ], Effect),
+
+    format('~n=== No tank HP (hp=0.0) - full bass in tail ===~n'),
+    sound_start(Sound),
+    sleep(6),
+    sound_stop(Sound),
+
+    format('~n=== Light tank HP (hp=0.3) - tighter bass ===~n'),
+    effect_set_parameters(Effect, [hp=0.3]),
+    sound_seek(Sound, 0),
+    sound_start(Sound),
+    sleep(6),
+    sound_stop(Sound),
+
+    format('~n=== Medium tank HP (hp=0.5) - bass decays faster ===~n'),
+    effect_set_parameters(Effect, [hp=0.5]),
+    sound_seek(Sound, 0),
+    sound_start(Sound),
+    sleep(6),
+    sound_stop(Sound),
+
+    format('~n=== Strong tank HP (hp=0.7) - thin reverb tail ===~n'),
+    effect_set_parameters(Effect, [hp=0.7]),
+    sound_seek(Sound, 0),
+    sound_start(Sound),
+    sleep(6),
+    sound_stop(Sound),
+
+    sound_unload(Sound),
+    format('~nTank HP demo complete.~n').
+
+demo_freeze :-
+    format('Loading sound...~n'),
+    sound_load('audio/guitar.wav', Sound),
+    sound_attach_reverb(Sound, [
+        decay=0.5, wet=1.0, dry=0.0
+    ], Effect),
+
+    format('~n=== Playing with reverb ===~n'),
+    sound_start(Sound),
+    sleep(4),
+
+    format('~n=== Freezing reverb (infinite sustain) ===~n'),
+    effect_set_parameters(Effect, [freeze=1]),
+    sleep(20),
+
+    format('~n=== Unfreezing reverb ===~n'),
+    effect_set_parameters(Effect, [freeze=0]),
+    sound_seek(Sound, 0),
+    sound_start(Sound),
+    sleep(4),
+    sound_stop(Sound),
+
+    sound_unload(Sound),
+    format('~nFreeze demo complete.~n').
+
+demo_darkening :-
+    format('Loading sound...~n'),
+    sound_load('audio/guitar.wav', Sound),
+    sound_attach_reverb(Sound, [
+        decay=0.95, damping=0.7, wet=1.0, dry=0.0
+    ], _),
+
+    format('~n=== Long decay with gradual darkening ===~n'),
+    format('High decay (0.95) + high damping (0.7)~n'),
+    format('Playing briefly, then letting tail decay...~n'),
+    sound_start(Sound),
+    sleep(2),
+    sound_stop(Sound),
+    format('~n=== Listening to reverb tail darken ===~n'),
+    sleep(15),
+
+    sound_unload(Sound),
+    format('~nDarkening demo complete.~n').

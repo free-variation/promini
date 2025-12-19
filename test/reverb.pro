@@ -252,6 +252,105 @@ test(query_reverb_shimmer_defaults, [nondet]) :-
     abs(Mix2 - 0.0) < 0.001,
     sound_unload(Sound).
 
+% Room size
+
+test(query_reverb_size_default, [nondet]) :-
+    sound_load('audio/counting.wav', Sound),
+    sound_attach_reverb(Sound, [], _),
+    effects(Sound, [effect(Sound, reverb, _, Params)]),
+    memberchk(size=Size, Params),
+    abs(Size - 1.0) < 0.001,
+    sound_unload(Sound).
+
+test(attach_reverb_with_size, [nondet]) :-
+    sound_load('audio/counting.wav', Sound),
+    sound_attach_reverb(Sound, [size=1.5], _),
+    effects(Sound, [effect(Sound, reverb, _, Params)]),
+    memberchk(size=Size, Params),
+    abs(Size - 1.5) < 0.001,
+    sound_unload(Sound).
+
+test(set_reverb_size, [nondet]) :-
+    sound_load('audio/counting.wav', Sound),
+    sound_attach_reverb(Sound, [], Effect),
+    effect_set_parameters(Effect, [size=0.5]),
+    effects(Sound, [effect(Sound, reverb, _, Params)]),
+    memberchk(size=Size, Params),
+    abs(Size - 0.5) < 0.001,
+    sound_unload(Sound).
+
+test(set_reverb_size_large, [nondet]) :-
+    sound_load('audio/counting.wav', Sound),
+    sound_attach_reverb(Sound, [], Effect),
+    effect_set_parameters(Effect, [size=2.0]),
+    effects(Sound, [effect(Sound, reverb, _, Params)]),
+    memberchk(size=Size, Params),
+    abs(Size - 2.0) < 0.001,
+    sound_unload(Sound).
+
+% Tank highpass
+
+test(query_reverb_hp_default, [nondet]) :-
+    sound_load('audio/counting.wav', Sound),
+    sound_attach_reverb(Sound, [], _),
+    effects(Sound, [effect(Sound, reverb, _, Params)]),
+    memberchk(hp=HP, Params),
+    abs(HP - 0.0) < 0.001,
+    sound_unload(Sound).
+
+test(attach_reverb_with_hp, [nondet]) :-
+    sound_load('audio/counting.wav', Sound),
+    sound_attach_reverb(Sound, [hp=0.3], _),
+    effects(Sound, [effect(Sound, reverb, _, Params)]),
+    memberchk(hp=HP, Params),
+    abs(HP - 0.3) < 0.001,
+    sound_unload(Sound).
+
+test(set_reverb_hp, [nondet]) :-
+    sound_load('audio/counting.wav', Sound),
+    sound_attach_reverb(Sound, [], Effect),
+    effect_set_parameters(Effect, [hp=0.5]),
+    effects(Sound, [effect(Sound, reverb, _, Params)]),
+    memberchk(hp=HP, Params),
+    abs(HP - 0.5) < 0.001,
+    sound_unload(Sound).
+
+% Freeze mode
+
+test(query_reverb_freeze_default, [nondet]) :-
+    sound_load('audio/counting.wav', Sound),
+    sound_attach_reverb(Sound, [], _),
+    effects(Sound, [effect(Sound, reverb, _, Params)]),
+    memberchk(freeze=Freeze, Params),
+    Freeze = false,
+    sound_unload(Sound).
+
+test(attach_reverb_with_freeze, [nondet]) :-
+    sound_load('audio/counting.wav', Sound),
+    sound_attach_reverb(Sound, [freeze=true], _),
+    effects(Sound, [effect(Sound, reverb, _, Params)]),
+    memberchk(freeze=Freeze, Params),
+    Freeze = true,
+    sound_unload(Sound).
+
+test(set_reverb_freeze, [nondet]) :-
+    sound_load('audio/counting.wav', Sound),
+    sound_attach_reverb(Sound, [], Effect),
+    effect_set_parameters(Effect, [freeze=1]),
+    effects(Sound, [effect(Sound, reverb, _, Params)]),
+    memberchk(freeze=Freeze, Params),
+    Freeze = true,
+    sound_unload(Sound).
+
+test(set_reverb_freeze_off, [nondet]) :-
+    sound_load('audio/counting.wav', Sound),
+    sound_attach_reverb(Sound, [freeze=true], Effect),
+    effect_set_parameters(Effect, [freeze=0]),
+    effects(Sound, [effect(Sound, reverb, _, Params)]),
+    memberchk(freeze=Freeze, Params),
+    Freeze = false,
+    sound_unload(Sound).
+
 % Detach and clear
 
 test(detach_reverb, [nondet]) :-
