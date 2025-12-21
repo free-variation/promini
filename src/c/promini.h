@@ -69,8 +69,6 @@ extern pthread_mutex_t g_capture_devices_mutex;
 extern pthread_mutex_t g_voices_mutex;
 extern pthread_mutex_t g_summing_mutex;
 extern pthread_mutex_t g_mod_mutex;
-extern pthread_mutex_t g_images_mutex;
-extern pthread_mutex_t g_image_synths_mutex;
 extern pthread_mutex_t g_granular_mutex;
 extern pthread_mutex_t g_visualizers_mutex;
 
@@ -567,59 +565,6 @@ extern install_t clock_register_predicates(void);
 extern install_t uninstall_clock(void);
 extern void update_clock_routes(clock_route_type_t);
 
-/* image slot type */
-
-#define MAX_IMAGES 64
-
-typedef struct {
-	unsigned char *pixels;	/* original image data */
-	unsigned char *buffer;	/* working buffer (may be smaller) */
-	int width;
-	int height;
-	int buf_width;			/* buffer dimensions (time steps) */
-	int buf_height;			/* buffer dimensions (oscillators) */
-	int channels;
-	ma_bool32 in_use;
-} image_slot_t;
-
-/* Image synth node */
-# define MAX_IMAGE_SYNTHS 64
-# define MAX_IMAGE_SYNTH_ROWS 128
-
-typedef enum {
-	IMAGE_SYNTH_ADDITIVE,
-	IMAGE_SYNTH_WAVEFORM
-} image_synth_mode_t;
-
-typedef struct {
-	ma_node_base base;
-	ma_bool32 in_use;
-	effect_node_t *effect_chain;
-
-	int image_slot;
-	int channel;
-	ma_bool32 playing;
-	image_synth_mode_t mode;
-
-	union {
-		struct {
-			float bpm;
-			float beats_per_scan;
-			ma_bool32 looping;
-			float scan_position;
-			float phases[MAX_IMAGE_SYNTH_ROWS];
-			float frequencies[MAX_IMAGE_SYNTH_ROWS];
-			float amplitudes[MAX_IMAGE_SYNTH_ROWS];
-		} additive;
-		struct {
-			float frequency;
-			float amplitude;
-			float phase;
-			int row;
-		} waveform;
-	} params;
-} image_synth_node_t;
-
 /*
  * Granular delay
  */
@@ -782,8 +727,6 @@ extern visualizer_node_t g_visualizers[MAX_VISUALIZERS];
 extern sound_slot_t g_sounds[MAX_SOUNDS];
 extern synth_voice_t g_voices[MAX_VOICES];
 extern synth_oscillator_t g_oscillators[MAX_OSCILLATORS];
-extern image_slot_t g_images[MAX_IMAGES];
-extern image_synth_node_t g_image_synths[MAX_IMAGE_SYNTHS];
 extern granular_delay_t g_granular_delays[MAX_GRANULAR_DELAYS];
 extern visualizer_node_t g_visualizers[MAX_VISUALIZERS];
 
@@ -854,7 +797,6 @@ extern install_t promini_register_predicates(void);
 extern install_t synth_register_predicates(void);
 extern install_t effects_register_predicates(void);
 extern install_t mixer_register_predicates(void);
-extern install_t image_register_predicates(void);
 extern install_t control_register_predicates(void);
 extern install_t granular_register_predicates(void);
 extern install_t capture_register_predicates(void);
@@ -869,7 +811,6 @@ extern install_t uninstall_promini(void);
 extern install_t uninstall_synth(void);
 extern install_t uninstall_effects(void);
 extern install_t uninstall_mixer(void);
-extern install_t uninstall_image(void);
 extern install_t uninstall_control(void);
 extern install_t uninstall_granular(void);
 extern install_t uninstall_capture(void);

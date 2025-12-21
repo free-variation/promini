@@ -3214,14 +3214,6 @@ static foreign_t pl_summing_node_attach_effect(term_t handle, term_t effect_type
 	return attach_effect_to_node((ma_sound*)&g_summing_nodes[slot].base, &g_summing_nodes[slot].effect_chain, "summing_node", slot, effect_type, params, effect_handle);
 }
 
-static foreign_t pl_image_synth_attach_effect(term_t handle, term_t effect_type, term_t params, term_t effect_handle)
-{
-	int slot;
-	if (!get_typed_handle(handle, "image_synth", &slot) || slot < 0 || slot >= MAX_IMAGE_SYNTHS || !g_image_synths[slot].in_use)
-		return PL_existence_error("image_synth", handle);
-	return attach_effect_to_node((ma_sound*)&g_image_synths[slot].base, &g_image_synths[slot].effect_chain, "image_synth", slot, effect_type, params, effect_handle);
-}
-
 static foreign_t pl_granular_attach_effect(term_t handle, term_t effect_type, term_t params, term_t effect_handle)
 {
 	int slot;
@@ -3551,7 +3543,6 @@ install_t effects_register_predicates(void)
 	PL_register_foreign("sound_attach_effect", 4, pl_sound_attach_effect, 0);
 	PL_register_foreign("voice_attach_effect", 4, pl_voice_attach_effect, 0);
 	PL_register_foreign("summing_node_attach_effect", 4, pl_summing_node_attach_effect, 0);
-	PL_register_foreign("image_synth_attach_effect", 4, pl_image_synth_attach_effect, 0);
 	PL_register_foreign("granular_attach_effect", 4, pl_granular_attach_effect, 0);
 	PL_register_foreign("effects", 2, pl_effects, 0);
 	PL_register_foreign("effect_set_parameters", 2, pl_effect_set_parameters, 0);

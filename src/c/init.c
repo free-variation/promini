@@ -19,7 +19,6 @@ install_t install(void)
     effects_register_predicates();
     mod_register_predicates();
     mixer_register_predicates();
-    image_register_predicates();
     control_register_predicates();
     capture_register_predicates();
     granular_register_predicates();
@@ -37,7 +36,6 @@ install_t uninstall(void)
 	uninstall_visualizer();
 	uninstall_clock();
 	uninstall_control();
-	uninstall_image();
 	uninstall_mixer();
 	uninstall_mod();
 	uninstall_synth();

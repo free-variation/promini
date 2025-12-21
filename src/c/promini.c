@@ -135,7 +135,7 @@ sound_slot_t g_sounds[MAX_SOUNDS] = {{NULL, NULL, -1, MA_FALSE, NULL}};
 
 /*
  * Parameter parsing helpers for key=value lists.
- * Used by effects.c and image.c for set_parameters predicates.
+ * Used by effects.c for set_parameters predicates.
  */
 #define DEFINE_GET_PARAM(suffix, type, get_code) \
 	ma_bool32 get_param_##suffix(term_t params, const char *key, type *value) \
@@ -358,7 +358,7 @@ void get_engine_format_info(ma_format *format, ma_uint32 *channels, ma_uint32 *s
 
 /*
  * get_source_from_term()
- * Parse sound(N), voice(N), image_synth(N), or capture(N) term.
+ * Parse sound(N), voice(N), capture(N), or granular(N) term.
  * Returns source node and effect chain.
  */
 ma_bool32 get_source_from_term(term_t source_term, ma_node **source_node, effect_node_t **chain)
@@ -381,11 +381,6 @@ ma_bool32 get_source_from_term(term_t source_term, ma_node **source_node, effect
 		if (slot < 0 || slot >= MAX_VOICES || !g_voices[slot].in_use) return MA_FALSE;
 		*source_node = (ma_node *)&g_voices[slot].group;
 		*chain = g_voices[slot].effect_chain;
-		return MA_TRUE;
-	} else if (f == PL_new_functor(PL_new_atom("image_synth"), 1)) {
-		if (slot < 0 || slot >= MAX_IMAGE_SYNTHS || !g_image_synths[slot].in_use) return MA_FALSE;
-		*source_node = (ma_node *)&g_image_synths[slot].base;
-		*chain = g_image_synths[slot].effect_chain;
 		return MA_TRUE;
 	} else if (f == PL_new_functor(PL_new_atom("capture"), 1)) {
 		capture = get_capture_device(slot);

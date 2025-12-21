@@ -26,7 +26,6 @@ Live granular sampler + concatenative synthesis + additive synth + effects + mod
 | Summing node | multiple sources to single output with effect chain |
 | Clock system | BPM-based clock with routes to LFO, envelope, granular, delays |
 | Granular delay | Beads-style with ring buffer, tempo sync, sound buffer loading |
-| Image-to-audio | additive, waveform, RGB stereo modes |
 | Reverb | Dattorro plate with shimmer (external 4-grain, in-loop 2-grain), freeze, size, tank HP, modulation |
 | SDL visualizer | waveform, spectrum, spectrogram; multiple windows; auto-range; themes |
 | Multiple keyboard windows | slot-based array, per-window event routing |
@@ -116,36 +115,6 @@ Live granular sampler + concatenative synthesis + additive synth + effects + mod
 - LFO: frequency
 - Envelope: duration_ms
 - Route: depth, offset
-
----
-
-## Image-to-Audio Synthesis
-
-### Image Buffer Model
-
-Images have original (`pixels`) and working buffer (`buffer`). Buffer may be smaller after downsampling:
-- `buf_width` = time steps
-- `buf_height` = oscillators per voice
-- Downsampling averages blocks, shrinks buffer (2D run-length encoding)
-- Quantizing reduces bit depth (posterization)
-
-### Channel Mapping (Stereo)
-
-| Channels | Voices | Panning |
-|----------|--------|---------|
-| 1 (grayscale) | 1 voice | center |
-| 3 (RGB) | 3 voices | R=left, G=center, B=right |
-| 4 (RGBA) | 3 voices | R=left, G=center, B=right, A=ignored |
-
-Grayscale conversion is a creative choice: mono vs stereo RGB synth.
-
-### Scan
-
-Horizontal: columns = time, rows = frequency. Row 0 = lowest freq, row buf_height-1 = highest. Log-spaced frequencies.
-
-### Interpolation
-
-Cubic interpolation during audio generation to smooth transitions between buffer samples. Buffer stays small/blocky, interpolation happens per-sample during playback. Avoids clicks from sharp amplitude changes at block boundaries while preserving exact buffer values at grid points.
 
 ---
 
