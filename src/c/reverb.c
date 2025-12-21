@@ -542,6 +542,10 @@ static void process_channel(reverb_channel_t *ch, ma_uint32 t, float input,
 		feedback1 = feedback1 * (1.0f - shimmer_mix) + shifted1 * shimmer_mix;
 	}
 
+	/* Soft limit shimmer feedback to prevent accumulation */
+	feedback0 = soft_limit(feedback0);
+	feedback1 = soft_limit(feedback1);
+
 	feedback0 *= decay;
 	feedback1 *= decay;
 
