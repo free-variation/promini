@@ -116,11 +116,18 @@ int trigger_grain(granular_delay_t *g)
 {
 	float pitch_ratio;
 	int range, degree, octave, index;
+	int low, high;
 	float semitone;
 
 	if (g->mode_length > 0) {
-		range = g->deviation_up + g->deviation_down + 1;
-		degree = (rand() % range) - g->deviation_down;
+		low = -(int)g->deviation_down;
+		high = (int)g->deviation_up;
+		if (high >= low) {
+			range = high - low + 1;
+			degree = low + (rand() % range);
+		} else {
+			degree = 0;
+		}
 		octave = (degree >= 0) ? degree / g->mode_length : -1 + (degree + 1) / g->mode_length;
 		index = degree - octave * g->mode_length;
 		semitone = g->pitch + octave * 12.0f + g->mode[index];
@@ -263,6 +270,8 @@ static void granular_process_pcm_frames(
 	float overlap;
 	ma_uint32 c;
 
+	float dry, wet_out;
+
 	/* record input to ring buffer if recording */
 	if (g->recording && frames_in != NULL && frames_in[0] != NULL) {
 		ring_buffer_write(&g->buffer, frames_in[0], *frame_count_in);
@@ -365,7 +374,15 @@ static void granular_process_pcm_frames(
 				output[i * channels + c] *= g->gain_normalization;
 			}
 		}
-
+		
+		/* wet/dry mix */
+		if (g->wet < 1.0f && frames_in != NULL && frames_in[0] != NULL) {
+			for (c = 0; c < channels; c++) {
+				dry = frames_in[0][i * channels + c];
+				wet_out = output[i * channels + c];
+				output[i * channels + c] = g->wet * wet_out + (1.0f - g->wet) * dry;
+			}
+		}
 	}
 }
 
@@ -518,6 +535,7 @@ static foreign_t pl_granular_init(term_t buffer_term, term_t handle_term)
 	g->gain_normalization = 1.0f;
 	g->normalize = MA_TRUE;
 	g->frames_recorded = 0;
+	g->wet = 1.0f;
 
 	return unify_typed_handle(handle_term, "granular", slot);
 }
@@ -597,6 +615,10 @@ static foreign_t pl_granular_set(term_t handle_term, term_t params_term)
 		g->normalize = b;
 	}
 
+	if (get_param_float(params_term, "wet", &f)) {
+		g->wet = CLAMP(f, 0.0f, 1.0f);
+	}
+
 	return TRUE;
 }
 
@@ -651,6 +673,7 @@ static foreign_t pl_granular_get(term_t handle_term, term_t params_term)
 	eq = PL_new_functor(PL_new_atom("="), 2);
 
 	/* add params in reverse order so list comes out in natural order */
+	if (!add_float_param(&list, eq, "wet", g->wet)) return FALSE;
 	if (!add_bool_param(&list, eq, "normalize", g->normalize)) return FALSE;
 	if (!add_bool_param(&list, eq, "recording", g->recording)) return FALSE;
 	if (!add_float_param(&list, eq, "regularity", g->regularity)) return FALSE;

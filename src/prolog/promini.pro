@@ -106,6 +106,7 @@
     control_close/1,
     control_pump/0,
     control_axis/3,
+    control_debug_buttons/1,
     keyboard_init/1,
     keyboard_uninit/1,
     keyboard_connect/3,

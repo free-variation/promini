@@ -673,6 +673,36 @@ int get_button_from_atom(atom_t atom, SDL_GamepadButton *button)
 }
 
 /*
+ * pl_control_debug_buttons()
+ * Print all currently pressed buttons on a gamepad.
+ * control_debug_buttons(+Gamepad)
+ */
+static foreign_t pl_control_debug_buttons(term_t gamepad_term)
+{
+	SDL_Gamepad *gp;
+	int i;
+	const char *names[] = {
+		"south", "east", "west", "north", "back", "guide", "start",
+		"left_stick", "right_stick", "left_shoulder", "right_shoulder",
+		"dpad_up", "dpad_down", "dpad_left", "dpad_right", "misc1",
+		"right_paddle1", "left_paddle1", "right_paddle2", "left_paddle2",
+		"touchpad", "misc2", "misc3", "misc4", "misc5", "misc6"
+	};
+
+	gp = get_gamepad_ptr(gamepad_term);
+	if (gp == NULL) return FALSE;
+
+	printf("Pressed buttons: ");
+	for (i = 0; i < 26; i++) {
+		if (SDL_GetGamepadButton(gp, (SDL_GamepadButton)i)) {
+			printf("%s(%d) ", names[i], i);
+		}
+	}
+	printf("\n");
+	return TRUE;
+}
+
+/*
  * get_gamepad_ptr()
  * Extract SDL_Gamepad pointer from control(Ptr) term.
  * Returns NULL on failure.
@@ -1320,6 +1350,7 @@ install_t control_register_predicates(void)
 	PL_register_foreign("control_close", 1, pl_control_close, 0);
 	PL_register_foreign("control_pump", 0, pl_control_pump, 0);
 	PL_register_foreign("control_axis", 3, pl_control_axis, 0);
+	PL_register_foreign("control_debug_buttons", 1, pl_control_debug_buttons, 0);
 	PL_register_foreign("keyboard_init", 1, pl_keyboard_init, 0);
 	PL_register_foreign("keyboard_uninit", 1, pl_keyboard_uninit, 0);
 	PL_register_foreign("keyboard_connect", 3, pl_keyboard_connect, 0);

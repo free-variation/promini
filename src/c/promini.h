@@ -662,14 +662,16 @@ typedef struct {
 
 	float mode[MAX_MODE_INTERVAL];
 	int mode_length;
-	int deviation_up;
-	int deviation_down;
+	float deviation_up;
+	float deviation_down;
 
 	float density_accumulator;
 	float num_grains_smoothed;
 	float gain_normalization;
 	ma_bool32 normalize;
 	ma_uint64 frames_recorded; 
+
+	float wet;
 } granular_delay_t;
 
 /* keyboard state */

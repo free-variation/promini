@@ -775,6 +775,51 @@ static float set_granular_reset(void *target, float value, ma_uint32 frame_count
 }
 
 /*
+ * set_granular_deviation_up()
+ * Setter for granular pitch deviation up range. Target is granular_delay_t*.
+ */
+static float set_granular_deviation_up(void *target, float value, ma_uint32 frame_count, mod_route_t *route)
+{
+	granular_delay_t *g = (granular_delay_t *)target;
+	float v;
+	(void)frame_count;
+
+	v = APPLY_MOD_VALUE(g->deviation_up, value, route);
+	g->deviation_up = CLAMP(v, 0.0f, 48.0f);
+	return g->deviation_up;
+}
+
+/*
+ * set_granular_deviation_down()
+ * Setter for granular pitch deviation down range. Target is granular_delay_t*.
+ */
+static float set_granular_deviation_down(void *target, float value, ma_uint32 frame_count, mod_route_t *route)
+{
+	granular_delay_t *g = (granular_delay_t *)target;
+	float v;
+	(void)frame_count;
+
+	v = APPLY_MOD_VALUE(g->deviation_down, value, route);
+	g->deviation_down = CLAMP(v, -48.0f, 48.0f);
+	return g->deviation_down;
+}
+
+/*
+ * set_granular_wet()
+ * Setter for granular wet level. Target is granular_delay_t*.
+ */
+static float set_granular_wet(void *target, float value, ma_uint32 frame_count, mod_route_t *route)
+{
+	granular_delay_t *g = (granular_delay_t *)target;
+	float v;
+	(void)frame_count;
+
+	v = APPLY_MOD_VALUE(g->wet, value, route);
+	g->wet = CLAMP(v, 0.0f, 1.0f);
+	return g->wet;
+}
+
+/*
  * set_reverb_wet()
  * Setter for reverb wet level. Target is reverb_node_t*.
  */
@@ -1037,6 +1082,12 @@ static foreign_t pl_mod_route_init(
 			setter = set_granular_trigger;
 		} else if (strcmp(param, "reset") == 0) {
 			setter = set_granular_reset;
+		} else if (strcmp(param, "deviation_up") == 0) {
+			setter = set_granular_deviation_up;
+		} else if (strcmp(param, "deviation_down") == 0) {
+			setter = set_granular_deviation_down;
+		} else if (strcmp(param, "wet") == 0) {
+			setter = set_granular_wet;
 		} else {
 			return PL_domain_error("granular_param", param_term);
 		}
