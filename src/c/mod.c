@@ -845,7 +845,7 @@ static float set_reverb_decay(void *target, float value, ma_uint32 frame_count, 
 	(void)frame_count;
 
 	decay = APPLY_MOD_VALUE(r->decay, value, route);
-	r->decay = CLAMP(decay, 0.0f, 0.99f);
+	r->decay = CLAMP(decay, 0.0f, 1.0f);
 	return r->decay;
 }
 

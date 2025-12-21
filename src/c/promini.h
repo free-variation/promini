@@ -332,6 +332,8 @@ typedef struct {
 	float smooth_hp;	/* smoothed hp for click-free changes */
 	ma_bool32 freeze;	/* infinite sustain mode */
 	ma_bool32 shimmer_in_loop;
+	float smooth_freeze;
+	float smooth_decay;
 
 
 	/* internal state */

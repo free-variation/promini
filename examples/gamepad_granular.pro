@@ -5,7 +5,7 @@
  * Maps Xbox-style controller to granular synthesis + reverb.
  */
 demo(Source) :-
-    promini_init('MacBook Air Speakers'),
+    promini_init('External Headphones'),
     control_init,
 
     control_gamepads(Gamepads),

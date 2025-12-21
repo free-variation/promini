@@ -23,6 +23,15 @@ static const float mod_freq_ratios[4] = {1.0f, 1.5f, 1.2f, 1.8f};
  * Basic DSP primitives
  * ============================================================================ */
 
+/*
+ * soft_limit()
+ * Gentle saturation - nearly linear for small values, compresses peaks.
+ * From Mutable Instruments stmlib (MIT License).
+ */
+static inline float soft_limit(float x) {
+	return x * (27.0f + x * x) / (27.0f + 9.0f * x * x);
+}
+
 /* Write to circular buffer */
 static inline void delay_write(float *buffer, ma_uint32 mask, ma_uint32 t, float value) {
 	buffer[t & mask] = value;
@@ -364,10 +373,8 @@ static float process_tank_half(reverb_tank_half_t *th, ma_uint32 t, float input,
 		x -= th->hp_state;
 	}
 
-	/* Soft limiter for stability - only activate for extreme signals */
-	if (fabsf(x) > 4.0f) {
-		x = tanhf(x) * 4.0f;
-	}
+	/* Soft limiter for stability - gentle compression on all signals */
+	x = soft_limit(x);
 
 	/* Apply decay */
 	x *= decay;
@@ -574,7 +581,7 @@ static void reverb_process_pcm_frames(
 
 	/* Get parameters */
 	ma_uint32 predelay_samples;
-	float bandwidth, damping;
+	float bandwidth, damping, base_damping;
 	float input_diff1, input_diff2;
 	float decay_diff1, decay_diff2;
 	float decay;
@@ -587,6 +594,7 @@ static void reverb_process_pcm_frames(
 	float wet_l, wet_r;
 	float mid, side;
 	float decay_compensation;
+	float freeze_target, input_fade, freeze_coeff;
 
 	float shimmer_ratio, shimmer_window;
 	float shimmer_xfade = 0.0f;
@@ -605,7 +613,7 @@ static void reverb_process_pcm_frames(
 	bandwidth = 0.1f + reverb->bandwidth * 0.89f;
 
 	/* damping: 0=bright, 1=dark. Map to LPF coeff (higher = less damping) */
-	damping = 0.99f - reverb->damping * 0.89f;
+	base_damping = 0.99f - reverb->damping * 0.89f;
 
 	/* Diffusion coefficients - fixed for now, could be parameters */
 	input_diff1 = 0.75f;
@@ -613,29 +621,31 @@ static void reverb_process_pcm_frames(
 	decay_diff1 = 0.70f;
 	decay_diff2 = 0.50f;
 
-	/* Compensate output for high decay values.
-	 * Energy in feedback loop ~ 1/(1-d²), so attenuate by sqrt(1-d²)
-	 * Use user's decay setting, not freeze-modified value */
-	decay_compensation = sqrtf(1.0f - reverb->decay * reverb->decay);
-
-	decay = reverb->decay;
-
-	/* Freeze mode: infinite decay, no new input, no damping */
-	if (reverb->freeze) {
-		decay = 1.0f;
-		damping = 1.0f;
-	}
+	/* No compensation for now */
+	decay_compensation = 1.0f;
 
 	/* smooth size parameter */
 	size_target = CLAMP(reverb->size, 0.0f, 2.0f);
 
 	for (i = 0; i < frame_count; i++) {
+		/* Per-sample freeze smoothing for click-free transitions */
+		freeze_target = reverb->freeze ? 1.0f : 0.0f;
+		freeze_coeff = reverb->freeze ? 0.002f : 0.0005f;
+		ONE_POLE(reverb->smooth_freeze, freeze_target, freeze_coeff);
+		ONE_POLE(reverb->smooth_decay, reverb->decay, 0.0001f);
+
+		/* Interpolate decay and damping for freeze (0.9999 lets noise die out) */
+		decay = reverb->smooth_decay + (0.9999f - reverb->smooth_decay) * reverb->smooth_freeze;
+		damping = base_damping + (0.9f - base_damping) * reverb->smooth_freeze;
+
+		/* Hard input cut on freeze, quadratic fade on unfreeze */
 		if (reverb->freeze) {
 			in_l = 0.0f;
 			in_r = 0.0f;
 		} else {
-			in_l = in[i * 2];
-			in_r = in[i * 2 + 1];
+			input_fade = (1.0f - reverb->smooth_freeze) * (1.0f - reverb->smooth_freeze);
+			in_l = in[i * 2] * input_fade;
+			in_r = in[i * 2 + 1] * input_fade;
 		}
 
 		/* Slow modulation for chorus effect in tank */
@@ -856,6 +866,8 @@ ma_result init_reverb_node(reverb_node_t *reverb, ma_uint32 sample_rate) {
 	reverb->hp = 0.0f;
 	reverb->smooth_hp = 0.0f;
 	reverb->freeze = MA_FALSE;
+	reverb->smooth_freeze = 0.0f;
+	reverb->smooth_decay = 0.5f; /* match default decay */
 	reverb->shimmer_in_loop = MA_FALSE;
 
 	/* Initialize internal state */
