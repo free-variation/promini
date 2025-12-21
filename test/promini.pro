@@ -4,12 +4,20 @@
 
 :- begin_tests(promini_init).
 
+test(init_bad_device, [error(existence_error(playback_device, _))]) :-
+    promini_init('NonExistentDevice12345').
+
 test(version, [nondet]) :-
     promini_version(Version),
     atom(Version).
 
 test(init) :-
     promini_init.
+
+test(init_with_device, [nondet]) :-
+    promini_devices(Devices),
+    member(device(Name, playback, _), Devices),
+    promini_init(Name).
 
 test(devices, [nondet]) :-
     promini_devices(Devices),

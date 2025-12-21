@@ -552,6 +552,33 @@ static struct {
 	{NULL, 0}
 };
 
+static struct {
+	const char *name;
+	SDL_GamepadButton button;
+} button_map[] = {
+	{"a", SDL_GAMEPAD_BUTTON_SOUTH},
+	{"b", SDL_GAMEPAD_BUTTON_EAST},
+	{"x", SDL_GAMEPAD_BUTTON_WEST},
+	{"y", SDL_GAMEPAD_BUTTON_NORTH},
+	{"lb", SDL_GAMEPAD_BUTTON_LEFT_SHOULDER},
+	{"rb", SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER},
+	{"l3", SDL_GAMEPAD_BUTTON_LEFT_STICK},
+	{"r3", SDL_GAMEPAD_BUTTON_RIGHT_STICK},
+	{"back", SDL_GAMEPAD_BUTTON_BACK},
+	{"start", SDL_GAMEPAD_BUTTON_START},
+	{"guide", SDL_GAMEPAD_BUTTON_GUIDE},
+	{"dpad_up", SDL_GAMEPAD_BUTTON_DPAD_UP},
+	{"dpad_down", SDL_GAMEPAD_BUTTON_DPAD_DOWN},
+	{"dpad_left", SDL_GAMEPAD_BUTTON_DPAD_LEFT},
+	{"dpad_right", SDL_GAMEPAD_BUTTON_DPAD_RIGHT},
+	{"l4", SDL_GAMEPAD_BUTTON_LEFT_PADDLE1},
+	{"r4", SDL_GAMEPAD_BUTTON_RIGHT_PADDLE1},
+	{"pl", SDL_GAMEPAD_BUTTON_LEFT_PADDLE2},
+	{"pr", SDL_GAMEPAD_BUTTON_RIGHT_PADDLE2},
+	{"touchpad", SDL_GAMEPAD_BUTTON_TOUCHPAD},
+	{NULL, 0}
+};
+
 /*
  * get_axis_from_atom()
  * Convert Prolog atom to SDL_GamepadAxis.
@@ -566,6 +593,26 @@ int get_axis_from_atom(atom_t atom, SDL_GamepadAxis *axis)
 	for (i = 0; axis_map[i].name != NULL; i++) {
 		if (strcmp(name, axis_map[i].name) == 0) {
 			*axis = axis_map[i].axis;
+			return 1;
+		}
+	}
+	return 0;
+}
+
+/*
+ * get_button_from_atom()
+ * Convert Prolog atom to SDL_GamepadButton.
+ * Returns 1 on success, 0 on failure.
+ */
+int get_button_from_atom(atom_t atom, SDL_GamepadButton *button)
+{
+	const char *name;
+	int i;
+
+	name = PL_atom_chars(atom);
+	for (i = 0; button_map[i].name != NULL; i++) {
+		if (strcmp(name, button_map[i].name) == 0) {
+			*button = button_map[i].button;
 			return 1;
 		}
 	}

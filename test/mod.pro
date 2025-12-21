@@ -240,6 +240,63 @@ test(mod_gamepad_dpad_y, [nondet, setup(control_init), cleanup((
     mod_route_init(S, oscillator, O, frequency, rate, 100.0, 0.0, 0.0, R),
     R = mod_route(_).
 
+% Gamepad button mod source tests
+
+test(mod_gamepad_button_momentary, [nondet, setup(control_init), cleanup((
+    mod_source_uninit(S),
+    control_close(G),
+    control_shutdown
+))]) :-
+    control_gamepads([gamepad(Id, _)|_]),
+    control_open(Id, G),
+    mod_gamepad_button_init(G, a, momentary, S),
+    S = mod_source(_).
+
+test(mod_gamepad_button_trigger, [nondet, setup(control_init), cleanup((
+    mod_source_uninit(S),
+    control_close(G),
+    control_shutdown
+))]) :-
+    control_gamepads([gamepad(Id, _)|_]),
+    control_open(Id, G),
+    mod_gamepad_button_init(G, b, trigger, S),
+    S = mod_source(_).
+
+test(mod_gamepad_button_toggle, [nondet, setup(control_init), cleanup((
+    mod_source_uninit(S),
+    control_close(G),
+    control_shutdown
+))]) :-
+    control_gamepads([gamepad(Id, _)|_]),
+    control_open(Id, G),
+    mod_gamepad_button_init(G, x, toggle, S),
+    S = mod_source(_).
+
+test(mod_gamepad_button_cycling, [nondet, setup(control_init), cleanup((
+    mod_source_uninit(S),
+    control_close(G),
+    control_shutdown
+))]) :-
+    control_gamepads([gamepad(Id, _)|_]),
+    control_open(Id, G),
+    mod_gamepad_button_init(G, lb, [0.0, 0.5, 1.0], S),
+    S = mod_source(_).
+
+test(mod_gamepad_button_route, [nondet, setup(control_init), cleanup((
+    mod_route_uninit(R),
+    mod_source_uninit(S),
+    synth_voice_uninit(V),
+    control_close(G),
+    control_shutdown
+))]) :-
+    control_gamepads([gamepad(Id, _)|_]),
+    control_open(Id, G),
+    synth_voice_init(V),
+    synth_oscillator_add(V, 440.0, 0.5, O),
+    mod_gamepad_button_init(G, rb, [0.0, 0.3, 0.7, 1.0], S),
+    mod_route_init(S, oscillator, O, volume, absolute, 1.0, 0.0, 0.0, R),
+    R = mod_route(_).
+
 % Ping-pong delay routing tests
 
 test(route_sound_ping_pong_delay, [nondet, cleanup((

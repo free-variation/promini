@@ -356,6 +356,7 @@ static float process_tank_half(reverb_tank_half_t *th, ma_uint32 t, float input,
 	/* Damping LPF */
 	ONE_POLE(th->damping_state, x, damping);
 	x = th->damping_state;
+	x += 1e-25f;  /* prevent denormals */
 
 	/* Tank highpass (bass decay control) */
 	if (hp > 0.0f) {
@@ -363,9 +364,9 @@ static float process_tank_half(reverb_tank_half_t *th, ma_uint32 t, float input,
 		x -= th->hp_state;
 	}
 
-	/* Soft limiter for stability - only activate for large signals */
-	if (fabsf(x) > 1.0f) {
-		x = tanhf(x);
+	/* Soft limiter for stability - only activate for extreme signals */
+	if (fabsf(x) > 4.0f) {
+		x = tanhf(x) * 4.0f;
 	}
 
 	/* Apply decay */
@@ -537,6 +538,10 @@ static void process_channel(reverb_channel_t *ch, ma_uint32 t, float input,
 	feedback0 *= decay;
 	feedback1 *= decay;
 
+	/* Prevent denormals in feedback loop */
+	feedback0 += 1e-25f;
+	feedback1 += 1e-25f;
+
 	/* Process tank halves with cross-feedback */
 	process_tank_half(&ch->tank[0], t, x + feedback0, decay,
 	                  decay_diff1, decay_diff2, damping, hp,
@@ -584,7 +589,10 @@ static void reverb_process_pcm_frames(
 	float decay_compensation;
 
 	float shimmer_ratio, shimmer_window;
-	float shimmer_xfade, shimmer_pos1, shimmer_pos2;
+	float shimmer_xfade = 0.0f;
+	float shimmer_pos1 = 0.0f; 
+	float shimmer_pos2 = 0.0f;
+
 
 	get_engine_format_info(NULL, NULL, &sample_rate);
 	dc_coeff = expf(-2.0f * M_PI * 20.0f/ (float)sample_rate);

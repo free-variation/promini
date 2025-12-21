@@ -7,6 +7,7 @@
 :- module(promini, [
     promini_version/1,
     promini_init/0,
+    promini_init/1,
     promini_devices/1,
     sound_load/2,
     sound_unload/1,
@@ -71,6 +72,7 @@
     mod_route_init/9,
     mod_route_uninit/1,
     mod_gamepad_init/3,
+    mod_gamepad_button_init/4,
     mod_keyboard_init/3,
     mod_noise_init/2,
     mod_source_set_sh/2,

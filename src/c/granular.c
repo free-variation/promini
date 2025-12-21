@@ -290,20 +290,35 @@ static void granular_process_pcm_frames(
 	for (i = 0; i < frame_count; i++) {
 		active_count = 0;
 
-		/* density-based trigger */
+		/* density-based trigger: blend deterministic and probabilistic */
 		if (g->density > 0.0f) {
-			g->density_accumulator += grains_per_frame;
-
-			/* add random jitter for irregular timing */
-			if (g->regularity < 1.0f) {
-				jitter = (2.0f * ((float)rand() / RAND_MAX) - 1.0f);
-				jitter *= grains_per_frame * (1.0f - g->regularity);
-				g->density_accumulator += jitter;
-			}
-
-			while (g->density_accumulator > 1.0f) {
-				trigger_grain(g);
-				g->density_accumulator -= 1.0f;
+			if (g->regularity >= 1.0f) {
+				/* fully deterministic: accumulator-based */
+				g->density_accumulator += grains_per_frame;
+				while (g->density_accumulator >= 1.0f) {
+					trigger_grain(g);
+					g->density_accumulator -= 1.0f;
+				}
+			} else if (g->regularity <= 0.0f) {
+				/* fully probabilistic: Clouds-style random */
+				if ((float)rand() / RAND_MAX < grains_per_frame) {
+					trigger_grain(g);
+				}
+			} else {
+				/* blend: deterministic with probability gate */
+				g->density_accumulator += grains_per_frame;
+				while (g->density_accumulator >= 1.0f) {
+					/* probability of actually triggering */
+					if ((float)rand() / RAND_MAX < g->regularity) {
+						trigger_grain(g);
+					} else {
+						/* skip this trigger, maybe trigger randomly later */
+						if ((float)rand() / RAND_MAX < grains_per_frame) {
+							trigger_grain(g);
+						}
+					}
+					g->density_accumulator -= 1.0f;
+				}
 			}
 		}
 

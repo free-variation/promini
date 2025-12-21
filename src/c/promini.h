@@ -410,6 +410,15 @@ typedef struct {
 #define MAX_MOD_ROUTES 256
 
 /* modulation source types */
+
+/* button mode for gamepad button mod source */
+typedef enum {
+	BUTTON_MODE_CYCLING,
+	BUTTON_MODE_MOMENTARY,
+	BUTTON_MODE_TRIGGER,
+	BUTTON_MODE_TOGGLE
+} button_mode_t;
+
 typedef enum {
 	MOD_SOURCE_NONE = 0,
 	MOD_SOURCE_WAVEFORM,
@@ -417,6 +426,7 @@ typedef enum {
 	MOD_SOURCE_SAMPLER,
 	MOD_SOURCE_ENVELOPE,
 	MOD_SOURCE_GAMEPAD,
+	MOD_SOURCE_GAMEPAD_BUTTON,
 	MOD_SOURCE_KEYBOARD
 } mod_source_type_t;
 
@@ -451,6 +461,16 @@ typedef struct {
 			float dead_zone;
 			int dpad_axis;  /* 0=normal, 1=dpad_x, 2=dpad_y */
 		} gamepad;
+		struct {
+			SDL_Gamepad *gamepad;
+			SDL_GamepadButton button;
+			button_mode_t mode;
+			float presets[8];		/* present values for cycling mode */
+			int preset_count;
+			int current_index;
+			ma_bool32 prev_pressed;	/* for edge detection */
+			ma_bool32 toggle_state;	/* for toggle mode */
+		} gamepad_button;
 		struct {
 			SDL_Scancode scancode;
 			float attack_ms;
@@ -793,6 +813,7 @@ extern void free_reverb_node(reverb_node_t *reverb);
 
 /*  Gamepad and keyboard functions (implemented in control.c) */
 extern int get_axis_from_atom(atom_t atom_term, SDL_GamepadAxis *axis);
+extern int get_button_from_atom(atom_t atom_term, SDL_GamepadButton *button);
 extern SDL_Gamepad *get_gamepad_ptr(term_t gamepad_term);
 extern void keyboard_handle_event(SDL_Event *event);
 

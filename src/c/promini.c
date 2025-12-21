@@ -1029,6 +1029,43 @@ static void engine_audio_callback(
 	ma_engine_read_pcm_frames(engine, frames_out, frame_count, NULL);
 }
 
+
+/*
+ * init_engine()
+ * Shared engine initialization.
+ * Pass NULL for default device.
+ */
+static foreign_t init_engine(ma_device_id *device_id)
+{
+	ma_engine_config engine_config;
+	ma_result result;
+
+	if (g_engine != NULL) {
+		return TRUE;
+	}
+
+	g_engine = (ma_engine *)ma_malloc(sizeof(ma_engine), NULL);
+	if (g_engine == NULL) {
+		return PL_resource_error("memory");
+	}
+
+	engine_config = ma_engine_config_init();
+	engine_config.pPlaybackDeviceID = device_id;
+	engine_config.periodSizeInMilliseconds = 10;
+	engine_config.dataCallback = engine_audio_callback;
+
+	result = ma_engine_init(&engine_config, g_engine);
+	if (result != MA_SUCCESS) {
+		ma_free(g_engine, NULL);
+		g_engine = NULL;
+		return PL_resource_error("audio_engine");
+	}
+
+	clock_init(ma_engine_get_sample_rate(g_engine));
+
+	return TRUE;
+}
+
 /*
  * pl_promini_init()
  * promini_init
@@ -1037,35 +1074,53 @@ static void engine_audio_callback(
  */
 foreign_t pl_promini_init(void)
 {
-    ma_engine_config engine_config;
-	ma_result result;
+    return init_engine(NULL);
+}
 
-    /* Already initialized */
+/*
+ * pl_promini_init_device()
+ * promini_init(+PlaybackDeviceName)
+ * Initializes the engine with a specific playback device.
+ */
+static foreign_t pl_promini_init_device(term_t device_name)
+{
+    ma_context context;
+    ma_result result;
+    ma_device_info *playback_infos;
+    ma_uint32 playback_count;
+    ma_device_id device_id;
+    char *name;
+    ma_uint32 i;
+
     if (g_engine != NULL) {
         return TRUE;
     }
 
-    /* Allocate engine */
-    g_engine = (ma_engine*)ma_malloc(sizeof(ma_engine), NULL);
-    if (g_engine == NULL) {
-        return PL_resource_error("memory");
-    }
-
-    /* Initialize engine with default config */
-	engine_config = ma_engine_config_init();
-	engine_config.periodSizeInMilliseconds = 10;
-	engine_config.dataCallback = engine_audio_callback;
-
-    result = ma_engine_init(&engine_config, g_engine);
-    if (result != MA_SUCCESS) {
-        ma_free(g_engine, NULL);
-        g_engine = NULL;
+    if (!PL_get_chars(device_name, &name, CVT_ATOM | CVT_STRING | CVT_EXCEPTION)) {
         return FALSE;
     }
 
-    clock_init(ma_engine_get_sample_rate(g_engine));
+    result = ma_context_init(NULL, 0, NULL, &context);
+    if (result != MA_SUCCESS) {
+        return FALSE;
+    }
 
-    return TRUE;
+    result = ma_context_get_devices(&context, &playback_infos, &playback_count, NULL, NULL);
+    if (result != MA_SUCCESS) {
+        ma_context_uninit(&context);
+        return FALSE;
+    }
+
+    for (i = 0; i < playback_count; i++) {
+        if (strcmp(playback_infos[i].name, name) == 0) {
+            device_id = playback_infos[i].id;
+            ma_context_uninit(&context);
+            return init_engine(&device_id);
+        }
+    }
+
+    ma_context_uninit(&context);
+    return PL_existence_error("playback_device", device_name);
 }
 
 /*
@@ -1558,6 +1613,7 @@ install_t promini_register_predicates(void)
 {
     PL_register_foreign("promini_version", 1, pl_promini_version, 0);
     PL_register_foreign("promini_init", 0, pl_promini_init, 0);
+    PL_register_foreign("promini_init", 1, pl_promini_init_device, 0);
     PL_register_foreign("promini_devices", 1, pl_promini_devices, 0);
     PL_register_foreign("sound_unload", 1, pl_sound_unload, 0);
 	PL_register_foreign("sound_start", 1, pl_sound_start, 0);

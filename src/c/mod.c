@@ -165,7 +165,7 @@ static float read_source_value(mod_source_t *src, ma_uint32 frame_count, ma_uint
 	ma_uint32 channels, pos, i;
 	float stage_frames, increment;
 	const bool *keys;
-	ma_bool32 pressed;
+	ma_bool32 pressed, rising_edge;
 	float target, rate;
 
 	switch(src->type) {
@@ -274,7 +274,37 @@ static float read_source_value(mod_source_t *src, ma_uint32 frame_count, ma_uint
 				}
 			}
 			break;
-		
+
+		case MOD_SOURCE_GAMEPAD_BUTTON:
+			pressed = SDL_GetGamepadButton(src->source.gamepad_button.gamepad,
+			                               src->source.gamepad_button.button);
+			rising_edge = pressed && !src->source.gamepad_button.prev_pressed;
+
+			switch (src->source.gamepad_button.mode) {
+			case BUTTON_MODE_CYCLING:
+				if (rising_edge) {
+					src->source.gamepad_button.current_index =
+						(src->source.gamepad_button.current_index + 1) %
+						src->source.gamepad_button.preset_count;
+				}
+				value = src->source.gamepad_button.presets[src->source.gamepad_button.current_index];
+				break;
+			case BUTTON_MODE_MOMENTARY:
+				value = pressed ? 1.0f : 0.0f;
+				break;
+			case BUTTON_MODE_TRIGGER:
+				value = rising_edge ? 1.0f : 0.0f;
+				break;
+			case BUTTON_MODE_TOGGLE:
+				if (rising_edge) {
+					src->source.gamepad_button.toggle_state = !src->source.gamepad_button.toggle_state;
+				}
+				value = src->source.gamepad_button.toggle_state ? 1.0f : 0.0f;
+				break;
+			}
+			src->source.gamepad_button.prev_pressed = pressed;
+			break;
+
 		case MOD_SOURCE_KEYBOARD:
 			keys = SDL_GetKeyboardState(NULL);
 			pressed = keys[src->source.keyboard.scancode];
@@ -539,6 +569,243 @@ static void set_granular_position(void *target, float value, ma_uint32 frame_cou
 	g->position = CLAMP(pos, 0.0f, 1.0f);
 }
 
+/*
+ * set_granular_size()
+ * Setter for granular size in ms. Target is granular_delay_t*.
+ */
+static void set_granular_size(void *target, float value, ma_uint32 frame_count, mod_route_t *route)
+{
+	granular_delay_t *g = (granular_delay_t *)target;
+	float size;
+	(void)frame_count;
+
+	size = APPLY_MOD_VALUE(g->size_ms, value, route);
+	if (size < 1.0f) size = 1.0f;
+	g->size_ms = size;
+}
+
+/*
+ * set_granular_position_spray()
+ * Setter for granular position spray. Target is granular_delay_t*.
+ */
+static void set_granular_position_spray(void *target, float value, ma_uint32 frame_count, mod_route_t *route)
+{
+	granular_delay_t *g = (granular_delay_t *)target;
+	float spray;
+	(void)frame_count;
+
+	spray = APPLY_MOD_VALUE(g->position_spray, value, route);
+	g->position_spray = CLAMP(spray, 0.0f, 1.0f);
+}
+
+/*
+ * set_granular_size_spray()
+ * Setter for granular size spray. Target is granular_delay_t*.
+ */
+static void set_granular_size_spray(void *target, float value, ma_uint32 frame_count, mod_route_t *route)
+{
+	granular_delay_t *g = (granular_delay_t *)target;
+	float spray;
+	(void)frame_count;
+
+	spray = APPLY_MOD_VALUE(g->size_spray, value, route);
+	g->size_spray = CLAMP(spray, 0.0f, 1.0f);
+}
+
+/*
+ * set_granular_envelope()
+ * Setter for granular envelope shape. Target is granular_delay_t*.
+ */
+static void set_granular_envelope(void *target, float value, ma_uint32 frame_count, mod_route_t *route)
+{
+	granular_delay_t *g = (granular_delay_t *)target;
+	float env;
+	(void)frame_count;
+
+	env = APPLY_MOD_VALUE(g->envelope, value, route);
+	g->envelope = CLAMP(env, 0.0f, 1.0f);
+}
+
+/*
+ * set_granular_regularity()
+ * Setter for granular regularity. Target is granular_delay_t*.
+ */
+static void set_granular_regularity(void *target, float value, ma_uint32 frame_count, mod_route_t *route)
+{
+	granular_delay_t *g = (granular_delay_t *)target;
+	float reg;
+	(void)frame_count;
+
+	reg = APPLY_MOD_VALUE(g->regularity, value, route);
+	g->regularity = CLAMP(reg, 0.0f, 1.0f);
+}
+
+/*
+ * set_granular_reverse()
+ * Setter for granular reverse probability. Target is granular_delay_t*.
+ */
+static void set_granular_reverse(void *target, float value, ma_uint32 frame_count, mod_route_t *route)
+{
+	granular_delay_t *g = (granular_delay_t *)target;
+	float rev;
+	(void)frame_count;
+
+	rev = APPLY_MOD_VALUE(g->reverse_probability, value, route);
+	g->reverse_probability = CLAMP(rev, 0.0f, 1.0f);
+}
+
+/*
+ * set_granular_pan()
+ * Setter for granular pan. Target is granular_delay_t*.
+ */
+static void set_granular_pan(void *target, float value, ma_uint32 frame_count, mod_route_t *route)
+{
+	granular_delay_t *g = (granular_delay_t *)target;
+	float pan;
+	(void)frame_count;
+
+	pan = APPLY_MOD_VALUE(g->pan, value, route);
+	g->pan = CLAMP(pan, -1.0f, 1.0f);
+}
+
+/*
+ * set_granular_pan_spray()
+ * Setter for granular pan spray. Target is granular_delay_t*.
+ */
+static void set_granular_pan_spray(void *target, float value, ma_uint32 frame_count, mod_route_t *route)
+{
+	granular_delay_t *g = (granular_delay_t *)target;
+	float spray;
+	(void)frame_count;
+
+	spray = APPLY_MOD_VALUE(g->pan_spray, value, route);
+	g->pan_spray = CLAMP(spray, 0.0f, 1.0f);
+}
+
+/*
+ * set_granular_recording()
+ * Setter for granular recording state. Target is granular_delay_t*.
+ */
+static void set_granular_recording(void *target, float value, ma_uint32 frame_count, mod_route_t *route)
+{
+	granular_delay_t *g = (granular_delay_t *)target;
+	float v;
+	(void)frame_count;
+
+	v = APPLY_MOD_VALUE(g->recording ? 1.0f : 0.0f, value, route);
+	g->recording = (v >= 0.5f) ? MA_TRUE : MA_FALSE;
+}
+
+/*
+ * set_granular_trigger()
+ * Setter for granular trigger. Target is granular_delay_t*.
+ */
+static void set_granular_trigger(void *target, float value, ma_uint32 frame_count, mod_route_t *route)
+{
+	granular_delay_t *g = (granular_delay_t *)target;
+	float v;
+	(void)frame_count;
+
+	v = APPLY_MOD_VALUE(0.0f, value, route);
+	if (v >= 0.5f) {
+		trigger_grain(g);
+	}
+}
+
+/*
+ * set_granular_reset()
+ * Setter for granular reset. Target is granular_delay_t*.
+ */
+static void set_granular_reset(void *target, float value, ma_uint32 frame_count, mod_route_t *route)
+{
+	granular_delay_t *g = (granular_delay_t *)target;
+	float v;
+	(void)frame_count;
+
+	v = APPLY_MOD_VALUE(0.0f, value, route);
+	if (v >= 0.5f) {
+		g->density = 5.0f;
+		g->position = 0.5f;
+		g->position_spray = 0.0f;
+		g->size_ms = 150.0f;
+		g->pitch = 0.0f;
+		g->envelope = 0.5f;
+		g->regularity = 1.0f;
+		g->reverse_probability = 0.0f;
+		g->recording = MA_TRUE;
+	}
+}
+
+/*
+ * set_reverb_wet()
+ * Setter for reverb wet level. Target is reverb_node_t*.
+ */
+static void set_reverb_wet(void *target, float value, ma_uint32 frame_count, mod_route_t *route)
+{
+	reverb_node_t *r = (reverb_node_t *)target;
+	float wet;
+	(void)frame_count;
+
+	wet = APPLY_MOD_VALUE(r->wet, value, route);
+	r->wet = CLAMP(wet, 0.0f, 1.0f);
+}
+
+/*
+ * set_reverb_decay()
+ * Setter for reverb decay. Target is reverb_node_t*.
+ */
+static void set_reverb_decay(void *target, float value, ma_uint32 frame_count, mod_route_t *route)
+{
+	reverb_node_t *r = (reverb_node_t *)target;
+	float decay;
+	(void)frame_count;
+
+	decay = APPLY_MOD_VALUE(r->decay, value, route);
+	r->decay = CLAMP(decay, 0.0f, 0.99f);
+}
+
+/*
+ * set_reverb_damping()
+ * Setter for reverb damping. Target is reverb_node_t*.
+ */
+static void set_reverb_damping(void *target, float value, ma_uint32 frame_count, mod_route_t *route)
+{
+	reverb_node_t *r = (reverb_node_t *)target;
+	float damp;
+	(void)frame_count;
+
+	damp = APPLY_MOD_VALUE(r->damping, value, route);
+	r->damping = CLAMP(damp, 0.0f, 1.0f);
+}
+
+/*
+ * set_reverb_size()
+ * Setter for reverb room size. Target is reverb_node_t*.
+ */
+static void set_reverb_size(void *target, float value, ma_uint32 frame_count, mod_route_t *route)
+{
+	reverb_node_t *r = (reverb_node_t *)target;
+	float size;
+	(void)frame_count;
+
+	size = APPLY_MOD_VALUE(r->size, value, route);
+	r->size = CLAMP(size, 0.0f, 2.0f);
+}
+
+/*
+ * set_reverb_freeze()
+ * Setter for reverb freeze. Target is reverb_node_t*.
+ */
+static void set_reverb_freeze(void *target, float value, ma_uint32 frame_count, mod_route_t *route)
+{
+	reverb_node_t *r = (reverb_node_t *)target;
+	float v;
+	(void)frame_count;
+
+	v = APPLY_MOD_VALUE(r->freeze ? 1.0f : 0.0f, value, route);
+	r->freeze = (v >= 0.5f) ? MA_TRUE : MA_FALSE;
+}
+
 /******************************************************************************
  * SOURCE AND ROUTE MANAGEMENT
  *****************************************************************************/
@@ -705,8 +972,48 @@ static foreign_t pl_mod_route_init(
 			setter = set_granular_pitch;
 		} else if (strcmp(param, "position") == 0) {
 			setter = set_granular_position;
+		} else if (strcmp(param, "size") == 0) {
+			setter = set_granular_size;
+		} else if (strcmp(param, "position_spray") == 0) {
+			setter = set_granular_position_spray;
+		} else if (strcmp(param, "size_spray") == 0) {
+			setter = set_granular_size_spray;
+		} else if (strcmp(param, "envelope") == 0) {
+			setter = set_granular_envelope;
+		} else if (strcmp(param, "regularity") == 0) {
+			setter = set_granular_regularity;
+		} else if (strcmp(param, "reverse") == 0) {
+			setter = set_granular_reverse;
+		} else if (strcmp(param, "pan") == 0) {
+			setter = set_granular_pan;
+		} else if (strcmp(param, "pan_spray") == 0) {
+			setter = set_granular_pan_spray;
+		} else if (strcmp(param, "recording") == 0) {
+			setter = set_granular_recording;
+		} else if (strcmp(param, "trigger") == 0) {
+			setter = set_granular_trigger;
+		} else if (strcmp(param, "reset") == 0) {
+			setter = set_granular_reset;
 		} else {
 			return PL_domain_error("granular_param", param_term);
+		}
+	} else if (strcmp(target_type, "reverb") == 0) {
+		target = get_effect_pointer(target_term);
+		if (target == NULL) {
+			return PL_type_error("effect", target_term);
+		}
+		if (strcmp(param, "wet") == 0) {
+			setter = set_reverb_wet;
+		} else if (strcmp(param, "decay") == 0) {
+			setter = set_reverb_decay;
+		} else if (strcmp(param, "damping") == 0) {
+			setter = set_reverb_damping;
+		} else if (strcmp(param, "size") == 0) {
+			setter = set_reverb_size;
+		} else if (strcmp(param, "freeze") == 0) {
+			setter = set_reverb_freeze;
+		} else {
+			return PL_domain_error("reverb_param", param_term);
 		}
 	} else {
 		return PL_domain_error("target_type", type_term);
@@ -1205,8 +1512,89 @@ static foreign_t pl_mod_gamepad_init(term_t gamepad_term, term_t axis_term, term
 	return unify_typed_handle(handle_term, "mod_source", slot);
 }
 
+/*
+ * pl_mod_gamepad_button_init()
+ * mod_gamepad_button_init(+Gamepad, +Button, +Mode, -Source)
+ * Mode is: momentary, trigger, toggle, or a list of preset values for cycling.
+ */
+static foreign_t pl_mod_gamepad_button_init(term_t gamepad_term, term_t button_term,
+                                            term_t mode_term, term_t handle_term)
+{
+	SDL_Gamepad *gp;
+	atom_t button_atom;
+	SDL_GamepadButton button;
+	int slot;
+	mod_source_t *src;
+	atom_t mode_atom;
+	term_t head, list;
+	int i;
+
+	gp = get_gamepad_ptr(gamepad_term);
+	if (gp == NULL) return FALSE;
+
+	if (!PL_get_atom(button_term, &button_atom)) return FALSE;
+	if (!get_button_from_atom(button_atom, &button)) return FALSE;
+
+	pthread_mutex_lock(&g_mod_mutex);
+
+	slot = allocate_source_slot();
+	if (slot < 0) {
+		pthread_mutex_unlock(&g_mod_mutex);
+		return PL_resource_error("mod_source_slots");
+	}
+
+	src = &g_mod_sources[slot];
+	src->type = MOD_SOURCE_GAMEPAD_BUTTON;
+	src->source.gamepad_button.gamepad = gp;
+	src->source.gamepad_button.button = button;
+	src->source.gamepad_button.prev_pressed = MA_FALSE;
+	src->source.gamepad_button.toggle_state = MA_FALSE;
+	src->source.gamepad_button.current_index = 0;
+	src->source.gamepad_button.preset_count = 0;
+
+	/* Parse mode: atom or list of floats */
+	if (PL_get_atom(mode_term, &mode_atom)) {
+		const char *mode_name = PL_atom_chars(mode_atom);
+		if (strcmp(mode_name, "momentary") == 0) {
+			src->source.gamepad_button.mode = BUTTON_MODE_MOMENTARY;
+		} else if (strcmp(mode_name, "trigger") == 0) {
+			src->source.gamepad_button.mode = BUTTON_MODE_TRIGGER;
+		} else if (strcmp(mode_name, "toggle") == 0) {
+			src->source.gamepad_button.mode = BUTTON_MODE_TOGGLE;
+		} else {
+			pthread_mutex_unlock(&g_mod_mutex);
+			return PL_domain_error("button_mode", mode_term);
+		}
+	} else if (PL_is_list(mode_term)) {
+		/* List of preset values for cycling mode */
+		src->source.gamepad_button.mode = BUTTON_MODE_CYCLING;
+		list = PL_copy_term_ref(mode_term);
+		head = PL_new_term_ref();
+		i = 0;
+		while (PL_get_list(list, head, list) && i < 8) {
+			double val;
+			if (!PL_get_float(head, &val)) {
+				pthread_mutex_unlock(&g_mod_mutex);
+				return PL_type_error("float", head);
+			}
+			src->source.gamepad_button.presets[i++] = (float)val;
+		}
+		src->source.gamepad_button.preset_count = i;
+		if (i == 0) {
+			pthread_mutex_unlock(&g_mod_mutex);
+			return PL_domain_error("non_empty_list", mode_term);
+		}
+	} else {
+		pthread_mutex_unlock(&g_mod_mutex);
+		return PL_type_error("button_mode_or_list", mode_term);
+	}
+
+	pthread_mutex_unlock(&g_mod_mutex);
+	return unify_typed_handle(handle_term, "mod_source", slot);
+}
+
 /******************************************************************************
- * KEYBOARD CONTRL 
+ * KEYBOARD CONTRL
  *****************************************************************************/
 
 /*
@@ -1274,6 +1662,7 @@ install_t mod_register_predicates(void)
 	PL_register_foreign("mod_route_init", 9, pl_mod_route_init, 0);
 	PL_register_foreign("mod_route_uninit", 1, pl_mod_route_uninit, 0);
 	PL_register_foreign("mod_gamepad_init", 3, pl_mod_gamepad_init, 0);
+	PL_register_foreign("mod_gamepad_button_init", 4, pl_mod_gamepad_button_init, 0);
 	PL_register_foreign("mod_keyboard_init", 3, pl_mod_keyboard_init, 0);
 	PL_register_foreign("mod_noise_init", 2, pl_mod_noise_init, 0);
 	PL_register_foreign("mod_source_set_sh", 2, pl_mod_source_set_sh, 0);
