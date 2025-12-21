@@ -38,6 +38,7 @@ static ma_bool32 g_control_initialized = MA_FALSE;
 static PL_dispatch_hook_t g_old_dispatch_hook = NULL;
 static TTF_Font *g_font = NULL;
 static int g_voice_allocation_counter = 0;
+static int g_log_target_keyboard = -1;	/* keyboard slot for log messages, -1 = console */
 
 keyboard_t g_keyboards[MAX_KEYBOARDS] = {{0}};
 
@@ -133,6 +134,41 @@ static void free_keyboard_slot(int slot)
 	kb->in_use = MA_FALSE;
 }
 
+/*
+ * control_set_log_message()
+ * Set log message for display.
+ * Routes to keyboard window if registered, otherwise console.
+ */
+void control_set_log_message(const char *msg)
+{
+	keyboard_t *kb;
+
+	if (g_log_target_keyboard >= 0 &&
+			g_log_target_keyboard < MAX_KEYBOARDS &&
+			g_keyboards[g_log_target_keyboard].in_use) {
+		kb = &g_keyboards[g_log_target_keyboard];
+		strncpy(kb->log_message, msg, sizeof(kb->log_message) - 1);
+		kb->log_message[sizeof(kb->log_message) - 1] = '\0';
+	} else {
+		printf("%s\n", msg);
+	}
+}
+
+/*
+ * pl_keyboard_set_log_target()
+ * Register a keyboard as the log message target.
+ * keyboard_set_log_target(+Keyboard)
+ */
+static foreign_t pl_keyboard_set_log_target(term_t handle_term)
+{
+	int slot;
+	keyboard_t *kb;
+
+	GET_KEYBOARD(handle_term, kb, slot);
+	g_log_target_keyboard = slot;
+	return TRUE;
+}
+
 /******************************************************************************
  * KEYBOARD AND WINDOW MANAGEMENT
  *****************************************************************************/
@@ -167,11 +203,28 @@ static void keyboard_render(void)
 
 		SDL_GetWindowSize(kb->window, &win_w, &win_h);
 		cell_w = win_w / 10.0f;
-		cell_h = win_h / 5.0f;
+		cell_h = win_h / 6.0f;
 
 		/* clear background */
 		SDL_SetRenderDrawColor(kb->renderer, 32, 32, 32, 0);
 		SDL_RenderClear(kb->renderer);
+
+		/* draw log message in top row */
+		if (kb->log_message[0] != '\0' && g_font != NULL) {
+			surface = TTF_RenderText_Blended(g_font, kb->log_message, 0, text_color);
+			if (surface != NULL) {
+				texture = SDL_CreateTextureFromSurface(kb->renderer, surface);
+				if (texture != NULL) {
+					text_rect.w = (float)surface->w;
+					text_rect.h = (float)surface->h;
+					text_rect.x = 10;
+					text_rect.y = (cell_h - text_rect.h) / 2;
+					SDL_RenderTexture(kb->renderer, texture, NULL, &text_rect);
+					SDL_DestroyTexture(texture);
+				}
+				SDL_DestroySurface(surface);
+			}
+		}
 
 		/* draw 4x10 key rectangles */
 		for (row = 0; row < 4; row++) {
@@ -182,7 +235,7 @@ static void keyboard_render(void)
 					SDL_SetRenderDrawColor(kb->renderer, 80, 80, 80, 200);
 				}
 				rect.x = col * cell_w + 2;
-				rect.y = row * cell_h + 2;
+				rect.y = (row + 1) * cell_h + 2;
 				rect.w = cell_w - 4;
 				rect.h = cell_h - 4;
 				SDL_RenderFillRect(kb->renderer, &rect);
@@ -229,7 +282,7 @@ static void keyboard_render(void)
 				SDL_SetRenderDrawColor(kb->renderer, 80, 80, 80, 200);
 			}
 			rect.x = mod_x + 2;
-			rect.y = 4 * cell_h + 2;
+			rect.y = 5 * cell_h + 2;
 			rect.w = mod_widths[j] - 4;
 			rect.h = cell_h - 4;
 			SDL_RenderFillRect(kb->renderer, &rect);
@@ -898,7 +951,7 @@ static foreign_t pl_keyboard_init(term_t kb_term)
 	if (slot < 0) return FALSE;
 	kb = &g_keyboards[slot];
 
-	kb->window = SDL_CreateWindow("promini keyboard", 600, 240,
+	kb->window = SDL_CreateWindow("promini keyboard", 640, 300,
 			SDL_WINDOW_RESIZABLE | SDL_WINDOW_TRANSPARENT | SDL_WINDOW_UTILITY);
 	if (kb->window == NULL) {
 		kb->in_use = MA_FALSE;
@@ -1274,6 +1327,7 @@ install_t control_register_predicates(void)
 	PL_register_foreign("keyboard_row_add_voice", 4, pl_keyboard_row_add_voice, 0);
 	PL_register_foreign("keyboard_row_clear", 2, pl_keyboard_row_clear, 0);
 	PL_register_foreign("keyboard_row_remove_voice", 3, pl_keyboard_row_remove_voice, 0);
+	PL_register_foreign("keyboard_set_log_target", 1, pl_keyboard_set_log_target, 0);
 }
 
 /*

@@ -490,7 +490,7 @@ typedef struct {
 typedef struct mod_route mod_route_t;
 
 /* modulation setter function */
-typedef void (*mod_setter_t)(void *target, float value, ma_uint32 frame_count, mod_route_t *route);
+typedef float (*mod_setter_t)(void *target, float value, ma_uint32 frame_count, mod_route_t *route);
 
 /* modulation route */
 struct mod_route {
@@ -503,6 +503,11 @@ struct mod_route {
 	float slew;
 	float current_value;
 	ma_bool32 rate_mode;
+
+	ma_bool32 monitor;
+	ma_uint64 last_print_time;
+	float last_printed_value;
+	const char *param_name;
 };
 
 /* master clock */
@@ -675,6 +680,7 @@ typedef struct {
 #define MAX_KEYBOARDS 16
 #define MAX_POOL_VOICES 8
 #define MAX_ENVELOPES_PER_VOICE 8
+#define LOG_MESSAGE_SIZE 64
 
 typedef enum {
 	KEYBOARD_TARGET_NONE,
@@ -709,6 +715,7 @@ typedef struct {
 	ma_bool32 keys_pressed[KEYBOARD_ROWS][KEYBOARD_KEYS_PER_ROW];
 	keyboard_row_t rows[KEYBOARD_ROWS];
 	ma_bool32 mod_keys[5];  /* l_shift, l_option, space, r_option, r_shift */
+	char log_message[LOG_MESSAGE_SIZE];
 } keyboard_t;
 
 extern keyboard_t g_keyboards[MAX_KEYBOARDS];
@@ -816,6 +823,7 @@ extern int get_axis_from_atom(atom_t atom_term, SDL_GamepadAxis *axis);
 extern int get_button_from_atom(atom_t atom_term, SDL_GamepadButton *button);
 extern SDL_Gamepad *get_gamepad_ptr(term_t gamepad_term);
 extern void keyboard_handle_event(SDL_Event *event);
+extern void control_set_log_message(const char *msg);
 
 /* Capture functions (implemented in capture.c) */
 extern capture_slot_t *get_capture_device(int index);

@@ -255,7 +255,6 @@ static void granular_process_pcm_frames(
 	int i, j;
 	float left, right;
 	float grains_per_frame;
-	float jitter;
 	ma_format format;
 	ma_uint32 sample_rate;
 	int active_count = 0;

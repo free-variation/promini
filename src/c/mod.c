@@ -350,6 +350,11 @@ void process_modulation(ma_uint32 frame_count, ma_uint32 sample_rate)
 	mod_route_t *route;
 	float raw_value, target_value, max_change, diff;
 
+	static ma_uint64 total_frames = 0;
+	float dt, delta, final_value;
+	ma_uint64 frames_since;
+	char msg[LOG_MESSAGE_SIZE];
+
 	pthread_mutex_lock(&g_mod_mutex);
 
 	/* process clock pulse routes */
@@ -380,6 +385,8 @@ void process_modulation(ma_uint32 frame_count, ma_uint32 sample_rate)
 		}
 	}
 
+	total_frames += frame_count;
+
 	/* process all active routes */
 	for (i = 0; i < MAX_MOD_ROUTES; i++) {
 		route = &g_mod_routes[i];
@@ -387,9 +394,9 @@ void process_modulation(ma_uint32 frame_count, ma_uint32 sample_rate)
 
 		if (route->rate_mode) {
 			/* rate mode: pass delta to setter, which adds to current target value */
-			float dt = (float)frame_count / sample_rate;
-			float delta = g_mod_sources[route->source_slot].current_value * route->depth * dt;
-			route->setter(route->target, delta, frame_count, route);
+			dt = (float)frame_count / sample_rate;
+			delta = g_mod_sources[route->source_slot].current_value * route->depth * dt;
+			final_value = route->setter(route->target, delta, frame_count, route);
 		} else {
 			/* absolute mode: compute target value with slew limiting */
 			target_value = route->offset + (g_mod_sources[route->source_slot].current_value * route->depth);
@@ -408,7 +415,17 @@ void process_modulation(ma_uint32 frame_count, ma_uint32 sample_rate)
 				route->current_value = target_value;
 			}
 
-			route->setter(route->target, route->current_value, frame_count, route);
+			final_value = route->setter(route->target, route->current_value, frame_count, route);
+		}
+
+		if (route->monitor && final_value != route->last_printed_value) {
+			frames_since = total_frames - route->last_print_time;
+			if (frames_since > sample_rate / 10) {
+				snprintf(msg, sizeof(msg), "%s: %.3f", route->param_name, final_value);
+				control_set_log_message(msg);
+				route->last_printed_value = final_value;
+				route->last_print_time = total_frames;
+			}
 		}
 	}
 
@@ -422,7 +439,7 @@ void process_modulation(ma_uint32 frame_count, ma_uint32 sample_rate)
  * set_oscillator_frequency()
  * Setter for oscillator frequency. Target is synth_oscillator_t*.
  */
-static void set_oscillator_frequency(void *target, float value, ma_uint32 frame_count, mod_route_t *route)
+static float set_oscillator_frequency(void *target, float value, ma_uint32 frame_count, mod_route_t *route)
 {
 	synth_oscillator_t *osc = (synth_oscillator_t *)target;
 	float freq;
@@ -431,6 +448,7 @@ static void set_oscillator_frequency(void *target, float value, ma_uint32 frame_
 	freq = APPLY_MOD_VALUE(osc->source.waveform.config.frequency, value, route);
 	freq = CLAMP(freq, 20.0f, 20000.0f);
 	ma_waveform_set_frequency(&osc->source.waveform, freq);
+	return freq;
 }
 
 /*
@@ -438,7 +456,7 @@ static void set_oscillator_frequency(void *target, float value, ma_uint32 frame_
  * Setter for oscillator volume. Target is synth_oscillator_t*.
  * Uses fade matching frame_count to avoid clicks.
  */
-static void set_oscillator_volume(void *target, float value, ma_uint32 frame_count, mod_route_t *route)
+static float set_oscillator_volume(void *target, float value, ma_uint32 frame_count, mod_route_t *route)
 {
 	synth_oscillator_t *osc = (synth_oscillator_t *)target;
 	float vol;
@@ -446,6 +464,7 @@ static void set_oscillator_volume(void *target, float value, ma_uint32 frame_cou
 	vol = APPLY_MOD_VALUE(ma_sound_get_volume(&osc->sound), value, route);
 	vol = CLAMP(vol, 0.0f, 1.0f);
 	ma_sound_set_fade_in_pcm_frames(&osc->sound, -1, vol, frame_count);
+	return vol;
 }
 
 /*
@@ -453,7 +472,7 @@ static void set_oscillator_volume(void *target, float value, ma_uint32 frame_cou
  * Setter for pan effect. Target is pan_node_t*.
  * Sets target_pan which is interpolated at sample rate in the effect callback.
  */
-static void set_effect_pan(void *target, float value, ma_uint32 frame_count, mod_route_t *route)
+static float set_effect_pan(void *target, float value, ma_uint32 frame_count, mod_route_t *route)
 {
 	pan_node_t *node = (pan_node_t *)target;
 	float pan;
@@ -462,6 +481,7 @@ static void set_effect_pan(void *target, float value, ma_uint32 frame_count, mod
 	pan = APPLY_MOD_VALUE(node->target_pan, value, route);
 	pan = CLAMP(pan, -1.0f, 1.0f);
 	node->target_pan = pan;
+	return pan;
 }
 
 /*
@@ -469,7 +489,7 @@ static void set_effect_pan(void *target, float value, ma_uint32 frame_count, mod
  * Setter for Moog cutoff.  Target is moog_node_t*
  * Uses per-sample interpolation so just sets target
  */
-static void set_moog_cutoff(void *target, float value, ma_uint32 frame_count, mod_route_t *route)
+static float set_moog_cutoff(void *target, float value, ma_uint32 frame_count, mod_route_t *route)
 {
 	moog_node_t *moog = (moog_node_t *)target;
 	float cutoff;
@@ -478,6 +498,7 @@ static void set_moog_cutoff(void *target, float value, ma_uint32 frame_count, mo
 	cutoff = APPLY_MOD_VALUE(moog->target_cutoff, value, route);
 	cutoff = CLAMP(cutoff, 20.0f, 20000.0f);
 	moog->target_cutoff = cutoff;
+	return cutoff;
 }
 
 /*
@@ -485,7 +506,7 @@ static void set_moog_cutoff(void *target, float value, ma_uint32 frame_count, mo
  * Setter for Moog resonance. Target is moog_node_t*
  * Uses per-sample interpolation so just sets target
  */
-static void set_moog_resonance(void *target, float value, ma_uint32 frame_count, mod_route_t *route)
+static float set_moog_resonance(void *target, float value, ma_uint32 frame_count, mod_route_t *route)
 {
 	moog_node_t *moog = (moog_node_t *)target;
 	float res;
@@ -494,6 +515,7 @@ static void set_moog_resonance(void *target, float value, ma_uint32 frame_count,
 	res = APPLY_MOD_VALUE(moog->target_resonance, value, route);
 	res = CLAMP(res, 0.0f, 4.0f);
 	moog->target_resonance = res;
+	return res;
 }
 
 /*
@@ -501,7 +523,7 @@ static void set_moog_resonance(void *target, float value, ma_uint32 frame_count,
  * Setter for VCA gain. Target is vca_node_t*
  * Uses per-sample interpolation so just sets target
  */
-static void set_vca_gain(void *target, float value, ma_uint32 frame_count, mod_route_t *route)
+static float set_vca_gain(void *target, float value, ma_uint32 frame_count, mod_route_t *route)
 {
 	vca_node_t *vca = (vca_node_t *)target;
 	float gain;
@@ -510,6 +532,7 @@ static void set_vca_gain(void *target, float value, ma_uint32 frame_count, mod_r
 	gain = APPLY_MOD_VALUE(vca->target_gain, value, route);
 	gain = CLAMP(gain, 0.0f, 1.0f);
 	vca->target_gain = gain;
+	return gain;
 }
 
 /*
@@ -517,7 +540,7 @@ static void set_vca_gain(void *target, float value, ma_uint32 frame_count, mod_r
  * Setter for ping-pong delay time. Target is ping_pong_delay_node_t*
  * Sets target_delay_in_frames for smooth transitions
  */
-static void set_ping_pong_delay(void *target, float value, ma_uint32 frame_count, mod_route_t *route)
+static float set_ping_pong_delay(void *target, float value, ma_uint32 frame_count, mod_route_t *route)
 {
 	ping_pong_delay_node_t *pp = (ping_pong_delay_node_t *)target;
 	float delay;
@@ -526,13 +549,14 @@ static void set_ping_pong_delay(void *target, float value, ma_uint32 frame_count
 	delay = APPLY_MOD_VALUE((float)pp->target_delay_in_frames, value, route);
 	delay = CLAMP(delay, 1.0f, (float)pp->buffer_size);
 	pp->target_delay_in_frames = (ma_uint32)delay;
+	return delay;
 }
 
 /*
  * set_granular_density()
  * Setter for granular density. Target is granular_delay_t*.
  */
-static void set_granular_density(void *target, float value, ma_uint32 frame_count, mod_route_t *route)
+static float set_granular_density(void *target, float value, ma_uint32 frame_count, mod_route_t *route)
 {
 	granular_delay_t *g = (granular_delay_t *)target;
 	float density;
@@ -541,25 +565,27 @@ static void set_granular_density(void *target, float value, ma_uint32 frame_coun
 	density = APPLY_MOD_VALUE(g->density, value, route);
 	if (density < 0.0f) density = 0.0f;
 	g->density = density;
+	return density;
 }
 
 /*
  * set_granular_pitch()
  * Setter for granular pitch. Target is granular_delay_t*.
  */
-static void set_granular_pitch(void *target, float value, ma_uint32 frame_count, mod_route_t *route)
+static float set_granular_pitch(void *target, float value, ma_uint32 frame_count, mod_route_t *route)
 {
 	granular_delay_t *g = (granular_delay_t *)target;
 	(void)frame_count;
 
 	g->pitch = APPLY_MOD_VALUE(g->pitch, value, route);
+	return g->pitch;
 }
 
 /*
  * set_granular_position()
  * Setter for granular position. Target is granular_delay_t*.
  */
-static void set_granular_position(void *target, float value, ma_uint32 frame_count, mod_route_t *route)
+static float set_granular_position(void *target, float value, ma_uint32 frame_count, mod_route_t *route)
 {
 	granular_delay_t *g = (granular_delay_t *)target;
 	float pos;
@@ -567,13 +593,14 @@ static void set_granular_position(void *target, float value, ma_uint32 frame_cou
 
 	pos = APPLY_MOD_VALUE(g->position, value, route);
 	g->position = CLAMP(pos, 0.0f, 1.0f);
+	return g->position;
 }
 
 /*
  * set_granular_size()
  * Setter for granular size in ms. Target is granular_delay_t*.
  */
-static void set_granular_size(void *target, float value, ma_uint32 frame_count, mod_route_t *route)
+static float set_granular_size(void *target, float value, ma_uint32 frame_count, mod_route_t *route)
 {
 	granular_delay_t *g = (granular_delay_t *)target;
 	float size;
@@ -582,13 +609,14 @@ static void set_granular_size(void *target, float value, ma_uint32 frame_count, 
 	size = APPLY_MOD_VALUE(g->size_ms, value, route);
 	if (size < 1.0f) size = 1.0f;
 	g->size_ms = size;
+	return size;
 }
 
 /*
  * set_granular_position_spray()
  * Setter for granular position spray. Target is granular_delay_t*.
  */
-static void set_granular_position_spray(void *target, float value, ma_uint32 frame_count, mod_route_t *route)
+static float set_granular_position_spray(void *target, float value, ma_uint32 frame_count, mod_route_t *route)
 {
 	granular_delay_t *g = (granular_delay_t *)target;
 	float spray;
@@ -596,13 +624,14 @@ static void set_granular_position_spray(void *target, float value, ma_uint32 fra
 
 	spray = APPLY_MOD_VALUE(g->position_spray, value, route);
 	g->position_spray = CLAMP(spray, 0.0f, 1.0f);
+	return g->position_spray;
 }
 
 /*
  * set_granular_size_spray()
  * Setter for granular size spray. Target is granular_delay_t*.
  */
-static void set_granular_size_spray(void *target, float value, ma_uint32 frame_count, mod_route_t *route)
+static float set_granular_size_spray(void *target, float value, ma_uint32 frame_count, mod_route_t *route)
 {
 	granular_delay_t *g = (granular_delay_t *)target;
 	float spray;
@@ -610,13 +639,14 @@ static void set_granular_size_spray(void *target, float value, ma_uint32 frame_c
 
 	spray = APPLY_MOD_VALUE(g->size_spray, value, route);
 	g->size_spray = CLAMP(spray, 0.0f, 1.0f);
+	return g->size_spray;
 }
 
 /*
  * set_granular_envelope()
  * Setter for granular envelope shape. Target is granular_delay_t*.
  */
-static void set_granular_envelope(void *target, float value, ma_uint32 frame_count, mod_route_t *route)
+static float set_granular_envelope(void *target, float value, ma_uint32 frame_count, mod_route_t *route)
 {
 	granular_delay_t *g = (granular_delay_t *)target;
 	float env;
@@ -624,13 +654,14 @@ static void set_granular_envelope(void *target, float value, ma_uint32 frame_cou
 
 	env = APPLY_MOD_VALUE(g->envelope, value, route);
 	g->envelope = CLAMP(env, 0.0f, 1.0f);
+	return g->envelope;
 }
 
 /*
  * set_granular_regularity()
  * Setter for granular regularity. Target is granular_delay_t*.
  */
-static void set_granular_regularity(void *target, float value, ma_uint32 frame_count, mod_route_t *route)
+static float set_granular_regularity(void *target, float value, ma_uint32 frame_count, mod_route_t *route)
 {
 	granular_delay_t *g = (granular_delay_t *)target;
 	float reg;
@@ -638,13 +669,14 @@ static void set_granular_regularity(void *target, float value, ma_uint32 frame_c
 
 	reg = APPLY_MOD_VALUE(g->regularity, value, route);
 	g->regularity = CLAMP(reg, 0.0f, 1.0f);
+	return g->regularity;
 }
 
 /*
  * set_granular_reverse()
  * Setter for granular reverse probability. Target is granular_delay_t*.
  */
-static void set_granular_reverse(void *target, float value, ma_uint32 frame_count, mod_route_t *route)
+static float set_granular_reverse(void *target, float value, ma_uint32 frame_count, mod_route_t *route)
 {
 	granular_delay_t *g = (granular_delay_t *)target;
 	float rev;
@@ -652,13 +684,14 @@ static void set_granular_reverse(void *target, float value, ma_uint32 frame_coun
 
 	rev = APPLY_MOD_VALUE(g->reverse_probability, value, route);
 	g->reverse_probability = CLAMP(rev, 0.0f, 1.0f);
+	return g->reverse_probability;
 }
 
 /*
  * set_granular_pan()
  * Setter for granular pan. Target is granular_delay_t*.
  */
-static void set_granular_pan(void *target, float value, ma_uint32 frame_count, mod_route_t *route)
+static float set_granular_pan(void *target, float value, ma_uint32 frame_count, mod_route_t *route)
 {
 	granular_delay_t *g = (granular_delay_t *)target;
 	float pan;
@@ -666,13 +699,14 @@ static void set_granular_pan(void *target, float value, ma_uint32 frame_count, m
 
 	pan = APPLY_MOD_VALUE(g->pan, value, route);
 	g->pan = CLAMP(pan, -1.0f, 1.0f);
+	return g->pan;
 }
 
 /*
  * set_granular_pan_spray()
  * Setter for granular pan spray. Target is granular_delay_t*.
  */
-static void set_granular_pan_spray(void *target, float value, ma_uint32 frame_count, mod_route_t *route)
+static float set_granular_pan_spray(void *target, float value, ma_uint32 frame_count, mod_route_t *route)
 {
 	granular_delay_t *g = (granular_delay_t *)target;
 	float spray;
@@ -680,13 +714,14 @@ static void set_granular_pan_spray(void *target, float value, ma_uint32 frame_co
 
 	spray = APPLY_MOD_VALUE(g->pan_spray, value, route);
 	g->pan_spray = CLAMP(spray, 0.0f, 1.0f);
+	return g->pan_spray;
 }
 
 /*
  * set_granular_recording()
  * Setter for granular recording state. Target is granular_delay_t*.
  */
-static void set_granular_recording(void *target, float value, ma_uint32 frame_count, mod_route_t *route)
+static float set_granular_recording(void *target, float value, ma_uint32 frame_count, mod_route_t *route)
 {
 	granular_delay_t *g = (granular_delay_t *)target;
 	float v;
@@ -694,13 +729,14 @@ static void set_granular_recording(void *target, float value, ma_uint32 frame_co
 
 	v = APPLY_MOD_VALUE(g->recording ? 1.0f : 0.0f, value, route);
 	g->recording = (v >= 0.5f) ? MA_TRUE : MA_FALSE;
+	return g->recording ? 1.0f : 0.0f;
 }
 
 /*
  * set_granular_trigger()
  * Setter for granular trigger. Target is granular_delay_t*.
  */
-static void set_granular_trigger(void *target, float value, ma_uint32 frame_count, mod_route_t *route)
+static float set_granular_trigger(void *target, float value, ma_uint32 frame_count, mod_route_t *route)
 {
 	granular_delay_t *g = (granular_delay_t *)target;
 	float v;
@@ -710,13 +746,14 @@ static void set_granular_trigger(void *target, float value, ma_uint32 frame_coun
 	if (v >= 0.5f) {
 		trigger_grain(g);
 	}
+	return v >= 0.5f ? 1.0f : 0.0f;
 }
 
 /*
  * set_granular_reset()
  * Setter for granular reset. Target is granular_delay_t*.
  */
-static void set_granular_reset(void *target, float value, ma_uint32 frame_count, mod_route_t *route)
+static float set_granular_reset(void *target, float value, ma_uint32 frame_count, mod_route_t *route)
 {
 	granular_delay_t *g = (granular_delay_t *)target;
 	float v;
@@ -734,13 +771,14 @@ static void set_granular_reset(void *target, float value, ma_uint32 frame_count,
 		g->reverse_probability = 0.0f;
 		g->recording = MA_TRUE;
 	}
+	return v >= 0.5f ? 1.0f : 0.0f;
 }
 
 /*
  * set_reverb_wet()
  * Setter for reverb wet level. Target is reverb_node_t*.
  */
-static void set_reverb_wet(void *target, float value, ma_uint32 frame_count, mod_route_t *route)
+static float set_reverb_wet(void *target, float value, ma_uint32 frame_count, mod_route_t *route)
 {
 	reverb_node_t *r = (reverb_node_t *)target;
 	float wet;
@@ -748,13 +786,14 @@ static void set_reverb_wet(void *target, float value, ma_uint32 frame_count, mod
 
 	wet = APPLY_MOD_VALUE(r->wet, value, route);
 	r->wet = CLAMP(wet, 0.0f, 1.0f);
+	return r->wet;
 }
 
 /*
  * set_reverb_decay()
  * Setter for reverb decay. Target is reverb_node_t*.
  */
-static void set_reverb_decay(void *target, float value, ma_uint32 frame_count, mod_route_t *route)
+static float set_reverb_decay(void *target, float value, ma_uint32 frame_count, mod_route_t *route)
 {
 	reverb_node_t *r = (reverb_node_t *)target;
 	float decay;
@@ -762,13 +801,14 @@ static void set_reverb_decay(void *target, float value, ma_uint32 frame_count, m
 
 	decay = APPLY_MOD_VALUE(r->decay, value, route);
 	r->decay = CLAMP(decay, 0.0f, 0.99f);
+	return r->decay;
 }
 
 /*
  * set_reverb_damping()
  * Setter for reverb damping. Target is reverb_node_t*.
  */
-static void set_reverb_damping(void *target, float value, ma_uint32 frame_count, mod_route_t *route)
+static float set_reverb_damping(void *target, float value, ma_uint32 frame_count, mod_route_t *route)
 {
 	reverb_node_t *r = (reverb_node_t *)target;
 	float damp;
@@ -776,13 +816,14 @@ static void set_reverb_damping(void *target, float value, ma_uint32 frame_count,
 
 	damp = APPLY_MOD_VALUE(r->damping, value, route);
 	r->damping = CLAMP(damp, 0.0f, 1.0f);
+	return r->damping;
 }
 
 /*
  * set_reverb_size()
  * Setter for reverb room size. Target is reverb_node_t*.
  */
-static void set_reverb_size(void *target, float value, ma_uint32 frame_count, mod_route_t *route)
+static float set_reverb_size(void *target, float value, ma_uint32 frame_count, mod_route_t *route)
 {
 	reverb_node_t *r = (reverb_node_t *)target;
 	float size;
@@ -790,13 +831,14 @@ static void set_reverb_size(void *target, float value, ma_uint32 frame_count, mo
 
 	size = APPLY_MOD_VALUE(r->size, value, route);
 	r->size = CLAMP(size, 0.0f, 2.0f);
+	return r->size;
 }
 
 /*
  * set_reverb_freeze()
  * Setter for reverb freeze. Target is reverb_node_t*.
  */
-static void set_reverb_freeze(void *target, float value, ma_uint32 frame_count, mod_route_t *route)
+static float set_reverb_freeze(void *target, float value, ma_uint32 frame_count, mod_route_t *route)
 {
 	reverb_node_t *r = (reverb_node_t *)target;
 	float v;
@@ -804,6 +846,7 @@ static void set_reverb_freeze(void *target, float value, ma_uint32 frame_count, 
 
 	v = APPLY_MOD_VALUE(r->freeze ? 1.0f : 0.0f, value, route);
 	r->freeze = (v >= 0.5f) ? MA_TRUE : MA_FALSE;
+	return r->freeze ? 1.0f : 0.0f;
 }
 
 /******************************************************************************
@@ -1041,6 +1084,10 @@ static foreign_t pl_mod_route_init(
 	route->slew = (float)slew;
 	route->current_value = (float)offset;
 	route->rate_mode = rate_mode;
+	route->monitor = MA_FALSE;
+	route->last_print_time = 0;
+	route->last_printed_value = 0.0f;
+	route->param_name = param;
 
 	pthread_mutex_unlock(&g_mod_mutex);
 	return unify_typed_handle(handle_term, "mod_route", slot);
@@ -1073,8 +1120,35 @@ static foreign_t pl_mod_route_uninit(term_t handle_term)
 	return TRUE;
 }
 
+/*
+ * pl_mod_route_monitor()
+ * Enable or disable monitoring on a route.
+ * mod_route_monitor(+Route, +Enable)
+ */
+static foreign_t pl_mod_route_monitor(term_t handle_term, term_t enable_term)
+{
+	int slot;
+	int enable;
+
+	if (!get_typed_handle(handle_term, "mod_route", &slot)) {
+		return PL_type_error("mod_route", handle_term);
+	}
+	if (!PL_get_bool(enable_term, &enable)) {
+		return PL_type_error("boolean", enable_term);
+	}
+
+	pthread_mutex_lock(&g_mod_mutex);
+	if (slot < 0 || slot >= MAX_MOD_ROUTES || !g_mod_routes[slot].in_use) {
+		pthread_mutex_unlock(&g_mod_mutex);
+		return PL_existence_error("mod_route", handle_term);
+	}
+	g_mod_routes[slot].monitor = enable ? MA_TRUE : MA_FALSE;
+	pthread_mutex_unlock(&g_mod_mutex);
+	return TRUE;
+}
+
 /******************************************************************************
- * LFO  
+ * LFO
  *****************************************************************************/
 
 /*
@@ -1661,6 +1735,7 @@ install_t mod_register_predicates(void)
 	PL_register_foreign("mod_source_uninit", 1, pl_mod_source_uninit, 0);
 	PL_register_foreign("mod_route_init", 9, pl_mod_route_init, 0);
 	PL_register_foreign("mod_route_uninit", 1, pl_mod_route_uninit, 0);
+	PL_register_foreign("mod_route_monitor", 2, pl_mod_route_monitor, 0);
 	PL_register_foreign("mod_gamepad_init", 3, pl_mod_gamepad_init, 0);
 	PL_register_foreign("mod_gamepad_button_init", 4, pl_mod_gamepad_button_init, 0);
 	PL_register_foreign("mod_keyboard_init", 3, pl_mod_keyboard_init, 0);
