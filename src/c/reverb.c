@@ -193,7 +193,7 @@ static float pitchshift_process(reverb_pitchshift_t *ps, float input,
 		ps->dsamp[i] += ps->dsamp_slope[i];
 
 		/* read with cubic interpolation */
-		read_pos = (float)ps->write_pos - ps->dsamp[i];
+		read_pos = (float)(ps->write_pos & mask) - ps->dsamp[i];
 		while (read_pos < 0.0f) read_pos += (float)ps->size;
 
 		/* add windowed sample */
@@ -475,7 +475,6 @@ static void process_channel(reverb_channel_t *ch, ma_uint32 t, float input,
 	float shifted1_a, shifted1_b, shifted1;
 	float base_pos0, base_pos1;
 	ma_uint32 delay0, delay1;
-	ma_uint32 scaled_delay;
 
 	/* Predelay */
 	delay_write(ch->predelay_buf, ch->predelay_mask, t, input);
@@ -602,8 +601,9 @@ static void reverb_process_pcm_frames(
 
 	float shimmer_ratio, shimmer_window;
 	float shimmer_xfade = 0.0f;
-	float shimmer_pos1 = 0.0f; 
+	float shimmer_pos1 = 0.0f;
 	float shimmer_pos2 = 0.0f;
+	float width_compensation;
 
 
 	get_engine_format_info(NULL, NULL, &sample_rate);
@@ -720,7 +720,7 @@ static void reverb_process_pcm_frames(
 		/* Stereo width with energy compensation */
 		mid = (wet_l + wet_r) * 0.5f;
 		side = (wet_l - wet_r) * 0.5f * reverb->width;
-		float width_compensation = 1.0f / sqrtf((1.0f + reverb->width * reverb->width) * 0.5f);
+		width_compensation = 1.0f / sqrtf((1.0f + reverb->width * reverb->width) * 0.5f);
 		wet_l = (mid + side) * width_compensation;
 		wet_r = (mid - side) * width_compensation;
 

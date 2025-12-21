@@ -174,6 +174,12 @@ static ma_bool32 get_effect_info_from_handle(term_t effect_handle, ma_sound** so
 		*chain_out = &g_summing_nodes[slot].effect_chain;
 		return MA_TRUE;
 	}
+	if (f == PL_new_functor(PL_new_atom("granular"), 1)) {
+		if (slot < 0 || slot >= MAX_GRANULAR_DELAYS || !g_granular_delays[slot].in_use) return MA_FALSE;
+		*source_out = (ma_sound*)&g_granular_delays[slot].base;
+		*chain_out = &g_granular_delays[slot].effect_chain;
+		return MA_TRUE;
+	}
 	return MA_FALSE;
 }
 
