@@ -27,23 +27,21 @@ Live granular sampler + concatenative synthesis + additive synth + effects + mod
 | Clock system | BPM-based clock with routes to LFO, envelope, granular, delays |
 | Granular delay | Beads-style with ring buffer, tempo sync, sound buffer loading |
 | Image-to-audio | additive, waveform, RGB stereo modes |
-
-### Complete
-
-| Component | Notes |
-|-----------|-------|
+| Reverb | Dattorro plate with shimmer (external 4-grain, in-loop 2-grain), freeze, size, tank HP, modulation |
 | SDL visualizer | waveform, spectrum, spectrogram; multiple windows; auto-range; themes |
 | Multiple keyboard windows | slot-based array, per-window event routing |
-| Polyphonic keyboard for synth | voice pool per row, voice stealing (oldest), envelope gate API, key repeat handling |
+| Polyphonic keyboard | voice pool per row, voice stealing (oldest), envelope gate API, key repeat handling |
+| Gamepad buttons | cycling, momentary, trigger, toggle modes |
+| Keyboard mod source | velocity and note as modulation sources |
 
 ### Next Steps
 
-1. **Reverb extensions** - room size, tank highpass, freeze, early reflections, extended modulation
-2. **Concatenative granular synthesis** - corpus-based descriptor matching
+1. **Concatenative granular synthesis** - corpus-based descriptor matching
    - Corpus analysis: segment audio, extract descriptors (centroid, flatness, pitch, RMS, etc.)
    - Search/matching: nearest neighbor in descriptor space
    - Target modes: manual, audio follower, trajectory, random walk
-3. **Step sequencer** - pattern-based note/parameter control, clock-synced
+2. **Step sequencer / Turing Machine** - pattern-based note/parameter control, clock-synced
+3. **Euclidean sequencer** - Bjorklund algorithm for rhythm generation
 4. **Arpeggiator** - held notes to sequence patterns
 5. **Effects** - chorus/flanger/phaser, waveshaping/saturation, comb filter
 6. **Karplus-Strong** - plucked string synthesis
@@ -94,23 +92,26 @@ Live granular sampler + concatenative synthesis + additive synth + effects + mod
 ### Source Types
 - [x] LFO (sine, square, triangle, sawtooth)
 - [x] ADBR Envelope (attack-decay-break-release, loopable)
-- [x] Gamepad (axes, triggers, d-pad as virtual axes)
+- [x] Gamepad axes (sticks, triggers, d-pad as virtual axes)
+- [x] Gamepad buttons (cycling, momentary, trigger, toggle modes)
 - [x] Noise (white, pink, brownian) with sample & hold
+- [x] Keyboard (velocity, note number)
 - [ ] Sampler (audio buffer as control signal)
 
 ### Targets Implemented
 - Oscillator: frequency, volume
-- Moog filter: cutoff
+- Moog filter: cutoff, resonance
 - VCA effect: gain
 - Pan effect: pan
 - Ping-pong delay: delay
-- Granular: density, pitch, position
+- Granular: density, pitch, position, size, position_spray, size_spray, envelope, regularity, reverse, pan, pan_spray, recording, trigger, reset, deviation_up, deviation_down, wet
+- Reverb: wet, decay, damping, size, freeze
 
 ### Targets Planned
 - Sound: pitch
 - Delay: wet, decay, delay_in_frames
 - Ping-pong delay: wet, feedback
-- Reverb: wet, decay, damping, shimmer mix
+- Reverb: shimmer mix, predelay, bandwidth
 - Bitcrush: bits, sample_rate
 - LFO: frequency
 - Envelope: duration_ms

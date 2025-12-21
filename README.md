@@ -35,14 +35,16 @@ Existing or planned features (all in stereo):
   - BPM-based master clock ✓
   - routes to LFO, envelope, granular, delays ✓
   - pulse (trigger) and sync (tempo-lock) modes ✓
-- comprehensive modulation system *(in progress)*
+- comprehensive modulation system ✓
   - sources:
     - LFO ✓
     - looping envelope ✓
-    - gamepad (axes, triggers, d-pad) ✓
+    - gamepad axes (sticks, triggers, d-pad) ✓
+    - gamepad buttons (cycling, momentary, trigger, toggle) ✓
     - noise (with sample & hold) ✓
+    - keyboard (velocity, note) ✓
     - audio buffers *(planned)*
-  - targets: many parameters across the system ✓
+  - targets: oscillator, filter, VCA, pan, delay, granular, reverb ✓
 - control interface using gamepad ✓, keyboard ✓ (polyphonic synth support with voice stealing), trackpad *(planned)*
 - SDL visualizer ✓
   - waveform, spectrum, spectrogram modes ✓
@@ -50,6 +52,9 @@ Existing or planned features (all in stereo):
   - multiple windows simultaneously ✓
   - auto-ranging, theme support, FFT size selection ✓
 - patches, presets, and setups saved as transparent prolog clauses ✓
+- sequencers *(planned)*
+  - Turing Machine (shift register pitch sequencer)
+  - Euclidean (Bjorklund rhythm generator)
 - MCP integration for AI-assisted patch design and composition *(planned)*
 
 MIT License
