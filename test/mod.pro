@@ -70,28 +70,33 @@ test(source_unload_removes_routes, [nondet, cleanup(synth_voice_uninit(V))]) :-
 test(route_monitor_enable, [nondet, cleanup((
     mod_route_uninit(R),
     mod_source_uninit(L),
-    synth_voice_uninit(V)
+    synth_voice_uninit(V),
+    keyboard_uninit(K)
 ))]) :-
     synth_voice_init(V),
     synth_oscillator_add(V, 440.0, 0.0, O),
     mod_lfo_init(sine, 1.0, L),
     mod_route_init(L, oscillator, O, frequency, absolute, 100.0, 440.0, 0.0, R),
-    mod_route_monitor(R, true).
+    keyboard_init(K),
+    mod_route_monitor(R, true, K).
 
 test(route_monitor_disable, [nondet, cleanup((
     mod_route_uninit(R),
     mod_source_uninit(L),
-    synth_voice_uninit(V)
+    synth_voice_uninit(V),
+    keyboard_uninit(K)
 ))]) :-
     synth_voice_init(V),
     synth_oscillator_add(V, 440.0, 0.0, O),
     mod_lfo_init(sine, 1.0, L),
     mod_route_init(L, oscillator, O, frequency, absolute, 100.0, 440.0, 0.0, R),
-    mod_route_monitor(R, true),
-    mod_route_monitor(R, false).
+    keyboard_init(K),
+    mod_route_monitor(R, true, K),
+    mod_route_monitor(R, false, K).
 
-test(route_monitor_invalid_route, [error(existence_error(mod_route, _))]) :-
-    mod_route_monitor(mod_route(9999), true).
+test(route_monitor_invalid_route, [nondet, cleanup(keyboard_uninit(K)), error(existence_error(mod_route, _))]) :-
+    keyboard_init(K),
+    mod_route_monitor(mod_route(9999), true, K).
 
 % Envelope tests
 

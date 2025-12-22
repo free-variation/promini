@@ -52,10 +52,6 @@ test(data_reverse, [nondet]) :-
     audio_unload(Handle),
     audio_unload(Reversed).
 
-test(data_load_reversed, [nondet]) :-
-    audio_load_reversed('audio/counting.wav', Handle),
-    Handle = audio(_),
-    audio_unload(Handle).
 
 test(data_extract, [nondet]) :-
     audio_load('audio/counting.wav', Handle),
@@ -100,29 +96,11 @@ test(sound_start_stop, [nondet]) :-
     \+ sound_is_playing(Sound),
     sound_unload(Sound).
 
-test(sound_looping, [nondet]) :-
-    sound_load('audio/counting.wav', Sound),
-    \+ sound_is_looping(Sound),
-    sound_loop(Sound),
-    sound_is_looping(Sound),
-    sound_no_loop(Sound),
-    \+ sound_is_looping(Sound),
-    sound_unload(Sound).
-
 test(sound_seek, [nondet]) :-
     sound_load('audio/counting.wav', Sound),
     sound_seek(Sound, 1000),
     sound_get_position(Sound, Pos),
     Pos =:= 1000,
-    sound_unload(Sound).
-
-test(sound_start_at, [nondet]) :-
-    sound_load('audio/counting.wav', Sound),
-    sound_start_at(Sound, 500),
-    sound_is_playing(Sound),
-    sound_get_position(Sound, Pos),
-    Pos >= 500,
-    sound_stop(Sound),
     sound_unload(Sound).
 
 :- end_tests(promini_playback).

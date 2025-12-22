@@ -505,6 +505,7 @@ struct mod_route {
 	ma_bool32 rate_mode;
 
 	ma_bool32 monitor;
+	int log_target_keyboard;
 	ma_uint64 last_print_time;
 	float last_printed_value;
 	const char *param_name;
@@ -669,6 +670,17 @@ typedef struct {
 
 extern keyboard_t g_keyboards[MAX_KEYBOARDS];
 
+#define GET_KEYBOARD(handle_term, kb_var, slot_var) \
+    do { \
+        if (!get_typed_handle(handle_term, "keyboard", &slot_var)) { \
+            return PL_type_error("keyboard", handle_term); \
+        } \
+        if (slot_var < 0 || slot_var >= MAX_KEYBOARDS || !g_keyboards[slot_var].in_use) { \
+            return PL_existence_error("keyboard", handle_term); \
+        } \
+        kb_var = &g_keyboards[slot_var]; \
+    } while (0)
+
 /* Visualizer types */
 typedef enum {
 	VIZ_MODE_WAVEFORM,
@@ -770,7 +782,7 @@ extern int get_axis_from_atom(atom_t atom_term, SDL_GamepadAxis *axis);
 extern int get_button_from_atom(atom_t atom_term, SDL_GamepadButton *button);
 extern SDL_Gamepad *get_gamepad_ptr(term_t gamepad_term);
 extern void keyboard_handle_event(SDL_Event *event);
-extern void control_set_log_message(const char *msg);
+extern void keyboard_set_log_message(int slot, const char *msg);
 
 /* Capture functions (implemented in capture.c) */
 extern capture_slot_t *get_capture_device(int index);

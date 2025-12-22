@@ -8,7 +8,7 @@
 
 test(sound_attach_bitcrush, [nondet]) :-
     sound_load('audio/counting.wav', Sound),
-    sound_attach_bitcrush(Sound, 8, 8000, Effect),
+    sound_attach_effect(Sound, bitcrush, [bits=8, sample_rate=8000], Effect),
     Effect = effect(Sound, _),
     sound_unload(Sound).
 
@@ -26,25 +26,25 @@ test(sound_attach_hpf, [nondet]) :-
 
 test(sound_attach_bpf, [nondet]) :-
     sound_load('audio/counting.wav', Sound),
-    sound_attach_bpf(Sound, 1000.0, 2, Effect),
+    sound_attach_effect(Sound, bpf, [cutoff=1000.0, order=2], Effect),
     Effect = effect(Sound, _),
     sound_unload(Sound).
 
 test(sound_attach_delay, [nondet]) :-
     sound_load('audio/counting.wav', Sound),
-    sound_attach_delay(Sound, 22050, 0.5, 0.8, Effect),
+    sound_attach_effect(Sound, delay, [delay_in_frames=22050, decay=0.5, wet=0.8], Effect),
     Effect = effect(Sound, _),
     sound_unload(Sound).
 
 test(sound_attach_ping_pong_delay, [nondet]) :-
     sound_load('audio/counting.wav', Sound),
-    sound_attach_ping_pong_delay(Sound, 44100, 22050, 0.5, 0.8, Effect),
+    sound_attach_effect(Sound, ping_pong_delay, [max_delay_in_frames=44100, delay_in_frames=22050, feedback=0.5, wet=0.8], Effect),
     Effect = effect(Sound, _),
     sound_unload(Sound).
 
 test(sound_attach_reverb, [nondet]) :-
     sound_load('audio/counting.wav', Sound),
-    sound_attach_reverb(Sound, [decay=0.8, wet=0.3], Effect),
+    sound_attach_effect(Sound, reverb, [decay=0.8, wet=0.3], Effect),
     Effect = effect(Sound, _),
     sound_unload(Sound).
 
@@ -59,7 +59,7 @@ test(sound_set_parameters, [nondet]) :-
 
 test(sound_detach_effect, [nondet]) :-
     sound_load('audio/counting.wav', Sound),
-    sound_attach_bitcrush(Sound, 8, 8000, Effect),
+    sound_attach_effect(Sound, bitcrush, [bits=8, sample_rate=8000], Effect),
     effects(Sound, [_]),
     effect_detach(Effect),
     effects(Sound, []),

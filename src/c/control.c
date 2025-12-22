@@ -10,17 +10,6 @@
 #include <unistd.h>
 #include <SDL3_ttf/SDL_ttf.h>
 
-#define GET_KEYBOARD(handle_term, kb_var, slot_var) \
-    do { \
-        if (!get_typed_handle(handle_term, "keyboard", &slot_var)) { \
-            return PL_type_error("keyboard", handle_term); \
-        } \
-        if (slot_var < 0 || slot_var >= MAX_KEYBOARDS || !g_keyboards[slot_var].in_use) { \
-            return PL_existence_error("keyboard", handle_term); \
-        } \
-        kb_var = &g_keyboards[slot_var]; \
-    } while (0)
-
 #define GET_ROW(kb_var, row_term, row_var, kr_var) \
     do { \
         if (!PL_get_integer(row_term, &row_var)) return FALSE; \
@@ -38,7 +27,6 @@ static ma_bool32 g_control_initialized = MA_FALSE;
 static PL_dispatch_hook_t g_old_dispatch_hook = NULL;
 static TTF_Font *g_font = NULL;
 static int g_voice_allocation_counter = 0;
-static int g_log_target_keyboard = -1;	/* keyboard slot for log messages, -1 = console */
 
 keyboard_t g_keyboards[MAX_KEYBOARDS] = {{0}};
 
@@ -134,44 +122,26 @@ static void free_keyboard_slot(int slot)
 	kb->in_use = MA_FALSE;
 }
 
-/*
- * control_set_log_message()
- * Set log message for display.
- * Routes to keyboard window if registered, otherwise console.
- */
-void control_set_log_message(const char *msg)
-{
-	keyboard_t *kb;
-
-	if (g_log_target_keyboard >= 0 &&
-			g_log_target_keyboard < MAX_KEYBOARDS &&
-			g_keyboards[g_log_target_keyboard].in_use) {
-		kb = &g_keyboards[g_log_target_keyboard];
-		strncpy(kb->log_message, msg, sizeof(kb->log_message) - 1);
-		kb->log_message[sizeof(kb->log_message) - 1] = '\0';
-	} else {
-		printf("%s\n", msg);
-	}
-}
-
-/*
- * pl_keyboard_set_log_target()
- * Register a keyboard as the log message target.
- * keyboard_set_log_target(+Keyboard)
- */
-static foreign_t pl_keyboard_set_log_target(term_t handle_term)
-{
-	int slot;
-	keyboard_t *kb;
-
-	GET_KEYBOARD(handle_term, kb, slot);
-	g_log_target_keyboard = slot;
-	return TRUE;
-}
 
 /******************************************************************************
  * KEYBOARD AND WINDOW MANAGEMENT
  *****************************************************************************/
+
+/*
+ * keyboard_set_log_message()
+ * Set log message for a specific keyboard.
+ */
+void keyboard_set_log_message(int slot, const char *msg)
+{
+	keyboard_t *kb;
+
+	if (slot < 0 || slot >= MAX_KEYBOARDS || !g_keyboards[slot].in_use)
+		return;
+
+	kb = &g_keyboards[slot];
+	strncpy(kb->log_message, msg, sizeof(kb->log_message) - 1);
+	kb->log_message[sizeof(kb->log_message) - 1] = '\0';
+}
 
 /*
  * keyboard_render()
@@ -1358,7 +1328,6 @@ install_t control_register_predicates(void)
 	PL_register_foreign("keyboard_row_add_voice", 4, pl_keyboard_row_add_voice, 0);
 	PL_register_foreign("keyboard_row_clear", 2, pl_keyboard_row_clear, 0);
 	PL_register_foreign("keyboard_row_remove_voice", 3, pl_keyboard_row_remove_voice, 0);
-	PL_register_foreign("keyboard_set_log_target", 1, pl_keyboard_set_log_target, 0);
 }
 
 /*

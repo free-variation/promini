@@ -8,14 +8,14 @@
 
 test(attach_reverb_defaults, [nondet]) :-
     sound_load('audio/counting.wav', Sound),
-    sound_attach_reverb(Sound, [], Effect),
+    sound_attach_effect(Sound, reverb, [], Effect),
     Effect = effect(Sound, Ptr),
     ground(Ptr),
     sound_unload(Sound).
 
 test(attach_reverb_with_params, [nondet]) :-
     sound_load('audio/counting.wav', Sound),
-    sound_attach_reverb(Sound, [decay=0.8, wet=0.5], Effect),
+    sound_attach_effect(Sound, reverb, [decay=0.8, wet=0.5], Effect),
     Effect = effect(Sound, Ptr),
     ground(Ptr),
     sound_unload(Sound).
@@ -31,7 +31,7 @@ test(attach_reverb_generic, [nondet]) :-
 
 test(query_reverb_defaults, [nondet]) :-
     sound_load('audio/counting.wav', Sound),
-    sound_attach_reverb(Sound, [], _),
+    sound_attach_effect(Sound, reverb, [], _),
     effects(Sound, [effect(Sound, reverb, Ptr, Params)]),
     ground(Ptr),
     memberchk(decay=Decay, Params),
@@ -50,7 +50,7 @@ test(query_reverb_defaults, [nondet]) :-
 
 test(query_reverb_custom, [nondet]) :-
     sound_load('audio/counting.wav', Sound),
-    sound_attach_reverb(Sound, [decay=0.85, damping=0.4, wet=0.6, dry=0.4], _),
+    sound_attach_effect(Sound, reverb, [decay=0.85, damping=0.4, wet=0.6, dry=0.4], _),
     effects(Sound, [effect(Sound, reverb, _, Params)]),
     memberchk(decay=Decay, Params),
     memberchk(damping=Damping, Params),
@@ -66,7 +66,7 @@ test(query_reverb_custom, [nondet]) :-
 
 test(set_reverb_decay, [nondet]) :-
     sound_load('audio/counting.wav', Sound),
-    sound_attach_reverb(Sound, [], Effect),
+    sound_attach_effect(Sound, reverb, [], Effect),
     effect_set_parameters(Effect, [decay=0.9]),
     effects(Sound, [effect(Sound, reverb, _, Params)]),
     memberchk(decay=Decay, Params),
@@ -75,7 +75,7 @@ test(set_reverb_decay, [nondet]) :-
 
 test(set_reverb_damping, [nondet]) :-
     sound_load('audio/counting.wav', Sound),
-    sound_attach_reverb(Sound, [], Effect),
+    sound_attach_effect(Sound, reverb, [], Effect),
     effect_set_parameters(Effect, [damping=0.7]),
     effects(Sound, [effect(Sound, reverb, _, Params)]),
     memberchk(damping=Damping, Params),
@@ -84,7 +84,7 @@ test(set_reverb_damping, [nondet]) :-
 
 test(set_reverb_wet_dry, [nondet]) :-
     sound_load('audio/counting.wav', Sound),
-    sound_attach_reverb(Sound, [], Effect),
+    sound_attach_effect(Sound, reverb, [], Effect),
     effect_set_parameters(Effect, [wet=0.8, dry=0.2]),
     effects(Sound, [effect(Sound, reverb, _, Params)]),
     memberchk(wet=Wet, Params),
@@ -95,7 +95,7 @@ test(set_reverb_wet_dry, [nondet]) :-
 
 test(set_reverb_predelay, [nondet]) :-
     sound_load('audio/counting.wav', Sound),
-    sound_attach_reverb(Sound, [], Effect),
+    sound_attach_effect(Sound, reverb, [], Effect),
     effect_set_parameters(Effect, [predelay_ms=50.0]),
     effects(Sound, [effect(Sound, reverb, _, Params)]),
     memberchk(predelay_ms=Predelay, Params),
@@ -104,7 +104,7 @@ test(set_reverb_predelay, [nondet]) :-
 
 test(set_reverb_bandwidth, [nondet]) :-
     sound_load('audio/counting.wav', Sound),
-    sound_attach_reverb(Sound, [], Effect),
+    sound_attach_effect(Sound, reverb, [], Effect),
     effect_set_parameters(Effect, [bandwidth=0.5]),
     effects(Sound, [effect(Sound, reverb, _, Params)]),
     memberchk(bandwidth=Bandwidth, Params),
@@ -113,7 +113,7 @@ test(set_reverb_bandwidth, [nondet]) :-
 
 test(set_reverb_multiple_params, [nondet]) :-
     sound_load('audio/counting.wav', Sound),
-    sound_attach_reverb(Sound, [], Effect),
+    sound_attach_effect(Sound, reverb, [], Effect),
     effect_set_parameters(Effect, [decay=0.85, damping=0.3, wet=0.5, predelay_ms=40.0]),
     effects(Sound, [effect(Sound, reverb, _, Params)]),
     memberchk(decay=Decay, Params),
@@ -130,7 +130,7 @@ test(set_reverb_multiple_params, [nondet]) :-
 
 test(set_reverb_mod_rate, [nondet]) :-
     sound_load('audio/counting.wav', Sound),
-    sound_attach_reverb(Sound, [], Effect),
+    sound_attach_effect(Sound, reverb, [], Effect),
     effect_set_parameters(Effect, [mod_rate=0.8]),
     effects(Sound, [effect(Sound, reverb, _, Params)]),
     memberchk(mod_rate=ModRate, Params),
@@ -139,7 +139,7 @@ test(set_reverb_mod_rate, [nondet]) :-
 
 test(set_reverb_mod_depth, [nondet]) :-
     sound_load('audio/counting.wav', Sound),
-    sound_attach_reverb(Sound, [], Effect),
+    sound_attach_effect(Sound, reverb, [], Effect),
     effect_set_parameters(Effect, [mod_depth=0.7]),
     effects(Sound, [effect(Sound, reverb, _, Params)]),
     memberchk(mod_depth=ModDepth, Params),
@@ -150,7 +150,7 @@ test(set_reverb_mod_depth, [nondet]) :-
 
 test(set_reverb_width, [nondet]) :-
     sound_load('audio/counting.wav', Sound),
-    sound_attach_reverb(Sound, [], Effect),
+    sound_attach_effect(Sound, reverb, [], Effect),
     effect_set_parameters(Effect, [width=1.5]),
     effects(Sound, [effect(Sound, reverb, _, Params)]),
     memberchk(width=Width, Params),
@@ -159,7 +159,7 @@ test(set_reverb_width, [nondet]) :-
 
 test(set_reverb_width_mono, [nondet]) :-
     sound_load('audio/counting.wav', Sound),
-    sound_attach_reverb(Sound, [width=0.0], _),
+    sound_attach_effect(Sound, reverb, [width=0.0], _),
     effects(Sound, [effect(Sound, reverb, _, Params)]),
     memberchk(width=Width, Params),
     abs(Width - 0.0) < 0.001,
@@ -169,7 +169,7 @@ test(set_reverb_width_mono, [nondet]) :-
 
 test(set_reverb_cross_feed, [nondet]) :-
     sound_load('audio/counting.wav', Sound),
-    sound_attach_reverb(Sound, [], Effect),
+    sound_attach_effect(Sound, reverb, [], Effect),
     effect_set_parameters(Effect, [cross_feed=0.3]),
     effects(Sound, [effect(Sound, reverb, _, Params)]),
     memberchk(cross_feed=CrossFeed, Params),
@@ -180,7 +180,7 @@ test(set_reverb_cross_feed, [nondet]) :-
 
 test(set_reverb_low_cut, [nondet]) :-
     sound_load('audio/counting.wav', Sound),
-    sound_attach_reverb(Sound, [], Effect),
+    sound_attach_effect(Sound, reverb, [], Effect),
     effect_set_parameters(Effect, [low_cut=120.0]),
     effects(Sound, [effect(Sound, reverb, _, Params)]),
     memberchk(low_cut=LowCut, Params),
@@ -189,7 +189,7 @@ test(set_reverb_low_cut, [nondet]) :-
 
 test(set_reverb_high_cut, [nondet]) :-
     sound_load('audio/counting.wav', Sound),
-    sound_attach_reverb(Sound, [], Effect),
+    sound_attach_effect(Sound, reverb, [], Effect),
     effect_set_parameters(Effect, [high_cut=8000.0]),
     effects(Sound, [effect(Sound, reverb, _, Params)]),
     memberchk(high_cut=HighCut, Params),
@@ -198,7 +198,7 @@ test(set_reverb_high_cut, [nondet]) :-
 
 test(query_reverb_filter_defaults, [nondet]) :-
     sound_load('audio/counting.wav', Sound),
-    sound_attach_reverb(Sound, [], _),
+    sound_attach_effect(Sound, reverb, [], _),
     effects(Sound, [effect(Sound, reverb, _, Params)]),
     memberchk(low_cut=LowCut, Params),
     memberchk(high_cut=HighCut, Params),
@@ -210,7 +210,7 @@ test(query_reverb_filter_defaults, [nondet]) :-
 
 test(set_reverb_shimmer1, [nondet]) :-
     sound_load('audio/counting.wav', Sound),
-    sound_attach_reverb(Sound, [], Effect),
+    sound_attach_effect(Sound, reverb, [], Effect),
     effect_set_parameters(Effect, [shimmer1_shift=12.0, shimmer1_mix=0.3]),
     effects(Sound, [effect(Sound, reverb, _, Params)]),
     memberchk(shimmer1_shift=Shift, Params),
@@ -221,7 +221,7 @@ test(set_reverb_shimmer1, [nondet]) :-
 
 test(set_reverb_shimmer2, [nondet]) :-
     sound_load('audio/counting.wav', Sound),
-    sound_attach_reverb(Sound, [], Effect),
+    sound_attach_effect(Sound, reverb, [], Effect),
     effect_set_parameters(Effect, [shimmer2_shift=19.0, shimmer2_mix=0.2]),
     effects(Sound, [effect(Sound, reverb, _, Params)]),
     memberchk(shimmer2_shift=Shift, Params),
@@ -232,7 +232,7 @@ test(set_reverb_shimmer2, [nondet]) :-
 
 test(set_reverb_shimmer_negative, [nondet]) :-
     sound_load('audio/counting.wav', Sound),
-    sound_attach_reverb(Sound, [shimmer1_shift=(-12.0), shimmer1_mix=0.4], _),
+    sound_attach_effect(Sound, reverb, [shimmer1_shift=(-12.0), shimmer1_mix=0.4], _),
     effects(Sound, [effect(Sound, reverb, _, Params)]),
     memberchk(shimmer1_shift=Shift, Params),
     abs(Shift - (-12.0)) < 0.001,
@@ -240,7 +240,7 @@ test(set_reverb_shimmer_negative, [nondet]) :-
 
 test(query_reverb_shimmer_defaults, [nondet]) :-
     sound_load('audio/counting.wav', Sound),
-    sound_attach_reverb(Sound, [], _),
+    sound_attach_effect(Sound, reverb, [], _),
     effects(Sound, [effect(Sound, reverb, _, Params)]),
     memberchk(shimmer1_shift=Shift1, Params),
     memberchk(shimmer1_mix=Mix1, Params),
@@ -256,7 +256,7 @@ test(query_reverb_shimmer_defaults, [nondet]) :-
 
 test(query_reverb_size_default, [nondet]) :-
     sound_load('audio/counting.wav', Sound),
-    sound_attach_reverb(Sound, [], _),
+    sound_attach_effect(Sound, reverb, [], _),
     effects(Sound, [effect(Sound, reverb, _, Params)]),
     memberchk(size=Size, Params),
     abs(Size - 1.0) < 0.001,
@@ -264,7 +264,7 @@ test(query_reverb_size_default, [nondet]) :-
 
 test(attach_reverb_with_size, [nondet]) :-
     sound_load('audio/counting.wav', Sound),
-    sound_attach_reverb(Sound, [size=1.5], _),
+    sound_attach_effect(Sound, reverb, [size=1.5], _),
     effects(Sound, [effect(Sound, reverb, _, Params)]),
     memberchk(size=Size, Params),
     abs(Size - 1.5) < 0.001,
@@ -272,7 +272,7 @@ test(attach_reverb_with_size, [nondet]) :-
 
 test(set_reverb_size, [nondet]) :-
     sound_load('audio/counting.wav', Sound),
-    sound_attach_reverb(Sound, [], Effect),
+    sound_attach_effect(Sound, reverb, [], Effect),
     effect_set_parameters(Effect, [size=0.5]),
     effects(Sound, [effect(Sound, reverb, _, Params)]),
     memberchk(size=Size, Params),
@@ -281,7 +281,7 @@ test(set_reverb_size, [nondet]) :-
 
 test(set_reverb_size_large, [nondet]) :-
     sound_load('audio/counting.wav', Sound),
-    sound_attach_reverb(Sound, [], Effect),
+    sound_attach_effect(Sound, reverb, [], Effect),
     effect_set_parameters(Effect, [size=2.0]),
     effects(Sound, [effect(Sound, reverb, _, Params)]),
     memberchk(size=Size, Params),
@@ -292,7 +292,7 @@ test(set_reverb_size_large, [nondet]) :-
 
 test(query_reverb_hp_default, [nondet]) :-
     sound_load('audio/counting.wav', Sound),
-    sound_attach_reverb(Sound, [], _),
+    sound_attach_effect(Sound, reverb, [], _),
     effects(Sound, [effect(Sound, reverb, _, Params)]),
     memberchk(hp=HP, Params),
     abs(HP - 0.0) < 0.001,
@@ -300,7 +300,7 @@ test(query_reverb_hp_default, [nondet]) :-
 
 test(attach_reverb_with_hp, [nondet]) :-
     sound_load('audio/counting.wav', Sound),
-    sound_attach_reverb(Sound, [hp=0.3], _),
+    sound_attach_effect(Sound, reverb, [hp=0.3], _),
     effects(Sound, [effect(Sound, reverb, _, Params)]),
     memberchk(hp=HP, Params),
     abs(HP - 0.3) < 0.001,
@@ -308,7 +308,7 @@ test(attach_reverb_with_hp, [nondet]) :-
 
 test(set_reverb_hp, [nondet]) :-
     sound_load('audio/counting.wav', Sound),
-    sound_attach_reverb(Sound, [], Effect),
+    sound_attach_effect(Sound, reverb, [], Effect),
     effect_set_parameters(Effect, [hp=0.5]),
     effects(Sound, [effect(Sound, reverb, _, Params)]),
     memberchk(hp=HP, Params),
@@ -319,7 +319,7 @@ test(set_reverb_hp, [nondet]) :-
 
 test(query_reverb_freeze_default, [nondet]) :-
     sound_load('audio/counting.wav', Sound),
-    sound_attach_reverb(Sound, [], _),
+    sound_attach_effect(Sound, reverb, [], _),
     effects(Sound, [effect(Sound, reverb, _, Params)]),
     memberchk(freeze=Freeze, Params),
     Freeze = false,
@@ -327,7 +327,7 @@ test(query_reverb_freeze_default, [nondet]) :-
 
 test(attach_reverb_with_freeze, [nondet]) :-
     sound_load('audio/counting.wav', Sound),
-    sound_attach_reverb(Sound, [freeze=true], _),
+    sound_attach_effect(Sound, reverb, [freeze=true], _),
     effects(Sound, [effect(Sound, reverb, _, Params)]),
     memberchk(freeze=Freeze, Params),
     Freeze = true,
@@ -335,7 +335,7 @@ test(attach_reverb_with_freeze, [nondet]) :-
 
 test(set_reverb_freeze, [nondet]) :-
     sound_load('audio/counting.wav', Sound),
-    sound_attach_reverb(Sound, [], Effect),
+    sound_attach_effect(Sound, reverb, [], Effect),
     effect_set_parameters(Effect, [freeze=1]),
     effects(Sound, [effect(Sound, reverb, _, Params)]),
     memberchk(freeze=Freeze, Params),
@@ -344,7 +344,7 @@ test(set_reverb_freeze, [nondet]) :-
 
 test(set_reverb_freeze_off, [nondet]) :-
     sound_load('audio/counting.wav', Sound),
-    sound_attach_reverb(Sound, [freeze=true], Effect),
+    sound_attach_effect(Sound, reverb, [freeze=true], Effect),
     effect_set_parameters(Effect, [freeze=0]),
     effects(Sound, [effect(Sound, reverb, _, Params)]),
     memberchk(freeze=Freeze, Params),
@@ -355,7 +355,7 @@ test(set_reverb_freeze_off, [nondet]) :-
 
 test(query_reverb_shimmer_in_loop_default, [nondet]) :-
     sound_load('audio/counting.wav', Sound),
-    sound_attach_reverb(Sound, [], _),
+    sound_attach_effect(Sound, reverb, [], _),
     effects(Sound, [effect(Sound, reverb, _, Params)]),
     memberchk(shimmer_in_loop=InLoop, Params),
     InLoop = false,
@@ -363,7 +363,7 @@ test(query_reverb_shimmer_in_loop_default, [nondet]) :-
 
 test(attach_reverb_with_shimmer_in_loop, [nondet]) :-
     sound_load('audio/counting.wav', Sound),
-    sound_attach_reverb(Sound, [shimmer_in_loop=true], _),
+    sound_attach_effect(Sound, reverb, [shimmer_in_loop=true], _),
     effects(Sound, [effect(Sound, reverb, _, Params)]),
     memberchk(shimmer_in_loop=InLoop, Params),
     InLoop = true,
@@ -371,7 +371,7 @@ test(attach_reverb_with_shimmer_in_loop, [nondet]) :-
 
 test(set_reverb_shimmer_in_loop, [nondet]) :-
     sound_load('audio/counting.wav', Sound),
-    sound_attach_reverb(Sound, [], Effect),
+    sound_attach_effect(Sound, reverb, [], Effect),
     effect_set_parameters(Effect, [shimmer_in_loop=1]),
     effects(Sound, [effect(Sound, reverb, _, Params)]),
     memberchk(shimmer_in_loop=InLoop, Params),
@@ -380,7 +380,7 @@ test(set_reverb_shimmer_in_loop, [nondet]) :-
 
 test(set_reverb_shimmer_in_loop_off, [nondet]) :-
     sound_load('audio/counting.wav', Sound),
-    sound_attach_reverb(Sound, [shimmer_in_loop=true], Effect),
+    sound_attach_effect(Sound, reverb, [shimmer_in_loop=true], Effect),
     effect_set_parameters(Effect, [shimmer_in_loop=0]),
     effects(Sound, [effect(Sound, reverb, _, Params)]),
     memberchk(shimmer_in_loop=InLoop, Params),
@@ -391,7 +391,7 @@ test(set_reverb_shimmer_in_loop_off, [nondet]) :-
 
 test(detach_reverb, [nondet]) :-
     sound_load('audio/counting.wav', Sound),
-    sound_attach_reverb(Sound, [], Effect),
+    sound_attach_effect(Sound, reverb, [], Effect),
     effects(Sound, [_]),
     effect_detach(Effect),
     effects(Sound, []),
@@ -399,7 +399,7 @@ test(detach_reverb, [nondet]) :-
 
 test(clear_reverb, [nondet]) :-
     sound_load('audio/counting.wav', Sound),
-    sound_attach_reverb(Sound, [], _),
+    sound_attach_effect(Sound, reverb, [], _),
     effects(Sound, [_]),
     clear_effects(Sound),
     effects(Sound, []),
@@ -410,14 +410,14 @@ test(clear_reverb, [nondet]) :-
 test(reverb_with_other_effects, [nondet]) :-
     sound_load('audio/counting.wav', Sound),
     sound_attach_effect(Sound, lpf, [cutoff=2000.0], _),
-    sound_attach_reverb(Sound, [decay=0.7], _),
+    sound_attach_effect(Sound, reverb, [decay=0.7], _),
     effects(Sound, [effect(Sound, lpf, _, _), effect(Sound, reverb, _, _)]),
     sound_unload(Sound).
 
 test(reverb_in_chain, [nondet]) :-
     sound_load('audio/counting.wav', Sound),
     sound_attach_effect(Sound, hpf, [cutoff=100.0], _),
-    sound_attach_reverb(Sound, [decay=0.8, wet=0.5], _),
+    sound_attach_effect(Sound, reverb, [decay=0.8, wet=0.5], _),
     sound_attach_effect(Sound, lpf, [cutoff=8000.0], _),
     effects(Sound, [
         effect(Sound, hpf, _, _),

@@ -272,7 +272,8 @@ test(granular_freeze, [nondet, cleanup((granular_uninit(G), sound_unload(S), aud
     sleep(0.5),
     sound_stop(S),
     granular_set(G, [recording=false]),
-    granular_freeze(G, A),
+    granular_get_frames_recorded(G, Frames),
+    audio_extract(G, 0, Frames, A),
     A = audio(_).
 
 :- end_tests(granular).

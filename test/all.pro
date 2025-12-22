@@ -5,6 +5,7 @@
     'test/capture.pro',
     'test/granular.pro',
     'test/clock.pro',
+    'test/setup.pro',
     'reverb.pro',
     'synth.pro'
 ].

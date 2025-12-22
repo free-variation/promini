@@ -422,7 +422,7 @@ void process_modulation(ma_uint32 frame_count, ma_uint32 sample_rate)
 			frames_since = total_frames - route->last_print_time;
 			if (frames_since > sample_rate / 10) {
 				snprintf(msg, sizeof(msg), "%s: %.3f", route->param_name, final_value);
-				control_set_log_message(msg);
+				keyboard_set_log_message(route->log_target_keyboard, msg);
 				route->last_printed_value = final_value;
 				route->last_print_time = total_frames;
 			}
@@ -1136,6 +1136,7 @@ static foreign_t pl_mod_route_init(
 	route->current_value = (float)offset;
 	route->rate_mode = rate_mode;
 	route->monitor = MA_FALSE;
+	route->log_target_keyboard = -1;
 	route->last_print_time = 0;
 	route->last_printed_value = 0.0f;
 	route->param_name = param;
@@ -1173,27 +1174,30 @@ static foreign_t pl_mod_route_uninit(term_t handle_term)
 
 /*
  * pl_mod_route_monitor()
- * Enable or disable monitoring on a route.
- * mod_route_monitor(+Route, +Enable)
+ * Enable or disable monitoring on a route with target keyboard.
+ * mod_route_monitor(+Route, +Enable, +Keyboard)
  */
-static foreign_t pl_mod_route_monitor(term_t handle_term, term_t enable_term)
+static foreign_t pl_mod_route_monitor(term_t handle_term, term_t enable_term, term_t kb_term)
 {
-	int slot;
-	int enable;
+	int slot, enable, kb_slot;
+	keyboard_t *kb;
 
-	if (!get_typed_handle(handle_term, "mod_route", &slot)) {
+	if (!get_typed_handle(handle_term, "mod_route", &slot))
 		return PL_type_error("mod_route", handle_term);
-	}
-	if (!PL_get_bool(enable_term, &enable)) {
+	if (!PL_get_bool(enable_term, &enable))
 		return PL_type_error("boolean", enable_term);
-	}
+	GET_KEYBOARD(kb_term, kb, kb_slot);
+	(void)kb;  /* only need slot */
 
 	pthread_mutex_lock(&g_mod_mutex);
 	if (slot < 0 || slot >= MAX_MOD_ROUTES || !g_mod_routes[slot].in_use) {
 		pthread_mutex_unlock(&g_mod_mutex);
 		return PL_existence_error("mod_route", handle_term);
 	}
+
 	g_mod_routes[slot].monitor = enable ? MA_TRUE : MA_FALSE;
+	g_mod_routes[slot].log_target_keyboard = kb_slot;
+
 	pthread_mutex_unlock(&g_mod_mutex);
 	return TRUE;
 }
@@ -1786,7 +1790,7 @@ install_t mod_register_predicates(void)
 	PL_register_foreign("mod_source_uninit", 1, pl_mod_source_uninit, 0);
 	PL_register_foreign("mod_route_init", 9, pl_mod_route_init, 0);
 	PL_register_foreign("mod_route_uninit", 1, pl_mod_route_uninit, 0);
-	PL_register_foreign("mod_route_monitor", 2, pl_mod_route_monitor, 0);
+	PL_register_foreign("mod_route_monitor", 3, pl_mod_route_monitor, 0);
 	PL_register_foreign("mod_gamepad_init", 3, pl_mod_gamepad_init, 0);
 	PL_register_foreign("mod_gamepad_button_init", 4, pl_mod_gamepad_button_init, 0);
 	PL_register_foreign("mod_keyboard_init", 3, pl_mod_keyboard_init, 0);

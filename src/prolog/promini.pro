@@ -10,13 +10,12 @@
     promini_init/1,
     promini_devices/1,
     sound_load/2,
+    sound_load_reversed/2,
     sound_unload/1,
     sound_start/1,
     sound_stop/1,
     sound_is_playing/1,
     sound_set_looping/2,
-    sound_loop/1,
-    sound_no_loop/1,
     sound_is_looping/1,
     audio_load/2,
     audio_unload/1,
@@ -25,19 +24,12 @@
     sound_get_position/2,
     audio_info/2,
     sound_length/2,
-    sound_start_at/2,
     sound_set_pitch/2,
     sound_get_pitch/2,
     audio_reverse/2,
-    audio_load_reversed/2,
     sound_set_range/3,
     audio_extract/4,
     sound_attach_effect/4,
-    sound_attach_bitcrush/4,
-    sound_attach_bpf/4,
-    sound_attach_delay/5,
-    sound_attach_ping_pong_delay/6,
-    sound_attach_reverb/3,
     effects/2,
     effect_set_parameters/2,
     effect_detach/1,
@@ -71,7 +63,7 @@
     mod_source_uninit/1,
     mod_route_init/9,
     mod_route_uninit/1,
-    mod_route_monitor/2,
+    mod_route_monitor/3,
     mod_gamepad_init/3,
     mod_gamepad_button_init/4,
     mod_keyboard_init/3,
@@ -97,7 +89,6 @@
     keyboard_row_add_voice/4,
     keyboard_row_remove_voice/3,
     keyboard_row_clear/2,
-    keyboard_set_log_target/1,
     granular_init/2,
     granular_uninit/1,
     granular_trigger/1,
@@ -106,7 +97,6 @@
     granular_set_mode/4,
     granular_connect/2,
     granular_get_frames_recorded/2,
-    granular_freeze/2,
     granular_attach_effect/4,
     clock_set_bpm/1,
     clock_get_bpm/1,
@@ -117,7 +107,14 @@
     clock_route_init/5,
     clock_route_uninit/1,
     visualizer_attach/3,
-    visualizer_detach/1
+    visualizer_detach/1,
+    setup_register/2,
+    setup_get/2,
+    setup_unload/1,
+    setups/1,
+    load_setup/1,
+    load_setup/2,
+    unload_setup/1
   ]).
 
 :- use_foreign_library('../../lib/promini').
@@ -127,48 +124,88 @@
 register_cleanup :-
     at_halt(unload_foreign_library('../../lib/promini')).
 
-sound_loop(Handle) :-
-    sound_set_looping(Handle, true).
+/* ============================================================================
+ * SETUP MANAGEMENT
+ * ============================================================================ */
 
-sound_no_loop(Handle) :-
-    sound_set_looping(Handle, false).
+setup_register(Name:Label, Handle) :-
+	assertz(setup_object(Name:Label, Handle)).
 
-sound_start_at(Handle, Frame) :-
-    sound_seek(Handle, Frame),
-    sound_start(Handle).
+setup_get(Name:Label, Handle) :-
+	setup_object(Name:Label, Handle).
 
-audio_load_reversed(Path, ReversedHandle) :-
-    audio_load(Path, TempHandle),
-    audio_reverse(TempHandle, ReversedHandle),
-    audio_unload(TempHandle).
+setups(Names) :-
+	findall(Name, setup_object(Name:_, _), AllNames),
+	sort(AllNames, Names).
+
+setup_unload(Name) :-
+	findall(Handle, setup_object(Name:_, Handle), Handles),
+	cleanup_order(Order),
+	unload_in_order(Order, Handles),
+	retractall(setup_object(Name:_, _)).
+
+cleanup_order([clock_route, mod_route, effect, granular, keyboard, voice,
+               summing_node, oscillator, mod_source, capture, sound, audio]).
+
+unload_in_order([], _).
+unload_in_order([Type|Types], Handles) :-
+	include(handle_type(Type), Handles, Matching),
+	maplist(uninit_handle, Matching),
+	unload_in_order(Types, Handles).
+
+handle_type(effect, effect(_, _)) :- !.
+handle_type(Type, Handle) :-
+	functor(Handle, Type, _).
+
+uninit_handle(capture(N)) :- capture_stop(capture(N)).
+uninit_handle(granular(N)) :- granular_uninit(granular(N)).
+uninit_handle(keyboard(N)) :- keyboard_uninit(keyboard(N)).
+uninit_handle(voice(N)) :- synth_voice_uninit(voice(N)).
+uninit_handle(sound(N)) :- sound_unload(sound(N)).
+uninit_handle(audio(N)) :- audio_unload(audio(N)).
+uninit_handle(summing_node(N)) :- summing_node_uninit(summing_node(N)).
+uninit_handle(oscillator(N)) :- synth_oscillator_remove(oscillator(N)).
+uninit_handle(mod_source(N)) :- mod_source_uninit(mod_source(N)).
+uninit_handle(mod_route(N)) :- mod_route_uninit(mod_route(N)).
+uninit_handle(clock_route(N)) :- clock_route_uninit(clock_route(N)).
+uninit_handle(effect(Source, Ptr)) :- effect_detach(effect(Source, Ptr)).
+
+load_setup(Name, Source) :-
+	atomic_list_concat(['setups/', Name, '.pro'], Path),
+	load_files(Path, [imports([])]),
+	Name:setup(Source).
+
+load_setup(Name) :-
+	atomic_list_concat(['setups/', Name, '.pro'], Path),
+	load_files(Path, [imports([])]),
+	Name:setup.
+
+unload_setup(Name) :-
+	Name:teardown.
+
+
+/* ============================================================================
+ * EFFECTS MANAGEMENT
+ * ============================================================================ */
+
+ clear_effects(Source) :-
+    effects(Source, Effects),
+    maplist(effect_to_handle, Effects, Handles),
+    maplist(effect_detach, Handles).
+
+effect_to_handle(effect(Source, _Type, Ptr, _Params), effect(Source, Ptr)).
+
+/* ============================================================================
+ * SOUND MANAGEMENT
+ * ============================================================================ */
 
 sound_load(Path, SoundHandle) :-
     audio_load(Path, DataHandle),
     sound_create(DataHandle, SoundHandle),
     audio_unload(DataHandle).
 
-granular_freeze(Granular, Audio) :-
-    granular_get_frames_recorded(Granular, Frames),
-    audio_extract(Granular, 0, Frames, Audio).
+sound_load_reversed(Path, ReversedHandle) :-
+    audio_load(Path, TempHandle),
+    audio_reverse(TempHandle, ReversedHandle),
+    audio_unload(TempHandle).
 
-sound_attach_bitcrush(Sound, Bits, SampleRate, Effect) :-
-    sound_attach_effect(Sound, bitcrush, [bits=Bits, sample_rate=SampleRate], Effect).
-
-sound_attach_bpf(Sound, Cutoff, Order, Effect) :-
-    sound_attach_effect(Sound, bpf, [cutoff=Cutoff, order=Order], Effect).
-
-sound_attach_delay(Sound, DelayInFrames, Decay, Wet, Effect) :-
-    sound_attach_effect(Sound, delay, [delay_in_frames=DelayInFrames, decay=Decay, wet=Wet], Effect).
-
-sound_attach_ping_pong_delay(Sound, MaxDelayInFrames, DelayInFrames, Feedback, Wet, Effect) :-
-    sound_attach_effect(Sound, ping_pong_delay, [max_delay_in_frames=MaxDelayInFrames, delay_in_frames=DelayInFrames, feedback=Feedback, wet=Wet], Effect).
-
-sound_attach_reverb(Sound, Params, Effect) :-
-    sound_attach_effect(Sound, reverb, Params, Effect).
-
-clear_effects(Source) :-
-    effects(Source, Effects),
-    maplist(effect_to_handle, Effects, Handles),
-    maplist(effect_detach, Handles).
-
-effect_to_handle(effect(Source, _Type, Ptr, _Params), effect(Source, Ptr)).
