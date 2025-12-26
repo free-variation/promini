@@ -170,13 +170,17 @@ static float read_source_value(mod_source_t *src, ma_uint32 frame_count, ma_uint
 
 	switch(src->type) {
 		case MOD_SOURCE_WAVEFORM:
-			to_read = frame_count < 512 ? frame_count : 512;
-			ma_waveform_read_pcm_frames(&src->source.waveform, waveform_buf, to_read, NULL);
-			value = 0.0f;
-			for (i = 0; i < to_read; i++) {
-				value += waveform_buf[i];
+			if (src->lfo_paused) {
+				value = src->current_value;
+			} else {
+				to_read = frame_count < 512 ? frame_count : 512;
+				ma_waveform_read_pcm_frames(&src->source.waveform, waveform_buf, to_read, NULL);
+				value = 0.0f;
+				for (i = 0; i < to_read; i++) {
+					value += waveform_buf[i];
+				}
+				value /= to_read;
 			}
-			value /= to_read;
 			break;
 
 		case MOD_SOURCE_NOISE:
@@ -308,27 +312,42 @@ static float read_source_value(mod_source_t *src, ma_uint32 frame_count, ma_uint
 		case MOD_SOURCE_KEYBOARD:
 			keys = SDL_GetKeyboardState(NULL);
 			pressed = keys[src->source.keyboard.scancode];
-			target = pressed ? 1.0f : 0.0f;
 
-			if (src->source.keyboard.invert) {
-				target = 1.0f - target;
+			/* check required modifier */
+			if (src->source.keyboard.required_mod != 0) {
+				SDL_Keymod mod_state = SDL_GetModState();
+				if (!(mod_state & src->source.keyboard.required_mod)) {
+					pressed = 0;
+				}
 			}
 
-			if (src->source.keyboard.value < target) {
-				/* attack */
-				rate = (src->source.keyboard.attack_ms > 0)
-					? (1000.0f / src->source.keyboard.attack_ms) * frame_count / sample_rate
-					: 1.0f;
-				src->source.keyboard.value = CLAMP(src->source.keyboard.value + rate, 0.0f, target);
-			} else if (src->source.keyboard.value > target) {
-				/* release */
-				rate = (src->source.keyboard.release_ms > 0)
-					? (1000.0f / src->source.keyboard.release_ms) * frame_count / sample_rate
-					: 1.0f;
-				src->source.keyboard.value = CLAMP(src->source.keyboard.value - rate, 0.0f, target);
-			}
+			rising_edge = pressed && !src->source.keyboard.prev_pressed;
 
-			value = src->source.keyboard.value;
+			if (src->source.keyboard.mode == BUTTON_MODE_TRIGGER) {
+				value = rising_edge ? 1.0f : 0.0f;
+			} else {
+				/* envelope mode (default) */
+				target = pressed ? 1.0f : 0.0f;
+
+				if (src->source.keyboard.invert) {
+					target = 1.0f - target;
+				}
+
+				if (src->source.keyboard.value < target) {
+					rate = (src->source.keyboard.attack_ms > 0)
+						? (1000.0f / src->source.keyboard.attack_ms) * frame_count / sample_rate
+						: 1.0f;
+					src->source.keyboard.value = CLAMP(src->source.keyboard.value + rate, 0.0f, target);
+				} else if (src->source.keyboard.value > target) {
+					rate = (src->source.keyboard.release_ms > 0)
+						? (1000.0f / src->source.keyboard.release_ms) * frame_count / sample_rate
+						: 1.0f;
+					src->source.keyboard.value = CLAMP(src->source.keyboard.value - rate, 0.0f, target);
+				}
+
+				value = src->source.keyboard.value;
+			}
+			src->source.keyboard.prev_pressed = pressed;
 			break;
 
 		default:
@@ -347,7 +366,7 @@ void process_modulation(ma_uint32 frame_count, ma_uint32 sample_rate)
 {
 	int i;
 	mod_source_t *src;
-	mod_route_t *route;
+	mod_route_t *route, *paired;
 	float raw_value, target_value, max_change, diff;
 
 	static ma_uint64 total_frames = 0;
@@ -392,6 +411,10 @@ void process_modulation(ma_uint32 frame_count, ma_uint32 sample_rate)
 		route = &g_mod_routes[i];
 		if (!route->in_use) continue;
 
+		/* skip routes from paused LFOs */
+		src = &g_mod_sources[route->source_slot];
+		if (src->type == MOD_SOURCE_WAVEFORM && src->lfo_paused) continue;
+
 		if (route->rate_mode) {
 			/* rate mode: pass delta to setter, which adds to current target value */
 			dt = (float)frame_count / sample_rate;
@@ -417,14 +440,27 @@ void process_modulation(ma_uint32 frame_count, ma_uint32 sample_rate)
 
 			final_value = route->setter(route->target, route->current_value, frame_count, route);
 		}
+		route->last_final_value = final_value;
 
 		if (route->monitor && final_value != route->last_printed_value) {
-			frames_since = total_frames - route->last_print_time;
-			if (frames_since > sample_rate / 10) {
-				snprintf(msg, sizeof(msg), "%s: %.3f", route->param_name, final_value);
-				keyboard_set_log_message(route->log_target_keyboard, msg);
+			/* rate mode: only monitor if we actually changed something */
+			if (route->rate_mode && delta == 0.0f) {
 				route->last_printed_value = final_value;
-				route->last_print_time = total_frames;
+			} else {
+				frames_since = total_frames - route->last_print_time;
+				if (frames_since > sample_rate / 10) {
+					if (route->monitor_pair_slot >= 0) {
+						paired = &g_mod_routes[route->monitor_pair_slot];
+						snprintf(msg, sizeof(msg), "%s: %.2f %s: %.2f",
+							route->param_name, final_value,
+							paired->param_name, paired->last_final_value);
+					} else {
+						snprintf(msg, sizeof(msg), "%s: %.3f", route->param_name, final_value);
+					}
+					keyboard_set_log_message(route->log_target_keyboard, msg);
+					route->last_printed_value = final_value;
+					route->last_print_time = total_frames;
+				}
 			}
 		}
 	}
@@ -519,6 +555,30 @@ static float set_moog_resonance(void *target, float value, ma_uint32 frame_count
 }
 
 /*
+ * set_hpf_cutoff()
+ * Setter for HPF cutoff. Target is hpf_node_t*
+ * Requires reinit of the filter node.
+ */
+static float set_hpf_cutoff(void *target, float value, ma_uint32 frame_count, mod_route_t *route)
+{
+	hpf_node_t *hpf = (hpf_node_t *)target;
+	float cutoff;
+	ma_uint32 channels, sample_rate;
+	ma_hpf_config config;
+	(void)frame_count;
+
+	cutoff = APPLY_MOD_VALUE((float)hpf->cutoff_frequency, value, route);
+	cutoff = CLAMP(cutoff, 20.0f, 20000.0f);
+	hpf->cutoff_frequency = (double)cutoff;
+
+	get_engine_format_info(NULL, &channels, &sample_rate);
+	config = ma_hpf_config_init(ma_format_f32, channels, sample_rate, cutoff, hpf->order);
+	ma_hpf_node_reinit(&config, &hpf->node);
+
+	return cutoff;
+}
+
+/*
  * set_vca_gain()
  * Setter for VCA gain. Target is vca_node_t*
  * Uses per-sample interpolation so just sets target
@@ -565,7 +625,8 @@ static float set_granular_density(void *target, float value, ma_uint32 frame_cou
 	density = APPLY_MOD_VALUE(g->density, value, route);
 	if (density < 0.0f) density = 0.0f;
 	g->density = density;
-	return density;
+	/* return overlapping grains for monitoring display */
+	return density * g->size_ms / 1000.0f;
 }
 
 /*
@@ -894,6 +955,42 @@ static float set_reverb_freeze(void *target, float value, ma_uint32 frame_count,
 	return r->freeze ? 1.0f : 0.0f;
 }
 
+/*
+ * set_keyboard_row_octave()
+ * Setter for keyboard row octave. Target is keyboard_row_t*.
+ * Value >= 0.5 increments octave, value <= -0.5 decrements.
+ */
+static float set_keyboard_row_octave(void *target, float value, ma_uint32 frame_count, mod_route_t *route)
+{
+	keyboard_row_t *row = (keyboard_row_t *)target;
+	(void)frame_count;
+	(void)route;
+
+	if (value >= 0.5f) {
+		row->octave_offset += 1;
+	} else if (value <= -0.5f) {
+		row->octave_offset -= 1;
+	}
+	return (float)row->octave_offset;
+}
+
+/*
+ * set_mod_lfo_pause()
+ * Setter for LFO pause toggle. Target is mod_source_t*.
+ * Toggles pause state when triggered (value >= 0.5).
+ */
+static float set_mod_lfo_pause(void *target, float value, ma_uint32 frame_count, mod_route_t *route)
+{
+	mod_source_t *src = (mod_source_t *)target;
+	(void)frame_count;
+	(void)route;
+
+	if (value >= 0.5f) {
+		src->lfo_paused = !src->lfo_paused;
+	}
+	return src->lfo_paused ? 1.0f : 0.0f;
+}
+
 /******************************************************************************
  * SOURCE AND ROUTE MANAGEMENT
  *****************************************************************************/
@@ -962,6 +1059,9 @@ static foreign_t pl_mod_route_init(
 	mod_route_t *route;
 	void *target;
 	mod_setter_t setter;
+	int kb_slot, row_num;
+	keyboard_t *kb;
+	mod_source_t *lfo_src;
 
 	if (!get_typed_handle(source_term, "mod_source", &source_slot)) {
 		return PL_type_error("mod_source", source_term);
@@ -1025,6 +1125,16 @@ static foreign_t pl_mod_route_init(
 			setter = set_moog_resonance;
 		} else {
 			return PL_domain_error("moog_param", param_term);
+		}
+	} else if (strcmp(target_type, "hpf") == 0) {
+		target = get_effect_pointer(target_term);
+		if (target == NULL) {
+			return PL_type_error("effect", target_term);
+		}
+		if (strcmp(param, "cutoff") == 0) {
+			setter = set_hpf_cutoff;
+		} else {
+			return PL_domain_error("hpf_param", param_term);
 		}
 	} else if (strcmp(target_type, "vca") == 0) {
 		target = get_effect_pointer(target_term);
@@ -1109,6 +1219,25 @@ static foreign_t pl_mod_route_init(
 		} else {
 			return PL_domain_error("reverb_param", param_term);
 		}
+	} else if (strcmp(target_type, "keyboard_row") == 0) {
+		GET_KEYBOARD_ROW_TARGET(target_term, kb, kb_slot, row_num);
+		target = &kb->rows[row_num];
+		if (strcmp(param, "octave") == 0) {
+			setter = set_keyboard_row_octave;
+		} else {
+			return PL_domain_error("keyboard_row_param", param_term);
+		}
+	} else if (strcmp(target_type, "lfo") == 0) {
+		GET_MOD_SOURCE(target_term, lfo_src, target_handle);
+		if (!lfo_src->in_use || lfo_src->type != MOD_SOURCE_WAVEFORM) {
+			return PL_existence_error("lfo", target_term);
+		}
+		target = lfo_src;
+		if (strcmp(param, "pause") == 0) {
+			setter = set_mod_lfo_pause;
+		} else {
+			return PL_domain_error("lfo_param", param_term);
+		}
 	} else {
 		return PL_domain_error("target_type", type_term);
 	}
@@ -1134,9 +1263,11 @@ static foreign_t pl_mod_route_init(
 	route->offset = (float)offset;
 	route->slew = (float)slew;
 	route->current_value = (float)offset;
+	route->last_final_value = 0.0f;
 	route->rate_mode = rate_mode;
 	route->monitor = MA_FALSE;
 	route->log_target_keyboard = -1;
+	route->monitor_pair_slot = -1;
 	route->last_print_time = 0;
 	route->last_printed_value = 0.0f;
 	route->param_name = param;
@@ -1199,6 +1330,27 @@ static foreign_t pl_mod_route_monitor(term_t handle_term, term_t enable_term, te
 	g_mod_routes[slot].log_target_keyboard = kb_slot;
 
 	pthread_mutex_unlock(&g_mod_mutex);
+	return TRUE;
+}
+
+/*
+ * pl_mod_route_monitor4()
+ * Enable monitoring with paired route for combined display.
+ * mod_route_monitor(+Route, +PairedRoute, +Enable, +Keyboard)
+ */
+static foreign_t pl_mod_route_monitor4(term_t handle_term, term_t pair_term,
+	term_t enable_term, term_t kb_term)
+{
+	int slot, pair_slot;
+
+	if (!pl_mod_route_monitor(handle_term, enable_term, kb_term))
+		return FALSE;
+
+	get_typed_handle(handle_term, "mod_route", &slot);
+	if (!get_typed_handle(pair_term, "mod_route", &pair_slot))
+		return PL_type_error("mod_route", pair_term);
+
+	g_mod_routes[slot].monitor_pair_slot = pair_slot;
 	return TRUE;
 }
 
@@ -1743,6 +1895,11 @@ static foreign_t pl_mod_keyboard_init(term_t key_term, term_t opts_term, term_t 
 	float attack_ms = 100.0f;
 	float release_ms = 100.0f;
 	ma_bool32 invert = MA_FALSE;
+	button_mode_t mode = BUTTON_MODE_MOMENTARY;
+	SDL_Keymod required_mod = 0;
+	term_t head, tail, tmp, arg1, arg2;
+	functor_t eq_functor;
+	char *key_str;
 
 	if (!PL_get_atom(key_term, &key_atom)) return FALSE;
 	if (!get_scancode_from_atom(key_atom, &scancode)) {
@@ -1752,6 +1909,43 @@ static foreign_t pl_mod_keyboard_init(term_t key_term, term_t opts_term, term_t 
 	get_param_float(opts_term, "attack", &attack_ms);
 	get_param_float(opts_term, "release", &release_ms);
 	get_param_bool(opts_term, "invert", &invert);
+
+	/* parse atom options inline */
+	head = PL_new_term_ref();
+	tail = PL_new_term_ref();
+	tmp = PL_new_term_ref();
+	arg1 = PL_new_term_ref();
+	arg2 = PL_new_term_ref();
+	eq_functor = PL_new_functor(PL_new_atom("="), 2);
+
+	if (PL_put_term(tmp, opts_term)) {
+		while (PL_get_list(tmp, head, tail)) {
+			functor_t f;
+			if (PL_get_functor(head, &f) && f == eq_functor) {
+				if (PL_get_arg(1, head, arg1) && PL_get_arg(2, head, arg2)) {
+					if (PL_get_atom_chars(arg1, &key_str)) {
+						atom_t val_atom;
+						if (strcmp(key_str, "mode") == 0 && PL_get_atom(arg2, &val_atom)) {
+							const char *val_str = PL_atom_chars(val_atom);
+							if (strcmp(val_str, "trigger") == 0) {
+								mode = BUTTON_MODE_TRIGGER;
+							}
+						} else if (strcmp(key_str, "mod") == 0 && PL_get_atom(arg2, &val_atom)) {
+							const char *val_str = PL_atom_chars(val_atom);
+							if (strcmp(val_str, "shift") == 0) {
+								required_mod = SDL_KMOD_SHIFT;
+							} else if (strcmp(val_str, "ctrl") == 0) {
+								required_mod = SDL_KMOD_CTRL;
+							} else if (strcmp(val_str, "alt") == 0) {
+								required_mod = SDL_KMOD_ALT;
+							}
+						}
+					}
+				}
+			}
+			if (!PL_put_term(tmp, tail)) break;
+		}
+	}
 
 	pthread_mutex_lock(&g_mod_mutex);
 	slot = allocate_source_slot();
@@ -1767,6 +1961,9 @@ static foreign_t pl_mod_keyboard_init(term_t key_term, term_t opts_term, term_t 
 	src->source.keyboard.release_ms = release_ms;
 	src->source.keyboard.value = 0.0f;
 	src->source.keyboard.invert = invert;
+	src->source.keyboard.mode = mode;
+	src->source.keyboard.prev_pressed = MA_FALSE;
+	src->source.keyboard.required_mod = required_mod;
 	src->current_value = invert ? 1.0f : 0.0f;
 
 	pthread_mutex_unlock(&g_mod_mutex);
@@ -1791,6 +1988,7 @@ install_t mod_register_predicates(void)
 	PL_register_foreign("mod_route_init", 9, pl_mod_route_init, 0);
 	PL_register_foreign("mod_route_uninit", 1, pl_mod_route_uninit, 0);
 	PL_register_foreign("mod_route_monitor", 3, pl_mod_route_monitor, 0);
+	PL_register_foreign("mod_route_monitor", 4, pl_mod_route_monitor4, 0);
 	PL_register_foreign("mod_gamepad_init", 3, pl_mod_gamepad_init, 0);
 	PL_register_foreign("mod_gamepad_button_init", 4, pl_mod_gamepad_button_init, 0);
 	PL_register_foreign("mod_keyboard_init", 3, pl_mod_keyboard_init, 0);

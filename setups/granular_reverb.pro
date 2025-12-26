@@ -28,9 +28,12 @@ setup(Source) :-
 
     granular_connect(G, Capture),
     granular_set(G, [density=5.0, size=150.0, position=0.5, pan_spray=0.6, recording=true]),
-    granular_set_mode(G, [0, 3, 5, 7, 10], 0, 5),
+    granular_set_mode(G, [0, 7], 1, 4),
 
-    granular_attach_effect(G, reverb, [wet=0.3, decay=0.8, shimmer1_shift=7.0, shimmer1_mix=0.2], Rev),
+    granular_attach_effect(G, moog, [cutoff=20000.0, resonance=0.0], Moog),
+    setup_register(granular_reverb:moog, Moog),
+
+    granular_attach_effect(G, reverb, [wet=0.3, decay=0.8, shimmer1_shift=7.0, shimmer1_mix=0.2, shimmer2_shift=19.0, shimmer2_mix=0.05, shimmer_in_loop=true], Rev),
     setup_register(granular_reverb:reverb, Rev),
 
     /* Analog axes */
@@ -135,11 +138,28 @@ setup(Source) :-
     keyboard_init(K),
     setup_register(granular_reverb:keyboard, K),
 
+    /* Arrow keys for filter control */
+    mod_keyboard_init(up, [attack=50, release=100], FilterUp),
+    setup_register(granular_reverb:filter_up, FilterUp),
+    mod_keyboard_init(down, [attack=50, release=100], FilterDown),
+    setup_register(granular_reverb:filter_down, FilterDown),
+
+    /* Arrow key routes to moog filter */
+    mod_route_init(FilterUp, moog, Moog, cutoff, rate, 5000.0, 0.0, 0.0, FilterUpRoute),
+    setup_register(granular_reverb:filter_up_route, FilterUpRoute),
+    mod_route_init(FilterDown, moog, Moog, cutoff, rate, -5000.0, 0.0, 0.0, FilterDownRoute),
+    setup_register(granular_reverb:filter_down_route, FilterDownRoute),
+
     /* Enable monitoring on all routes */
     maplist(mod_route_monitor,
-            [R1,R2,R3,R4,R5,R6,R7,R8,R9,R10,R11,R12,R13,R14,R15,R16,R17,R18,R19,R20],
-            [true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true],
-            [K,K,K,K,K,K,K,K,K,K,K,K,K,K,K,K,K,K,K,K]),
+            [R5,R6,R7,R8,R9,R10,R11,R12,R13,R14,R15,R16,R17,R18,R19,R20],
+            [true,true,true,true,true,true,true,true,true,true,true,true,true,true,true,true],
+            [K,K,K,K,K,K,K,K,K,K,K,K,K,K,K,K]),
+    /* Paired monitoring for gamepad sticks */
+    mod_route_monitor(R1, R2, true, K),
+    mod_route_monitor(R3, R4, true, K),
+    mod_route_monitor(FilterUpRoute, true, K),
+    mod_route_monitor(FilterDownRoute, true, K),
     keyboard_connect(K, 0, G),
     keyboard_connect(K, 1, G),
     keyboard_connect(K, 2, G),
@@ -153,6 +173,7 @@ setup(Source) :-
     format('  +/-: granular wet~n'),
     format('  A/L3: trigger grain | X: rec freeze | B: momentary reverse~n'),
     format('  Y: reverb freeze~n'),
+    format('  UP/DOWN arrows: moog filter cutoff~n'),
     format('  LB: envelope (0/0.5/1) | RB: reverse (0/0.3/0.7/1)~n'),
     format('  R3: regularity (1/0.7/0.3/0)~n'),
     format('  Keyboard: QWERTY rows trigger grains~n').

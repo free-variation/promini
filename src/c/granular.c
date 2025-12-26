@@ -778,7 +778,7 @@ static foreign_t pl_granular_set_mode(term_t handle_term, term_t mode_term,
  * pl_granular_connect()
  * Connect a source to the granular delay input.
  * granular_connect(+Granular, +Source)
- * Source is sound(N), voice(N), capture(N), or granular(N).
+ * Source is sound(N), voice(N), capture(N), granular(N), or summing_node(N).
  * If source is a sound, copies its audio data into the ring buffer.
  */
 static foreign_t pl_granular_connect(term_t handle_term, term_t source_term)

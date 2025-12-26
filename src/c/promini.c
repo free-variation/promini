@@ -358,7 +358,7 @@ void get_engine_format_info(ma_format *format, ma_uint32 *channels, ma_uint32 *s
 
 /*
  * get_source_from_term()
- * Parse sound(N), voice(N), capture(N), or granular(N) term.
+ * Parse sound(N), voice(N), capture(N), granular(N), or summing_node(N) term.
  * Returns source node and effect chain.
  */
 ma_bool32 get_source_from_term(term_t source_term, ma_node **source_node, effect_node_t **chain)
@@ -392,6 +392,11 @@ ma_bool32 get_source_from_term(term_t source_term, ma_node **source_node, effect
 		if (slot < 0 || slot >= MAX_GRANULAR_DELAYS || !g_granular_delays[slot].in_use) return MA_FALSE;
 		*source_node = (ma_node *)&g_granular_delays[slot].base;
 		*chain = g_granular_delays[slot].effect_chain;
+		return MA_TRUE;
+	} else if (f == PL_new_functor(PL_new_atom("summing_node"), 1)) {
+		if (slot < 0 || slot >= MAX_SUMMING_NODES || !g_summing_nodes[slot].in_use) return MA_FALSE;
+		*source_node = (ma_node *)&g_summing_nodes[slot].base;
+		*chain = g_summing_nodes[slot].effect_chain;
 		return MA_TRUE;
 	}
 

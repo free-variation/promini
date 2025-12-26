@@ -509,11 +509,11 @@ demo_freeze :-
     sleep(4),
 
     format('~n=== Freezing reverb (infinite sustain) ===~n'),
-    effect_set_parameters(Effect, [freeze=1]),
+    effect_set_parameters(Effect, [freeze=true]),
     sleep(20),
 
     format('~n=== Unfreezing reverb ===~n'),
-    effect_set_parameters(Effect, [freeze=0]),
+    effect_set_parameters(Effect, [freeze=false]),
     sound_seek(Sound, 0),
     sound_start(Sound),
     sleep(4),
@@ -554,7 +554,7 @@ demo_freeze_keyboard :-
     /* play guitar briefly then freeze */
     sound_start(Sound),
     sleep(3),
-    effect_set_parameters(Effect, [freeze=1]),
+    effect_set_parameters(Effect, [freeze=true]),
     format('~n=== Reverb frozen - play synth over the pad ===~n'),
 
     /* create 4 pad voices with soft envelope */
@@ -671,7 +671,7 @@ demo_shimmer_freeze :-
     sound_stop(Sound),
     sleep(2),
     format('Freezing tail...~n'),
-    effect_set_parameters(Effect, [freeze=1]),
+    effect_set_parameters(Effect, [freeze=true]),
     sleep(15),
 
     sound_unload(Sound),

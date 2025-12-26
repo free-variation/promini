@@ -2006,6 +2006,7 @@ static foreign_t set_reverb_parameters(reverb_node_t *reverb, term_t params_list
 		term_t value_term = PL_new_term_ref();
 		char *param_name;
 		double value;
+		int bval;
 
 		if (!PL_is_functor(head, eq_functor)) {
 			return PL_type_error("key_value_pair", head);
@@ -2015,52 +2016,60 @@ static foreign_t set_reverb_parameters(reverb_node_t *reverb, term_t params_list
 		if (!PL_get_atom_chars(key_term, &param_name)) {
 			return PL_type_error("atom", key_term);
 		}
-		if (!PL_get_float(value_term, &value)) {
-			return PL_type_error("float", value_term);
-		}
 
-		if (strcmp(param_name, "predelay_ms") == 0) {
-			reverb->predelay_ms = (float)value;
-		} else if (strcmp(param_name, "bandwidth") == 0) {
-			reverb->bandwidth = (float)value;
-		} else if (strcmp(param_name, "decay") == 0) {
-			reverb->decay = (float)value;
-		} else if (strcmp(param_name, "damping") == 0) {
-			reverb->damping = (float)value;
-		} else if (strcmp(param_name, "mod_rate") == 0) {
-			reverb->mod_rate = (float)value;
-		} else if (strcmp(param_name, "mod_depth") == 0) {
-			reverb->mod_depth = (float)value;
-		} else if (strcmp(param_name, "shimmer1_shift") == 0) {
-			reverb->shimmer1_shift = (float)value;
-		} else if (strcmp(param_name, "shimmer1_mix") == 0) {
-			reverb->shimmer1_mix = (float)value;
-		} else if (strcmp(param_name, "shimmer2_shift") == 0) {
-			reverb->shimmer2_shift = (float)value;
-		} else if (strcmp(param_name, "shimmer2_mix") == 0) {
-			reverb->shimmer2_mix = (float)value;
-		} else if (strcmp(param_name, "width") == 0) {
-			reverb->width = (float)value;
-		} else if (strcmp(param_name, "cross_feed") == 0) {
-			reverb->cross_feed = (float)value;
-		} else if (strcmp(param_name, "low_cut") == 0) {
-			reverb->low_cut = (float)value;
-		} else if (strcmp(param_name, "high_cut") == 0) {
-			reverb->high_cut = (float)value;
-		} else if (strcmp(param_name, "wet") == 0) {
-			reverb->wet = (float)value;
-		} else if (strcmp(param_name, "dry") == 0) {
-			reverb->dry = (float)value;
-		} else if (strcmp(param_name, "size") == 0) {
-			reverb->size = (float)value;
-		} else if (strcmp(param_name, "hp") == 0) {
-			reverb->hp = (float)value;
-		} else if (strcmp(param_name, "freeze") == 0) {
-			reverb->freeze = (value != 0.0) ? MA_TRUE : MA_FALSE;
+		if (strcmp(param_name, "freeze") == 0) {
+			if (!PL_get_bool(value_term, &bval)) {
+				return PL_type_error("bool", value_term);
+			}
+			reverb->freeze = bval ? MA_TRUE : MA_FALSE;
 		} else if (strcmp(param_name, "shimmer_in_loop") == 0) {
-			reverb->shimmer_in_loop = (value != 0.0) ? MA_TRUE : MA_FALSE;
+			if (!PL_get_bool(value_term, &bval)) {
+				return PL_type_error("bool", value_term);
+			}
+			reverb->shimmer_in_loop = bval ? MA_TRUE : MA_FALSE;
 		} else {
-			return PL_domain_error("reverb_parameter", key_term);
+			if (!PL_get_float(value_term, &value)) {
+				return PL_type_error("float", value_term);
+			}
+			if (strcmp(param_name, "predelay_ms") == 0) {
+				reverb->predelay_ms = (float)value;
+			} else if (strcmp(param_name, "bandwidth") == 0) {
+				reverb->bandwidth = (float)value;
+			} else if (strcmp(param_name, "decay") == 0) {
+				reverb->decay = (float)value;
+			} else if (strcmp(param_name, "damping") == 0) {
+				reverb->damping = (float)value;
+			} else if (strcmp(param_name, "mod_rate") == 0) {
+				reverb->mod_rate = (float)value;
+			} else if (strcmp(param_name, "mod_depth") == 0) {
+				reverb->mod_depth = (float)value;
+			} else if (strcmp(param_name, "shimmer1_shift") == 0) {
+				reverb->shimmer1_shift = (float)value;
+			} else if (strcmp(param_name, "shimmer1_mix") == 0) {
+				reverb->shimmer1_mix = (float)value;
+			} else if (strcmp(param_name, "shimmer2_shift") == 0) {
+				reverb->shimmer2_shift = (float)value;
+			} else if (strcmp(param_name, "shimmer2_mix") == 0) {
+				reverb->shimmer2_mix = (float)value;
+			} else if (strcmp(param_name, "width") == 0) {
+				reverb->width = (float)value;
+			} else if (strcmp(param_name, "cross_feed") == 0) {
+				reverb->cross_feed = (float)value;
+			} else if (strcmp(param_name, "low_cut") == 0) {
+				reverb->low_cut = (float)value;
+			} else if (strcmp(param_name, "high_cut") == 0) {
+				reverb->high_cut = (float)value;
+			} else if (strcmp(param_name, "wet") == 0) {
+				reverb->wet = (float)value;
+			} else if (strcmp(param_name, "dry") == 0) {
+				reverb->dry = (float)value;
+			} else if (strcmp(param_name, "size") == 0) {
+				reverb->size = (float)value;
+			} else if (strcmp(param_name, "hp") == 0) {
+				reverb->hp = (float)value;
+			} else {
+				return PL_domain_error("reverb_parameter", key_term);
+			}
 		}
 	}
 

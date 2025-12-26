@@ -109,6 +109,7 @@ setup :-
     summing_node_attach_effect(Sum, vca, [gain=0.8], MasterVca),
     setup_register(keyboard_pad:master_vca, MasterVca),
     summing_node_attach_effect(Sum, ping_pong_delay, [max_delay_in_frames=22050, delay_in_frames=22050, feedback=0.4, wet=0.3, dry=0.7], PingPong),
+    summing_node_attach_effect(Sum, reverb, [wet=0.1, decay=0.5, shimmer1_shift=7.0, shimmer1_mix=0.2], Rev),
     setup_register(keyboard_pad:ping_pong, PingPong),
 
     /* up/down arrows control master volume */

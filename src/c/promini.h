@@ -477,6 +477,9 @@ typedef struct {
 			float release_ms;
 			float value;
 			ma_bool32 invert;
+			button_mode_t mode;
+			ma_bool32 prev_pressed;
+			SDL_Keymod required_mod;
 		} keyboard;
 	} source;
 	ma_bool32 sh_enabled;
@@ -484,6 +487,7 @@ typedef struct {
 	ma_uint32 sh_counter;
 	float sh_held_value;
 	float current_value;
+	ma_bool32 lfo_paused;
 } mod_source_t;
 
 /* forward declare for setter */
@@ -502,10 +506,12 @@ struct mod_route {
 	float offset;
 	float slew;
 	float current_value;
+	float last_final_value;
 	ma_bool32 rate_mode;
 
 	ma_bool32 monitor;
 	int log_target_keyboard;
+	int monitor_pair_slot;
 	ma_uint64 last_print_time;
 	float last_printed_value;
 	const char *param_name;
@@ -679,6 +685,26 @@ extern keyboard_t g_keyboards[MAX_KEYBOARDS];
             return PL_existence_error("keyboard", handle_term); \
         } \
         kb_var = &g_keyboards[slot_var]; \
+    } while (0)
+
+#define GET_KEYBOARD_ROW(row_term, row_var) \
+    do { \
+        if (!PL_get_integer(row_term, &row_var)) { \
+            return PL_type_error("integer", row_term); \
+        } \
+        if (row_var < 0 || row_var >= KEYBOARD_ROWS) { \
+            return PL_domain_error("valid_row_index", row_term); \
+        } \
+    } while (0)
+
+#define GET_KEYBOARD_ROW_TARGET(term, kb_var, kb_slot_var, row_var) \
+    do { \
+        term_t _kb_arg = PL_new_term_ref(); \
+        term_t _row_arg = PL_new_term_ref(); \
+        if (!PL_get_arg(1, term, _kb_arg)) return FALSE; \
+        if (!PL_get_arg(2, term, _row_arg)) return FALSE; \
+        GET_KEYBOARD(_kb_arg, kb_var, kb_slot_var); \
+        GET_KEYBOARD_ROW(_row_arg, row_var); \
     } while (0)
 
 /* Visualizer types */
